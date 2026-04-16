@@ -170,7 +170,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
       borderRadius:10, padding:'10px 12px',
       display:'flex', flexDirection:'column', gap:4,
       animation: exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
-      position:'relative', overflow:'visible', minHeight:0,
+      position:'relative',
     }}>
       {thumbFeedback && (
         <div style={{
@@ -436,7 +436,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
   const showHero  = spotlightMode === 'hero';
 
   return (
-    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid rgba(0,0,0,.07)',minWidth:0,overflow:'visible',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
+    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid rgba(0,0,0,.07)',minWidth:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
       <div className={`${cat.cls}`} style={{padding:'9px 13px 8px',display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
         <span style={{fontSize:15}}>{cat.icon}</span>
         <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',flex:1}}>{cat.label}</span>
@@ -444,7 +444,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
         <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'8px 8px 8px 8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7,overflowX:'visible'}} className="no-scroll">
+      <div style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7}} className="no-scroll">
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here — check back Thursday</div>
