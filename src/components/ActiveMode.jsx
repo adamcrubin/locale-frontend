@@ -170,7 +170,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
       borderRadius:10, padding:'10px 12px',
       display:'flex', flexDirection:'column', gap:4,
       animation: exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
-      position:'relative', overflow:'hidden',
+      position:'relative', overflow:'visible', minHeight:0,
     }}>
       {thumbFeedback && (
         <div style={{
@@ -189,17 +189,9 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
         </div>
       )}
 
-      {/* Title row with collapse + X */}
+      {/* Title row - tap title to collapse in compact mode */}
       <div style={{display:'flex',alignItems:'flex-start',gap:6}}>
-        <div onClick={()=>setExpanded(false)} style={{fontSize:13,fontWeight:600,lineHeight:1.3,color:'#1C1A17',flex:1,cursor:(cardMode==='compact'||cardMode==='relevancy')?'pointer':'default'}}>{act.title}</div>
-        <button onClick={handleRemove} title="Hide" style={{
-          width:20,height:20,borderRadius:6,border:'0.5px solid rgba(0,0,0,.1)',
-          background:'transparent',cursor:'pointer',fontSize:10,color:'rgba(0,0,0,.3)',
-          display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all .12s',marginTop:1,
-        }}
-          onMouseEnter={e=>{e.currentTarget.style.background='#FFF1F2';e.currentTarget.style.color='#E53E3E';}}
-          onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='rgba(0,0,0,.3)';}}
-        >✕</button>
+        <div onClick={()=>(cardMode==='compact'||cardMode==='relevancy')&&setExpanded(false)} style={{fontSize:13,fontWeight:600,lineHeight:1.3,color:'#1C1A17',flex:1,cursor:(cardMode==='compact'||cardMode==='relevancy')?'pointer':'default'}}>{act.title}</div>
       </div>
 
       <div style={{fontSize:11,color:'#8A8378',lineHeight:1.4}}>{act.when} · {act.where} · <strong style={{color:'#5A5550',fontWeight:500}}>{act.cost}</strong></div>
