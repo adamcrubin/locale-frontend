@@ -172,7 +172,7 @@ animation: 'fadeIn 150ms ease both',
 }}>{thumbFeedback.msg}</div>
 )}
 
-```
+
   {/* ── Header row — always visible, tap to expand ── */}
   <div
     onClick={toggle}
@@ -300,7 +300,7 @@ onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.06)'}
 </div>
 ))}
 
-```
+
     {/* Divider */}
     {spotlightItems.length > 0 && weekendWeather.length > 0 && (
       <div style={{ width: 1, background: 'rgba(255,255,255,.08)', flexShrink: 0, margin: '0 4px', alignSelf: 'stretch' }} />
@@ -330,7 +330,7 @@ onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.06)'}
     })}
   </div>
 </div>
-```
+
 
 );
 }
@@ -469,7 +469,7 @@ onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
 </div>
 )}
 
-```
+
   {/* ── Your Weekend calendar ── */}
   <div style={{
     fontSize:8,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',
@@ -545,7 +545,7 @@ onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
     )}
   </div>
 </div>
-```
+
 
 );
 }
@@ -618,7 +618,7 @@ animation:'sheetUp 300ms cubic-bezier(.4,0,.2,1) both',
 <button onClick={onClose} style={{background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',borderRadius:8,padding:'5px 12px',fontSize:12,cursor:'pointer',fontFamily:'DM Sans,sans-serif',color:'rgba(255,255,255,.55)'}}>✕</button>
 </div>
 
-```
+
     {/* Messages */}
     <div style={{flex:1,overflowY:'auto',padding:'14px 18px',display:'flex',flexDirection:'column',gap:10}} className="no-scroll">
       {messages.length === 0 && (
@@ -663,7 +663,7 @@ animation:'sheetUp 300ms cubic-bezier(.4,0,.2,1) both',
     </div>
   </div>
 </div>
-```
+
 
 );
 }
@@ -771,7 +771,7 @@ opacity:isDimmed?0.6:1,transition:'all .15s',
 })}
 </div>
 
-```
+
   {/* Single column content */}
   <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
     style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7}}
@@ -801,7 +801,7 @@ opacity:isDimmed?0.6:1,transition:'all .15s',
     ))}
   </div>
 </div>
-```
+
 
 );
 }
@@ -951,7 +951,7 @@ else if (e.date===fmtDate2(sun2)) calStrip.sun.push(e);
 return (
 <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto 1fr auto',height:'100%',background:'var(–bg)',overflow:'hidden',fontFamily:'var(–font-body)'}}>
 
-```
+
   {/* ── Header ── */}
   <div style={{background:'var(--header-bg)',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
     <div style={{display:'flex',alignItems:'center',gap:10}}>
@@ -1090,7 +1090,7 @@ return (
   {aiPrompt&&<AIPromptModal prompt={aiPrompt} settings={settings} activeProfile={activeProfile} onClose={()=>setAiPrompt(null)} />}
   {reserveAct&&<ReserveModal activity={reserveAct.act} catId={reserveAct.catId} onClose={()=>setReserveAct(null)} homeAddress={homeAddress} />}
 </div>
-```
+
 
 );
 }
