@@ -71,7 +71,7 @@ return false;
 
 // Sort categories by how many good events they have (relevancy-weighted)
 function sortCategoriesByRelevancy(cats, activities) {
-return […cats].sort((a, b) => {
+return [...cats].sort((a, b) => {
 const aScore = (activities[a.id] || MOCK_ACTIVITIES[a.id] || [])
 .reduce((s, e) => s + (e.final_score || e.base_score || 0.5), 0);
 const bScore = (activities[b.id] || MOCK_ACTIVITIES[b.id] || [])
