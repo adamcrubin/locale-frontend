@@ -465,7 +465,7 @@ onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
 {hero.when}{hero.cost ? ` · ${hero.cost}` : ''}
 </div>
 {hero.expires && <div style={{fontSize:9,color:'#C9A84C',marginTop:4}}>⚡ Last chance</div>}
-{hero.why && <div style={{fontSize:10,color:'rgba(255,255,255,.28)',fontStyle:'italic',lineHeight:1.4,marginTop:4}}>{hero.why?.slice(0,80)}{hero.why?.length>80?'…':''}</div>}
+{hero.why && <div style={{fontSize:10,color:'rgba(255,255,255,.28)',fontStyle:'italic',lineHeight:1.4,marginTop:4}}>{hero.why?.slice(0,80)}{hero.why?.length>80?'...':''}</div>}
 </div>
 )}
 
@@ -563,7 +563,7 @@ const send = async () => {
 if (!input.trim() || loading) return;
 const q = input.trim();
 setInput('');
-setMessages(m => […m, { role: 'user', text: q }]);
+setMessages(m => [...m, { role: 'user', text: q }]);
 setLoading(true);
 try {
 // POST to /ask for free-text questions (not the preset prompt itineraries)
@@ -594,9 +594,9 @@ parts.push(`${i.icon ? i.icon + ' ' : ''}${label}${i.detail ? '\n' + i.detail : 
 });
 }
 if (data?.note) parts.push('\n💡 ' + data.note);
-setMessages(m => […m, { role: 'claude', text: parts.join('\n') }]);
+setMessages(m => [...m, { role: 'claude', text: parts.join('\n') }]);
 } catch (e) {
-setMessages(m => […m, { role: 'claude', text: "Sorry, couldn't connect right now. Try again?" }]);
+setMessages(m => [...m, { role: 'claude', text: "Sorry, couldn't connect right now. Try again?" }]);
 }
 setLoading(false);
 };
@@ -854,7 +854,7 @@ return (
 </div>}
 {step===3&&<div style={{padding:'22px 17px',textAlign:'center'}}>
 <div style={{fontSize:38,marginBottom:10}}>{isTicket?'🎟':'✅'}</div>
-<div style={{fontSize:14,fontWeight:600,color:'rgba(255,255,255,.9)',marginBottom:5}}>Opening {platform}…</div>
+<div style={{fontSize:14,fontWeight:600,color:'rgba(255,255,255,.9)',marginBottom:5}}>Opening {platform}...</div>
 <div style={{fontSize:11,color:'rgba(255,255,255,.4)',lineHeight:1.7,marginBottom:14}}>{activity.title}<br/>Complete your booking on {platform}</div>
 <button onClick={onClose} style={{padding:'8px 22px',borderRadius:99,background:'rgba(255,255,255,.08)',border:'0.5px solid rgba(255,255,255,.12)',fontSize:12,color:'rgba(255,255,255,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif'}}>Done</button>
 </div>}
@@ -899,24 +899,24 @@ const columnOrder  = settings?.columnOrder  || 'relevancy';
 // Reactive mobile detection — updates on resize
 const isMobile = useIsMobile();
 
-const removeAct  = (catId,act) => setRemoved(r=>({…r,[`${catId}::${act.title}`]:true}));
-const heartAct   = (catId,act) => onSaveItem?.({…act,catId});
+const removeAct  = (catId,act) => setRemoved(r=>({...r,[`${catId}::${act.title}`]:true}));
+const heartAct   = (catId,act) => onSaveItem?.({...act,catId});
 const thumbUp    = (catId,act) => onThumbUp?.(catId,act);
-const thumbDown  = (catId,act) => { setRemoved(r=>({…r,[`${catId}::${act.title}`]:true})); onThumbDown?.(catId,act); };
+const thumbDown  = (catId,act) => { setRemoved(r=>({...r,[`${catId}::${act.title}`]:true})); onThumbDown?.(catId,act); };
 
 const catStates    = activeProfile?.categoryStates||{};
 const alwaysCats   = ALL_CATEGORIES.filter(c=>catStates[c.id]==='always');
 const sometimesCats= ALL_CATEGORIES.filter(c=>catStates[c.id]==='sometimes');
 const defaultCats  = ALL_CATEGORIES.slice(0,9);
 let baseCats = activeCat==='all'
-? (alwaysCats.length>0?[…alwaysCats,…sometimesCats.slice(0,2)]:defaultCats)
+? (alwaysCats.length>0?[...alwaysCats,...sometimesCats.slice(0,2)]:defaultCats)
 : ALL_CATEGORIES.filter(c=>c.id===activeCat);
 
 // Apply column ordering
 const visibleCats = columnOrder==='relevancy'
 ? sortCategoriesByRelevancy(baseCats, activities)
 : columnOrder==='random'
-? […baseCats].sort(()=>Math.random()-0.5)
+? [...baseCats].sort(()=>Math.random()-0.5)
 : baseCats;
 
 const COLS_PER_PAGE = isMobile ? 1 : 4;
