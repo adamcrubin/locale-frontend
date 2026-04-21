@@ -1,6 +1,35 @@
 import { useState, useEffect, useCallback } from 'react';
 import { WEATHER, ACTIVITIES, ALL_CATEGORIES, CALENDAR_EVENTS, MOCK_PHOTOS, AMBIENT_THEMES } from '../data/content';
 
+// ── Weather icon with explicit colors (no CSS filter) ─────────────────────────
+function WeatherIcon({ icon, desc = '', size = 18 }) {
+  const d = (desc || '').toLowerCase();
+  const i = (icon || '');
+  if (d.includes('thunder') || d.includes('storm') || i.includes('⛈') || i.includes('🌩'))
+    return <span style={{ fontSize: size, color: '#818CF8' }}>⛈</span>;
+  if (d.includes('snow') || d.includes('ice') || d.includes('blizzard') || i.includes('❄') || i.includes('🌨'))
+    return <span style={{ fontSize: size, color: '#BAE6FD' }}>❄️</span>;
+  if (d.includes('frost'))
+    return <span style={{ fontSize: size, color: '#93C5FD' }}>🌬️</span>;
+  if (d.includes('rain') || d.includes('shower') || i.includes('🌧') || i.includes('🌦'))
+    return <span style={{ fontSize: size, color: '#38BDF8' }}>🌧️</span>;
+  if (d.includes('drizzle') || d.includes('slight chance'))
+    return <span style={{ fontSize: size, color: '#7DD3FC' }}>🌦️</span>;
+  if (d.includes('fog') || d.includes('haz') || d.includes('smoke') || i.includes('🌫'))
+    return <span style={{ fontSize: size, color: '#94A3B8' }}>🌫️</span>;
+  if (d.includes('wind') || d.includes('breezy') || i.includes('💨'))
+    return <span style={{ fontSize: size, color: '#94A3B8' }}>💨</span>;
+  if (d.includes('mostly cloudy') || d.includes('overcast') || i.includes('☁'))
+    return <span style={{ fontSize: size, color: '#CBD5E1' }}>☁️</span>;
+  if (d.includes('partly') || i.includes('⛅') || i.includes('🌤'))
+    return <span style={{ fontSize: size, color: '#FCD34D' }}>⛅</span>;
+  if (i.includes('🌙') || (d.includes('clear') && d.includes('night')))
+    return <span style={{ fontSize: size, color: '#FDE68A' }}>🌙</span>;
+  if (d.includes('sunny') || d.includes('clear') || i.includes('☀') || i.includes('🌞'))
+    return <span style={{ fontSize: size, color: '#FCD34D' }}>☀️</span>;
+  return <span style={{ fontSize: size, color: '#E2E8F0' }}>{icon || '🌡️'}</span>;
+}
+
 // ── Fun facts ─────────────────────────────────────────────────────────────────
 const FUN_FACTS = [
   "DC has more therapy dogs per capita than any other US city. Harlow approves.",
@@ -141,7 +170,7 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
       {/* ── Weather — top left ── */}
       <div style={{ position:'absolute', top:28, left:30, zIndex:3 }}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
-          <span style={{ fontSize:36 }}>{today.icon}</span>
+          <WeatherIcon icon={today.icon} desc={today.desc} size={36} />
           <span style={{
             fontFamily:'Cormorant Garamond, serif', fontSize:64, fontWeight:300,
             color:'#fff', lineHeight:1, textShadow:'0 2px 20px rgba(0,0,0,.5)',
@@ -193,7 +222,7 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
             onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.45)'}
           >
             <span style={{ fontSize:11, color:'rgba(255,255,255,.5)', letterSpacing:'.06em', textTransform:'uppercase', width:28 }}>{d.day}</span>
-            <span style={{ fontSize:18 }}>{d.icon}</span>
+            <WeatherIcon icon={d.icon} desc={d.desc} size={18} />
             <span style={{ fontSize:13, color:'rgba(255,255,255,.85)', fontWeight:500, minWidth:54 }}>{d.hi}°/{d.lo}°</span>
             {d.precip > 20 && <span style={{ fontSize:11, color:'#93C5FD', minWidth:28 }}>{d.precip}%</span>}
           </div>
