@@ -22,10 +22,27 @@ export async function fetchWeather(city) {
 }
 
 // ── Events v2 ─────────────────────────────────────────────────────────────────
+// BUG FIX: weekday param was previously destructured but never added to the
+// URLSearchParams, so useWeekdayActivities always received weekend events.
+//
+// Also now sends a trimmed profile JSON so the backend scoring engine can apply
+// preference matching. Without this, profile.prefs had no effect on final_score.
 export async function fetchEventFeed(zip, profileId, city, options = {}) {
-  const { category, limit = 100, offset = 0 } = options;
+  const { category, weekday = false, limit = 100, offset = 0, profile = null } = options;
   const params = new URLSearchParams({ zip, profileId, city, limit, offset });
   if (category) params.set('category', category);
+  // weekday=true tells the backend to filter to Mon–Thu events only
+  if (weekday) params.set('weekday', 'true');
+  // Send a trimmed profile object for server-side preference scoring.
+  // We only send the fields the scoring engine uses to keep the URL short.
+  if (profile) {
+    params.set('profile', encodeURIComponent(JSON.stringify({
+      id:      profile.id,
+      prefs:   profile.prefs || [],
+      aboutMe: (profile.aboutMe || '').slice(0, 200),
+      budget:  profile.budget,
+    })));
+  }
   const data = await apiFetch(`/events?${params}`);
   return data.data;
 }

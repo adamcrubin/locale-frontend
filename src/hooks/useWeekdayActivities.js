@@ -41,6 +41,8 @@ function transformFeed(feed) {
   return grouped;
 }
 
+// `profile` is the full profile object — passed through to fetchEventFeed
+// so the backend scoring engine can apply preference matching.
 export function useWeekdayActivities(city, profile) {
   const [activities, setActivities] = useState(WEEKDAY_ACTIVITIES);
   const [loading,    setLoading]    = useState(false);
@@ -53,8 +55,9 @@ export function useWeekdayActivities(city, profile) {
     if (!city) return;
     setLoading(true);
     try {
-      // Fetch with weekday=true param so backend filters to Mon–Thu events
-      const data = await fetchEventFeed(zip, profileId, city, { weekday: true, limit: 60 });
+      // weekday:true filters the backend to Mon–Thu events only.
+      // profile is passed so the backend can apply preference-based scoring.
+      const data = await fetchEventFeed(zip, profileId, city, { weekday: true, limit: 60, profile });
       const transformed = transformFeed(data);
       if (transformed && Object.values(transformed).some(a => a.length > 0)) {
         setActivities(transformed);

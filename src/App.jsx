@@ -41,41 +41,180 @@ function LoadingSplash() {
   );
 }
 
-// ── Dev data source indicator ─────────────────────────────────────────────────
-function DataBadge({ activitiesSource, weatherSource }) {
-  const [expanded, setExpanded] = useState(false);
+// ── Reactive isMobile hook ────────────────────────────────────────────────────
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return mobile;
+}
+
+// ── Full Debug Panel ──────────────────────────────────────────────────────────
+// Always visible in this build. Shows data sources, errors, and lets you
+// fire raw API requests and copy the responses to paste back to Claude.
+function DebugPanel({ activitiesSource, weatherSource, settings, activeProfile }) {
+  const [open,       setOpen]       = useState(false);
+  const [results,    setResults]    = useState({});
+  const [loading,    setLoading]    = useState({});
+  const [copied,     setCopied]     = useState(null);
+
+  const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
   const allLive = activitiesSource === 'live' && weatherSource === 'live';
   const allMock = activitiesSource === 'mock' && weatherSource === 'mock';
-  const dot   = allLive ? '#22c55e' : allMock ? '#f59e0b' : '#60a5fa';
-  const label = allLive ? 'live'    : allMock ? 'demo'    : 'partial';
+  const dot     = allLive ? '#22c55e' : allMock ? '#f59e0b' : '#60a5fa';
+  const label   = allLive ? 'LIVE' : allMock ? 'DEMO' : 'PARTIAL';
+
+  const fire = async (key, path) => {
+    setLoading(l => ({ ...l, [key]: true }));
+    const start = Date.now();
+    try {
+      const res  = await fetch(`${BASE}${path}`);
+      const data = await res.json();
+      setResults(r => ({ ...r, [key]: { ok: res.ok, status: res.status, ms: Date.now() - start, data } }));
+    } catch (e) {
+      setResults(r => ({ ...r, [key]: { ok: false, status: 0, ms: Date.now() - start, error: e.message } }));
+    } finally {
+      setLoading(l => ({ ...l, [key]: false }));
+    }
+  };
+
+  const copy = (key) => {
+    const text = JSON.stringify(results[key], null, 2);
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
+
+  const city      = settings?.city || 'Falls Church, VA';
+  const profileId = activeProfile?.id || 'default';
+  const zip       = city.match(/\b(\d{5})\b/)?.[1] || '22046';
+
+  const CHECKS = [
+    { key: 'health',     label: '🟢 Health',      path: '/health' },
+    { key: 'weather',    label: '🌤 Weather',      path: `/weather?city=${encodeURIComponent(city)}` },
+    { key: 'events',     label: '📋 Events feed',  path: `/events?zip=${zip}&profileId=${profileId}&city=${encodeURIComponent(city)}` },
+    { key: 'sources',    label: '🗂 Sources',      path: `/sources?zip=${zip}` },
+    { key: 'scraped',    label: '🕷 Scraped',       path: `/admin/scraped?zip=${zip}` },
+    { key: 'adminevents',label: '📌 DB events',    path: `/admin/events?zip=${zip}&limit=10` },
+    { key: 'cache',      label: '⚡ Cache keys',   path: '/admin/cache' },
+  ];
+
+  const s = {
+    panel: {
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
+      fontFamily: 'DM Sans, monospace', userSelect: 'none',
+      maxHeight: open ? '80vh' : 'auto',
+      display: 'flex', flexDirection: 'column',
+    },
+    pill: {
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: 'rgba(10,10,10,.92)', borderTop: `2px solid ${dot}`,
+      padding: '8px 14px', cursor: 'pointer',
+      backdropFilter: 'blur(10px)',
+    },
+    body: {
+      background: 'rgba(10,10,10,.97)', overflowY: 'auto',
+      borderTop: '0.5px solid rgba(255,255,255,.1)',
+    },
+    section: { padding: '10px 14px', borderBottom: '0.5px solid rgba(255,255,255,.08)' },
+    h: { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.35)', marginBottom: 8 },
+    row: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 },
+    btn: {
+      fontSize: 11, padding: '5px 10px', borderRadius: 7, cursor: 'pointer',
+      border: '0.5px solid rgba(255,255,255,.18)', background: 'rgba(255,255,255,.08)',
+      color: 'rgba(255,255,255,.8)', fontFamily: 'DM Sans, sans-serif', flexShrink: 0,
+    },
+    srcRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 },
+  };
 
   return (
-    <div
-      onClick={() => setExpanded(e => !e)}
-      style={{ position:'fixed', bottom:10, left:10, zIndex:90, cursor:'pointer', fontFamily:'DM Sans, sans-serif', userSelect:'none' }}
-    >
-      {!expanded && (
-        <div style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(0,0,0,.7)', border:`0.5px solid ${dot}44`, borderRadius:99, padding:'4px 9px', backdropFilter:'blur(6px)' }}>
-          <div style={{ width:6, height:6, borderRadius:'50%', background:dot, boxShadow:allLive?`0 0 6px ${dot}`:'none' }} />
-          <span style={{ fontSize:10, color:'rgba(255,255,255,.5)', letterSpacing:'.06em', textTransform:'uppercase' }}>{label}</span>
-        </div>
-      )}
-      {expanded && (
-        <div style={{ background:'rgba(15,13,11,.95)', border:'0.5px solid rgba(255,255,255,.12)', borderRadius:10, padding:'10px 13px', minWidth:190, backdropFilter:'blur(10px)' }}>
-          <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(255,255,255,.3)', marginBottom:8 }}>Data sources</div>
-          {[{label:'Activities', source:activitiesSource},{label:'Weather', source:weatherSource}].map(({label,source}) => {
-            const c = source==='live'?'#22c55e':source==='mock'?'#f59e0b':'#94a3b8';
-            const msg = source==='live'?'Live from backend':source==='mock'?'Demo — backend offline':source;
-            return (
-              <div key={label} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5 }}>
-                <div style={{ width:6, height:6, borderRadius:'50%', background:c, flexShrink:0 }} />
-                <span style={{ fontSize:11, color:'rgba(255,255,255,.5)', width:72 }}>{label}</span>
-                <span style={{ fontSize:11, color:c }}>{msg}</span>
-              </div>
-            );
-          })}
-          <div style={{ fontSize:9, color:'rgba(255,255,255,.2)', marginTop:8, borderTop:'0.5px solid rgba(255,255,255,.07)', paddingTop:7 }}>
-            Tap to collapse · {import.meta.env.VITE_API_URL||'localhost:3001'}
+    <div style={s.panel}>
+      {/* ── Pill / header ── */}
+      <div style={s.pill} onClick={() => setOpen(o => !o)}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: dot, boxShadow: `0 0 6px ${dot}88` }} />
+        <span style={{ fontSize: 11, color: dot, fontWeight: 700, letterSpacing: '.06em' }}>{label}</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', flex: 1 }}>
+          {activitiesSource === 'mock' ? '  Backend offline -- tap to diagnose' : `  ${BASE}`}
+        </span>
+        <span style={{ fontSize: 14, color: 'rgba(255,255,255,.4)' }}>{open ? '▼' : '▲'}</span>
+      </div>
+
+      {open && (
+        <div style={s.body}>
+          {/* Data sources status */}
+          <div style={s.section}>
+            <div style={s.h}>Data sources</div>
+            {[{ label: 'Activities', src: activitiesSource }, { label: 'Weather', src: weatherSource }].map(({ label, src }) => {
+              const c = src === 'live' ? '#22c55e' : src === 'mock' ? '#f59e0b' : '#94a3b8';
+              return (
+                <div key={label} style={s.srcRow}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: c }} />
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', width: 80 }}>{label}</span>
+                  <span style={{ fontSize: 12, color: c, fontWeight: 600 }}>
+                    {src === 'live' ? 'Live ✓' : src === 'mock' ? 'Mock -- backend not reached' : src}
+                  </span>
+                </div>
+              );
+            })}
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', marginTop: 6 }}>
+              API URL: {BASE}<br />
+              City: {city} · Zip: {zip} · Profile: {profileId}
+            </div>
+          </div>
+
+          {/* API checks */}
+          <div style={s.section}>
+            <div style={s.h}>API checks -- tap to fire, then copy &amp; paste to Claude</div>
+            {CHECKS.map(({ key, label, path }) => {
+              const res = results[key];
+              const isLoading = loading[key];
+              const c = !res ? 'rgba(255,255,255,.4)' : res.ok ? '#22c55e' : '#f87171';
+              return (
+                <div key={key} style={{ marginBottom: 10 }}>
+                  <div style={s.row}>
+                    <button style={{ ...s.btn, opacity: isLoading ? 0.5 : 1 }}
+                      onClick={() => fire(key, path)} disabled={isLoading}>
+                      {isLoading ? '…' : label}
+                    </button>
+                    {res && (
+                      <>
+                        <span style={{ fontSize: 11, color: c }}>{res.ok ? '✓' : '✗'} {res.status} ({res.ms}ms)</span>
+                        <button style={{ ...s.btn, background: copied === key ? 'rgba(34,197,94,.2)' : 'rgba(255,255,255,.06)', color: copied === key ? '#22c55e' : 'rgba(255,255,255,.6)', marginLeft: 'auto' }}
+                          onClick={() => copy(key)}>
+                          {copied === key ? 'Copied ✓' : '📋 Copy'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {res && (
+                    <pre style={{
+                      fontSize: 10, color: res.ok ? 'rgba(255,255,255,.55)' : '#f87171',
+                      background: 'rgba(255,255,255,.04)', borderRadius: 6, padding: '7px 10px',
+                      overflowX: 'auto', maxHeight: 140, margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                    }}>
+                      {JSON.stringify(res.error || res.data, null, 2).slice(0, 800)}
+                      {JSON.stringify(res.error || res.data).length > 800 ? '\n… (truncated -- copy for full)' : ''}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Env / config */}
+          <div style={{ ...s.section, borderBottom: 'none' }}>
+            <div style={s.h}>Environment</div>
+            <pre style={{ fontSize: 10, color: 'rgba(255,255,255,.4)', margin: 0, whiteSpace: 'pre-wrap' }}>
+{`VITE_API_URL:     ${import.meta.env.VITE_API_URL || '(not set -- using localhost:3001)'}
+VITE_SUPABASE_URL: ${import.meta.env.VITE_SUPABASE_URL ? 'set' : '(not set)'}
+Screen:           ${window.innerWidth}×${window.innerHeight}
+User agent:       ${navigator.userAgent.slice(0, 80)}`}
+            </pre>
           </div>
         </div>
       )}
@@ -86,6 +225,8 @@ function DataBadge({ activitiesSource, weatherSource }) {
 export default function App() {
   // ── Auth-free: no login required, all local + optional Supabase sync ──
   const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(null);
+
+  const isMobile = useIsMobile();
 
   // ── Live data hooks (fall back to mock if backend down) ──
   const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile);
@@ -152,7 +293,7 @@ export default function App() {
     transitionTo('active');
   };
 
-  // Calendar add — also tracks for post-event feedback
+  // Calendar add -- also tracks for post-event feedback
   const onAdded = (entry) => {
     setCalQueue(q => [...q, entry]);
     setCalModal(null);
@@ -173,7 +314,7 @@ export default function App() {
     });
   };
 
-  // Feedback loop — thumbs up/down posts to backend and updates profile prefs
+  // Feedback loop -- thumbs up/down posts to backend and updates profile prefs
   const onThumbUp = async (catId, act) => {
     // Post to backend
     if (act.id) {
@@ -203,6 +344,7 @@ export default function App() {
     weather,
     activitiesSource,
     weatherSource,
+    isMobile,
     onCalendar:      setCalModal,
     onWeather:       setWeatherDay,
     onSettings:      (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true),
@@ -215,7 +357,7 @@ export default function App() {
     onThumbDown,
   };
 
-  // ── Onboarding — show on first launch ──
+  // ── Onboarding -- show on first launch ──
   if (!settings.onboardingDone) {
     return (
       <OnboardingFlow
@@ -334,8 +476,13 @@ export default function App() {
       {/* ── Post-event feedback toast ── */}
       <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
 
-      {/* ── Data source indicator (dev helper) ── */}
-      <DataBadge activitiesSource={activitiesSource} weatherSource={weatherSource} />
+      {/* ── Debug panel -- always visible during active development ── */}
+      <DebugPanel
+        activitiesSource={activitiesSource}
+        weatherSource={weatherSource}
+        settings={settings}
+        activeProfile={activeProfile}
+      />
     </div>
   );
 }

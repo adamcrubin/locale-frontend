@@ -134,7 +134,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
 
   const handleRemove = () => { sendFeedback('dismissed'); setExiting(true); setTimeout(()=>onRemove(act),200); };
   const handleThumbUp = () => { sendFeedback('up'); setThumbFeedback({msg:"We'll show more like this 👍",ok:true}); onThumbUp(act); setTimeout(()=>setThumbFeedback(null),2200); };
-  const handleThumbDown = () => { sendFeedback('down'); setThumbFeedback({msg:"Got it — we'll show less like this 👎",ok:false}); onThumbDown(act); setTimeout(()=>setThumbFeedback(null),2200); };
+  const handleThumbDown = () => { sendFeedback('down'); setThumbFeedback({msg:"Got it -- we'll show less like this 👎",ok:false}); onThumbDown(act); setTimeout(()=>setThumbFeedback(null),2200); };
 
   // ── Compact card ──
   if (isCompact) {
@@ -271,7 +271,7 @@ function SpotlightHero({ activities, onCal }) {
       <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:22,fontWeight:400,color:'rgba(255,255,255,.95)',lineHeight:1.2,marginBottom:5}}>{hero.title}</div>
       <div style={{fontSize:11,color:'rgba(255,255,255,.5)',marginBottom:4}}>{hero.when} · {hero.where} · {hero.cost}</div>
       <div style={{fontSize:11,color:'rgba(255,255,255,.38)',fontStyle:'italic'}}>{hero.why}</div>
-      {hero.expires&&<div style={{fontSize:10,color:'#C9A84C',marginTop:6}}>⚡ Expiring this weekend — don't miss it</div>}
+      {hero.expires&&<div style={{fontSize:10,color:'#C9A84C',marginTop:6}}>⚡ Expiring this weekend -- don't miss it</div>}
     </div>
   );
 }
@@ -352,7 +352,7 @@ function AskClaude({ settings, activeProfile, onClose }) {
     try {
       const data = await fetchPromptResponse(q, settings?.city||'Falls Church, VA', activeProfile);
       const text = data?.intro
-        ? `${data.title ? data.title+'\n\n' : ''}${data.intro}${data.items?.length ? '\n\n'+data.items.map(i=>`${i.time ? i.time+' — ' : ''}${i.title}: ${i.detail}`).join('\n') : ''}${data.note ? '\n\n💡 '+data.note : ''}`
+        ? `${data.title ? data.title+'\n\n' : ''}${data.intro}${data.items?.length ? '\n\n'+data.items.map(i=>`${i.time ? i.time+' -- ' : ''}${i.title}: ${i.detail}`).join('\n') : ''}${data.note ? '\n\n💡 '+data.note : ''}`
         : JSON.stringify(data);
       setMessages(m=>[...m,{role:'claude',text}]);
     } catch(e) {
@@ -382,7 +382,7 @@ function AskClaude({ settings, activeProfile, onClose }) {
         <div style={{flex:1,overflowY:'auto',padding:'14px 18px',display:'flex',flexDirection:'column',gap:10}} className="no-scroll">
           {messages.length === 0 && (
             <div style={{fontSize:12,color:'rgba(255,255,255,.3)',fontStyle:'italic',textAlign:'center',paddingTop:20}}>
-              Ask me anything — "good dog-friendly hikes?", "best brunch near Georgetown?", "what should we do Sunday afternoon?"
+              Ask me anything -- "good dog-friendly hikes?", "best brunch near Georgetown?", "what should we do Sunday afternoon?"
             </div>
           )}
           {messages.map((m,i)=>(
@@ -447,7 +447,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
       <div style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7}} className="no-scroll">
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
-          ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here — check back Thursday</div>
+          ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
           : allActs.map(a=>(
               <ActCard key={a.title} act={a} catId={cat.id}
                 onCal={onCal}
@@ -523,7 +523,7 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
         className="no-scroll"
       >
         {allActs.length===0
-          ? <div style={{padding:'24px',fontSize:12,color:'#B8B3AA',fontStyle:'italic',textAlign:'center'}}>Nothing here — check back Thursday</div>
+          ? <div style={{padding:'24px',fontSize:12,color:'#B8B3AA',fontStyle:'italic',textAlign:'center'}}>Nothing here -- check back Thursday</div>
           : allActs.map(a=>(
               <ActCard key={a.title} act={a} catId={cat.id}
                 onCal={onCal} onRemove={()=>onRemove(cat.id,a)}
@@ -587,7 +587,7 @@ function ReserveModal({ activity, catId, onClose, homeAddress }) {
             <div style={{fontSize:12,color:'rgba(255,255,255,.6)',lineHeight:1.7}}>
               <div><strong style={{color:'rgba(255,255,255,.82)'}}>{activity.title}</strong></div>
               <div>{activity.where}</div><div>{satStr} · {time}{!isTicket&&` · ${party} guests`}</div>
-              <div style={{color:platformColor,marginTop:3,fontSize:11}}>via {platform}{!isTicket&&' — free to cancel'}</div>
+              <div style={{color:platformColor,marginTop:3,fontSize:11}}>via {platform}{!isTicket&&' -- free to cancel'}</div>
             </div>
           </div>
           <div style={{display:'flex',gap:6}}>
@@ -607,7 +607,7 @@ function ReserveModal({ activity, catId, onClose, homeAddress }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', isMobile=false, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown }) {
   const [removed,      setRemoved]      = useState({});
   const [activeCat,    setActiveCat]    = useState('all');
   const [aiPrompt,     setAiPrompt]     = useState(null);
@@ -625,8 +625,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const spotlightMode= settings?.spotlightMode|| 'strip';
   const columnOrder  = settings?.columnOrder  || 'relevancy';
 
-  // Detect mobile
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  // isMobile is passed in as a prop from App (reactive via useIsMobile hook)
 
   const removeAct  = (catId,act) => setRemoved(r=>({...r,[`${catId}::${act.title}`]:true}));
   const heartAct   = (catId,act) => onSaveItem?.({...act,catId});
@@ -663,65 +662,88 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', cardMode, spotlightMode, activities, isMobile };
 
+  // On iPhone 13 mini (375px) the header needs to be compact:
+  // - hide city label and card-mode toggle
+  // - collapse profile button to avatar only
+  // - hide Ambient button (use the toggle in App instead)
+  const hdrBtn = {
+    fontSize:11, padding: isMobile ? '5px 8px' : '5px 10px',
+    borderRadius:8, cursor:'pointer',
+    background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.12)',
+    color:'rgba(255,255,255,.55)', fontFamily:'DM Sans,sans-serif',
+  };
+
   return (
-    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto 1fr auto',height:'100%',background:'#F4F1EB',overflow:'hidden'}}>
+    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto 1fr auto',height:'100%',background:'#F4F1EB',overflow:'hidden',paddingBottom: 44}}>
 
       {/* ── Header ── */}
-      <div style={{background:'#1C1A17',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <span className="serif" style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em'}}>Locale</span>
-          <span style={{fontSize:11,color:'rgba(255,255,255,.28)'}}>{settings.city}</span>
+      <div style={{background:'#1C1A17',padding: isMobile ? '8px 12px' : '9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+          <span className="serif" style={{fontSize:isMobile?17:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',flexShrink:0}}>Locale</span>
+          {!isMobile && <span style={{fontSize:11,color:'rgba(255,255,255,.28)'}}>{settings.city}</span>}
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:6}}>
-          {/* Card mode toggle */}
-          <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:8,overflow:'hidden'}}>
-            {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>(
-              <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
-                padding:'4px 8px',border:'none',background:cardMode===mode?'rgba(255,255,255,.15)':'transparent',
-                color:cardMode===mode?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
-                fontSize:12,fontFamily:'DM Sans,sans-serif',transition:'all .12s',
-              }}>{icon}</button>
-            ))}
-          </div>
-          <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ask</button>
-          {/* Data status dot — hover for details */}
+        <div style={{display:'flex',alignItems:'center',gap: isMobile ? 4 : 6,flexShrink:0}}>
+          {/* Card mode toggle -- hidden on mobile to save space */}
+          {!isMobile && (
+            <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:8,overflow:'hidden'}}>
+              {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>(
+                <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
+                  padding:'4px 8px',border:'none',background:cardMode===mode?'rgba(255,255,255,.15)':'transparent',
+                  color:cardMode===mode?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
+                  fontSize:12,fontFamily:'DM Sans,sans-serif',transition:'all .12s',
+                }}>{icon}</button>
+              ))}
+            </div>
+          )}
+          {/* Ask -- icon-only on mobile */}
+          <button onClick={()=>setShowAsk(true)} style={{fontSize:isMobile?14:11,padding:isMobile?'5px 7px':'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>
+            {isMobile ? '✏️' : 'Ask'}
+          </button>
+          {/* Data status dot */}
           <div
-            title={`Activities: ${activitiesSource} · Weather: ${weatherSource}\n${activitiesSource==='mock'?'Backend offline — showing demo data':'Live data from backend'}`}
+            title={`Activities: ${activitiesSource} · Weather: ${weatherSource}`}
             style={{
               width:8, height:8, borderRadius:'50%', flexShrink:0, cursor:'help',
-              background: activitiesSource==='live' ? '#22c55e' : activitiesSource==='mock' ? '#f59e0b' : '#94a3b8',
-              boxShadow: activitiesSource==='live' ? '0 0 6px #22c55e88' : activitiesSource==='mock' ? '0 0 6px #f59e0b66' : 'none',
+              background: activitiesSource==='live' ? '#22c55e' : '#f59e0b',
+              boxShadow: activitiesSource==='live' ? '0 0 6px #22c55e88' : '0 0 6px #f59e0b66',
             }}
           />
-          <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'DM Sans,sans-serif'}}>♥</button>
-          <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'DM Sans,sans-serif'}}>
+          {/* Saved -- icon only on mobile */}
+          <button onClick={onShowSaved} style={{fontSize:isMobile?14:13,padding:isMobile?'5px 7px':'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'DM Sans,sans-serif'}}>♥</button>
+          {/* Profile button */}
+          <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:5,padding:'5px 8px',borderRadius:8,cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'DM Sans,sans-serif'}}>
             <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
             {!isMobile&&<span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>}
             <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
           </button>
-          <button onClick={onSettings} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'DM Sans,sans-serif'}}>⚙</button>
-          <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ambient</button>
+          <button onClick={onSettings} style={{fontSize:isMobile?14:11,padding:isMobile?'5px 7px':'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'DM Sans,sans-serif'}}>⚙</button>
+          {!isMobile && (
+            <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ambient</button>
+          )}
         </div>
       </div>
 
-      {/* ── Quick prompts + Ask anything ── */}
-      <div style={{background:'#252220',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>
+      {/* ── Quick prompts ── */}
+      <div style={{background:'#252220',padding: isMobile ? '6px 10px' : '7px 18px',display:'flex',alignItems:'center',gap:6}}>
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
-          {QUICK_PROMPTS.map(p=>(
+          {(isMobile ? QUICK_PROMPTS.slice(0,3) : QUICK_PROMPTS).map(p=>(
             <button key={p.label} onClick={()=>setAiPrompt(p)} style={{
-              fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
-              background:'rgba(255,255,255,.09)',border:'0.5px solid rgba(255,255,255,.14)',
-              color:'rgba(255,255,255,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,transition:'all .15s',
+              fontSize: isMobile ? 11 : 11, padding: isMobile ? '5px 10px' : '5px 12px',
+              borderRadius:99, whiteSpace:'nowrap',
+              background:'rgba(255,255,255,.09)', border:'0.5px solid rgba(255,255,255,.14)',
+              color:'rgba(255,255,255,.7)', cursor:'pointer', fontFamily:'DM Sans,sans-serif', fontWeight:500,
             }}
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(201,168,76,.2)';e.currentTarget.style.color='#C9A84C';}}
               onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';e.currentTarget.style.color='rgba(255,255,255,.7)';}}
             >{p.label}</button>
           ))}
-          <button onClick={()=>setShowAsk(true)} style={{
-            fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
-            background:'rgba(201,168,76,.1)',border:'0.5px solid rgba(201,168,76,.2)',
-            color:'rgba(201,168,76,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,flexShrink:0,
-          }}>✏️ Ask anything...</button>
+          {!isMobile && (
+            <button onClick={()=>setShowAsk(true)} style={{
+              fontSize:11, padding:'5px 12px', borderRadius:99, whiteSpace:'nowrap',
+              background:'rgba(201,168,76,.1)', border:'0.5px solid rgba(201,168,76,.2)',
+              color:'rgba(201,168,76,.7)', cursor:'pointer', fontFamily:'DM Sans,sans-serif', fontWeight:500, flexShrink:0,
+            }}>✏️ Ask anything...</button>
+          )}
         </div>
       </div>
 
