@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ALL_CATEGORIES, ACTIVITIES as MOCK_ACTIVITIES, WEATHER as MOCK_WEATHER, CALENDAR_EVENTS, PROFILE_COLORS } from '../data/content';
 import AIPromptModal from './AIPromptModal';
+import WeatherIcon from './WeatherIcon';
 import { postFeedback, fetchPromptResponse } from '../lib/api';
 
 const QUICK_PROMPTS = [
@@ -9,6 +10,19 @@ const QUICK_PROMPTS = [
   { label:'Rainy Sunday' }, { label:'Free only' },
   { label:'With Kailee' }, { label:'Weekend away' },
 ];
+
+// Time-of-day buckets derived from start_time or when_display
+function getTimeOfDay(act) {
+  const when = (act.start_time || act.when_display || act.when || '').toLowerCase();
+  const m = when.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+  if (!m) return 'any';
+  let h = parseInt(m[1]);
+  if (m[3] === 'pm' && h !== 12) h += 12;
+  if (m[3] === 'am' && h === 12) h = 0;
+  if (h < 12) return 'morning';
+  if (h < 17) return 'midday';
+  return 'night';
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -120,134 +134,199 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
   const [expanded,      setExpanded]      = useState(forceExpand || false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
+  const contentRef = useRef(null);
 
   const isRec      = act.content_type === 'recommendation';
   const score      = act.final_score || act.base_score || 0.5;
-  // In relevancy mode, expand if score is in top 25%
   const autoExpand = forceExpand || (cardMode === 'relevancy' && score >= 0.75);
-  const isCompact  = (cardMode === 'compact' || cardMode === 'relevancy') && !autoExpand && !expanded;
+  const isExpanded = autoExpand || expanded;
+  const isCompact  = !isExpanded;
 
   const sendFeedback = (fb) => {
     if (!act.id || !profileId) return;
-    postFeedback(profileId, act.id, act.content_type || 'event', fb).catch(()=>{});
+    postFeedback(profileId, act.id, act.content_type || 'event', fb).catch(() => {});
   };
 
-  const handleRemove = () => { sendFeedback('dismissed'); setExiting(true); setTimeout(()=>onRemove(act),200); };
-  const handleThumbUp = () => { sendFeedback('up'); setThumbFeedback({msg:"We'll show more like this 👍",ok:true}); onThumbUp(act); setTimeout(()=>setThumbFeedback(null),2200); };
-  const handleThumbDown = () => { sendFeedback('down'); setThumbFeedback({msg:"Got it — we'll show less like this 👎",ok:false}); onThumbDown(act); setTimeout(()=>setThumbFeedback(null),2200); };
+  const handleThumbUp   = () => { sendFeedback('up');   setThumbFeedback({ msg:"We'll show more like this 👍", ok:true  }); onThumbUp(act);   setTimeout(() => setThumbFeedback(null), 2200); };
+  const handleThumbDown = () => { sendFeedback('down'); setThumbFeedback({ msg:"Got it — we'll show less like this 👎", ok:false }); onThumbDown(act); setTimeout(() => setThumbFeedback(null), 2200); };
 
-  // ── Compact card ──
-  if (isCompact) {
-    return (
-      <div onClick={()=>setExpanded(true)} style={{
-        background: isRec ? '#F9F7F4' : '#fff',
-        border:'0.5px solid rgba(0,0,0,.07)',
-        borderRadius:8, padding:'7px 10px',
-        display:'flex', alignItems:'center', gap:8,
-        cursor:'pointer', animation: exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
-        transition:'background .1s',
-      }}
-        onMouseEnter={e=>e.currentTarget.style.background=isRec?'#F4F1EC':'#F9F9F9'}
-        onMouseLeave={e=>e.currentTarget.style.background=isRec?'#F9F7F4':'#fff'}
+  const toggle = () => setExpanded(e => !e);
+
+  return (
+    <div style={{
+      background:   isRec ? '#F9F7F4' : '#fff',
+      border:       `0.5px solid ${isRec ? 'rgba(0,0,0,.1)' : 'rgba(0,0,0,.07)'}`,
+      borderRadius: 8,
+      overflow:     'hidden',
+      animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
+      transition:   'box-shadow .15s',
+    }}>
+      {thumbFeedback && (
+        <div style={{
+          padding: '9px 12px',
+          background: thumbFeedback.ok ? 'rgba(232,245,236,.95)' : 'rgba(255,241,242,.95)',
+          fontSize: 12, color: thumbFeedback.ok ? '#1A6332' : '#9A3412',
+          fontStyle: 'italic', textAlign: 'center',
+          animation: 'fadeIn 150ms ease both',
+        }}>{thumbFeedback.msg}</div>
+      )}
+
+      {/* ── Header row — always visible, tap to expand ── */}
+      <div
+        onClick={toggle}
+        style={{
+          padding: isCompact ? '7px 10px' : '9px 12px 6px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          cursor: 'pointer',
+          background: isRec ? '#F9F7F4' : '#fff',
+          userSelect: 'none',
+        }}
       >
-        {isRec && <span style={{fontSize:10,flexShrink:0}}>🔄</span>}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:12,fontWeight:600,color:'#1C1A17',lineHeight:1.2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{act.title}</div>
-          <div style={{fontSize:10,color:'#8A8378',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{act.when} · {act.where}</div>
+        {isRec && <span style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#1C1A17', lineHeight: 1.2,
+            overflow: isCompact ? 'hidden' : 'visible',
+            textOverflow: isCompact ? 'ellipsis' : 'clip',
+            whiteSpace: isCompact ? 'nowrap' : 'normal',
+          }}>{act.title}</div>
+          <div style={{ fontSize: 10, color: '#8A8378', marginTop: 1,
+            overflow: isCompact ? 'hidden' : 'visible',
+            textOverflow: isCompact ? 'ellipsis' : 'clip',
+            whiteSpace: isCompact ? 'nowrap' : 'normal',
+          }}>
+            {act.when}{act.where ? ` · ${act.where}` : ''}{act.cost ? ` · ${act.cost}` : ''}
+          </div>
         </div>
-        <div style={{fontSize:11,fontWeight:600,color:'#5A5550',flexShrink:0}}>{act.cost}</div>
-        {act.expires && <span style={{fontSize:9,padding:'1px 5px',borderRadius:99,background:'#FEF3E2',color:'#92400E',flexShrink:0}}>!</span>}
-        {act.url && <span style={{fontSize:9,color:'#93BBFD',flexShrink:0}}>🔗</span>}
+        {act.expires && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEF3E2', color: '#92400E', flexShrink: 0 }}>⚡</span>}
+        {/* Link icon — opens event URL in new tab, stops propagation so it doesn't toggle card */}
+        {act.url && (
+          <a href={act.url} target="_blank" rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            style={{ fontSize: 13, color: '#93BBFD', flexShrink: 0, textDecoration: 'none', lineHeight: 1 }}
+            title="Open event page">🔗</a>
+        )}
+        {/* Chevron — ▾ when collapsed, ▴ when expanded */}
+        <span style={{
+          fontSize: 10, color: '#B8B3AA', flexShrink: 0,
+          transition: 'transform .2s',
+          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+          display: 'inline-block',
+        }}>▾</span>
+      </div>
+
+      {/* ── Expanded body — smooth height transition via max-height ── */}
+      <div style={{
+        maxHeight: isExpanded ? 400 : 0,
+        overflow: 'hidden',
+        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div ref={contentRef} style={{ padding: '0 12px 10px' }}>
+          {/* Why blurb */}
+          {act.why && (
+            <div style={{ fontSize: 11, color: '#6A6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
+              {act.why}
+            </div>
+          )}
+          {/* Tags */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
+            {act.tags?.map(t => (
+              <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'rgba(0,0,0,.05)', color: '#8A8378', border: '0.5px solid rgba(0,0,0,.08)' }}>{t}</span>
+            ))}
+            {act.expires && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: '#FEF3E2', color: '#92400E' }}>expiring soon</span>}
+          </div>
+          {/* Action bar */}
+          <ActionBar act={act} catId={catId} onCal={onCal} onRemove={() => { sendFeedback('dismissed'); setExiting(true); setTimeout(() => onRemove(act), 200); }}
+            onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
+            onReserve={onReserve} homeAddress={homeAddress} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Combined Spotlight + Weather bar ─────────────────────────────────────────
+// Replaces both the old SpotlightStrip and the separate weather strip.
+// Shows: [top 3 spotlight events] | [Fri Sat Sun weather pills]
+// Has a hide button to collapse the whole bar.
+function SpotlightWeatherBar({ activities, weather, onCal, onWeather }) {
+  const [hidden, setHidden] = useState(false);
+
+  const weekendWeather = (() => {
+    const days = weather?.length > 0 ? weather : MOCK_WEATHER;
+    const fri = days.find(d => d.day?.toLowerCase().startsWith('fri'));
+    const sat = days.find(d => d.day?.toLowerCase().startsWith('sat'));
+    const sun = days.find(d => d.day?.toLowerCase().startsWith('sun'));
+    return (fri && sat && sun) ? [fri, sat, sun] : days.slice(0, 3);
+  })();
+
+  const spotlightItems = Object.values(activities).flat()
+    .filter(a => a?.title)
+    .sort((a, b) => ((b.final_score||b.base_score||0) + (b.expires ? 0.3 : 0)) - ((a.final_score||a.base_score||0) + (a.expires ? 0.3 : 0)))
+    .slice(0, 3);
+
+  if (hidden) {
+    return (
+      <div style={{ background: '#1C1A17', borderBottom: '0.5px solid rgba(255,255,255,.06)', padding: '5px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', letterSpacing: '.06em' }}>SPOTLIGHT HIDDEN</span>
+        <button onClick={() => setHidden(false)} style={{ fontSize: 10, color: 'rgba(255,255,255,.35)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Show ▾</button>
       </div>
     );
   }
 
-  // ── Expanded card ──
   return (
-    <div style={{
-      background: isRec ? '#F9F7F4' : '#fff',
-      border: isRec ? '0.5px solid rgba(0,0,0,.1)' : '0.5px solid rgba(0,0,0,.07)',
-      borderRadius:10, padding:'10px 12px',
-      display:'flex', flexDirection:'column', gap:4,
-      animation: exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
-      position:'relative',
-    }}>
-      {thumbFeedback && (
-        <div style={{
-          position:'absolute',inset:0,borderRadius:10,
-          background:thumbFeedback.ok?'rgba(232,245,236,.95)':'rgba(255,241,242,.95)',
-          display:'flex',alignItems:'center',justifyContent:'center',
-          fontSize:12,color:thumbFeedback.ok?'#1A6332':'#9A3412',
-          fontStyle:'italic',padding:'0 14px',textAlign:'center',
-          animation:'fadeIn 150ms ease both',zIndex:2,
-        }}>{thumbFeedback.msg}</div>
-      )}
-
-      {isRec && (
-        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:'#8A8378',marginBottom:2,display:'flex',alignItems:'center',gap:4}}>
-          <span>🔄</span> Always available
-        </div>
-      )}
-
-      {/* Title row - tap title to collapse in compact mode */}
-      <div style={{display:'flex',alignItems:'flex-start',gap:6}}>
-        <div onClick={()=>(cardMode==='compact'||cardMode==='relevancy')&&setExpanded(false)} style={{fontSize:13,fontWeight:600,lineHeight:1.3,color:'#1C1A17',flex:1,cursor:(cardMode==='compact'||cardMode==='relevancy')?'pointer':'default'}}>{act.title}</div>
+    <div style={{ background: '#1C1A17', borderBottom: '0.5px solid rgba(255,255,255,.06)', flexShrink: 0 }}>
+      <div style={{ padding: '6px 18px 4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: '#C9A84C' }}>⭐ Don't miss</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setHidden(true)} style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'DM Sans, sans-serif' }}>Hide ✕</button>
       </div>
-
-      <div style={{fontSize:11,color:'#8A8378',lineHeight:1.4}}>{act.when} · {act.where} · <strong style={{color:'#5A5550',fontWeight:500}}>{act.cost}</strong></div>
-      <div style={{fontSize:11,color:'#6A6560',fontStyle:'italic',lineHeight:1.45}}>{act.why}</div>
-      <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:1}}>
-        {act.tags?.map(t=><span key={t} style={{fontSize:10,padding:'1px 6px',borderRadius:99,background:'rgba(0,0,0,.05)',color:'#8A8378',border:'0.5px solid rgba(0,0,0,.08)'}}>{t}</span>)}
-        {act.expires&&<span style={{fontSize:10,padding:'1px 6px',borderRadius:99,background:'#FEF3E2',color:'#92400E'}}>expiring</span>}
-        {act.url && (
-          <a href={act.url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{
-            fontSize:10,padding:'1px 8px',borderRadius:99,
-            background:'rgba(29,78,216,.1)',color:'#93BBFD',
-            border:'0.5px solid rgba(29,78,216,.25)',
-            textDecoration:'none',display:'inline-flex',alignItems:'center',gap:3,
-          }}>🔗 More info</a>
-        )}
-      </div>
-      <ActionBar act={act} catId={catId} onCal={onCal} onRemove={handleRemove}
-        onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
-        onReserve={onReserve} homeAddress={homeAddress} />
-    </div>
-  );
-}
-
-// ── Spotlight components ──────────────────────────────────────────────────────
-
-// Option C: Horizontal strip
-function SpotlightStrip({ activities, onCal, onReserve }) {
-  const items = Object.values(activities).flat()
-    .filter(a => a && a.title)
-    .sort((a,b) => ((b.final_score||b.base_score||0) + (b.expires?0.3:0)) - ((a.final_score||a.base_score||0) + (a.expires?0.3:0)))
-    .slice(0,4);
-
-  if (!items.length) return null;
-
-  return (
-    <div style={{background:'#1C1A17',borderBottom:'0.5px solid rgba(255,255,255,.06)',padding:'8px 18px',flexShrink:0}}>
-      <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#C9A84C',marginBottom:6}}>⭐ Don't miss this weekend</div>
-      <div style={{display:'flex',gap:8,overflowX:'auto'}} className="no-scroll">
-        {items.map(act=>(
-          <div key={act.title} onClick={()=>onCal(act)} style={{
-            flexShrink:0,background:'rgba(255,255,255,.06)',border:'0.5px solid rgba(255,255,255,.1)',
-            borderRadius:10,padding:'9px 12px',width:200,cursor:'pointer',transition:'background .12s',
+      <div style={{ padding: '0 18px 8px', display: 'flex', gap: 8, overflowX: 'auto' }} className="no-scroll">
+        {/* Spotlight cards */}
+        {spotlightItems.map(act => (
+          <div key={act.title} onClick={() => onCal(act)} style={{
+            flexShrink: 0, width: 180, background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.1)',
+            borderRadius: 9, padding: '8px 11px', cursor: 'pointer', transition: 'background .12s',
           }}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.1)'}
-            onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,.06)'}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.06)'}
           >
-            <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,.9)',lineHeight:1.2,marginBottom:3}}>{act.title}</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,.45)'}}>{act.when} · {act.cost}</div>
-            {act.expires&&<div style={{fontSize:9,color:'#C9A84C',marginTop:3}}>⚡ Last chance</div>}
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.88)', lineHeight: 1.25, marginBottom: 3 }}>{act.title}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>{act.when}{act.cost ? ` · ${act.cost}` : ''}</div>
+            {act.expires && <div style={{ fontSize: 9, color: '#C9A84C', marginTop: 3 }}>⚡ Last chance</div>}
           </div>
         ))}
+
+        {/* Divider */}
+        {spotlightItems.length > 0 && weekendWeather.length > 0 && (
+          <div style={{ width: 1, background: 'rgba(255,255,255,.08)', flexShrink: 0, margin: '0 4px', alignSelf: 'stretch' }} />
+        )}
+
+        {/* Weather pills — ambient style */}
+        {weekendWeather.map((d, i) => {
+          const weatherIdx = (weather?.length > 0 ? weather : MOCK_WEATHER).indexOf(d);
+          return (
+            <button key={d.day || i}
+              onClick={() => onWeather(weatherIdx >= 0 ? weatherIdx : i)}
+              style={{
+                flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                background: 'rgba(255,255,255,.05)', border: '0.5px solid rgba(255,255,255,.09)',
+                borderRadius: 9, padding: '7px 12px', cursor: 'pointer', transition: 'background .12s',
+                minWidth: 62,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.1)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.05)'}
+            >
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,.5)', letterSpacing: '.06em', textTransform: 'uppercase' }}>{d.day}</span>
+              <WeatherIcon icon={d.icon} desc={d.desc} size={18} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.8)' }}>{d.hi}°</span>
+              {d.precip > 20 && <span style={{ fontSize: 9, color: '#93C5FD' }}>{d.precip}%</span>}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
-
 // Option B: Full-width hero card at top of first column
 function SpotlightHero({ activities, onCal }) {
   const hero = Object.values(activities).flat()
@@ -450,10 +529,15 @@ function AskClaude({ settings, activeProfile, onClose }) {
 }
 
 // ── Column ────────────────────────────────────────────────────────────────────
-function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode, isMobile }) {
+function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode, isMobile, timeFilter }) {
   const allActs = (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
     .filter(a => !removed[`${cat.id}::${a.title}`])
-    .filter(a => !isPastEvent(a));
+    .filter(a => !isPastEvent(a))
+    .filter(a => {
+      if (!timeFilter || timeFilter === 'all') return true;
+      const tod = getTimeOfDay(a);
+      return tod === timeFilter || tod === 'any';
+    });
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -492,7 +576,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
 }
 
 // ── Mobile single-column layout ───────────────────────────────────────────────
-function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode }) {
+function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode, timeFilter }) {
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX = useRef(null);
   const swipeDir = useRef(null);
@@ -516,7 +600,13 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
 
   if (!cat) return null;
   const allActs = (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
-    .filter(a=>!removed[`${cat.id}::${a.title}`]).filter(a=>!isPastEvent(a));
+    .filter(a=>!removed[`${cat.id}::${a.title}`])
+    .filter(a=>!isPastEvent(a))
+    .filter(a => {
+      if (!timeFilter || timeFilter === 'all') return true;
+      const tod = getTimeOfDay(a);
+      return tod === timeFilter || tod === 'any';
+    });
 
   return (
     <div style={{display:'flex',flexDirection:'column',overflow:'hidden',flex:1}}>
@@ -634,6 +724,7 @@ function ReserveModal({ activity, catId, onClose, homeAddress }) {
 export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown }) {
   const [removed,      setRemoved]      = useState({});
   const [activeCat,    setActiveCat]    = useState('all');
+  const [timeFilter,   setTimeFilter]   = useState('all');   // 'all' | 'morning' | 'midday' | 'night'
   const [aiPrompt,     setAiPrompt]     = useState(null);
   const [reserveAct,   setReserveAct]   = useState(null);
   const [colPage,      setColPage]      = useState(0);
@@ -683,12 +774,26 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const onTM = e=>{if(swipeDir.current)return;const dx=Math.abs(e.touches[0].clientX-swipeX.current);const dy=Math.abs(e.touches[0].clientY-swipeX.current);if(dx>6||dy>6)swipeDir.current=dx>dy?'h':'v';};
   const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&colPage<numPages-1)setColPage(p=>p+1);else if(dx>40&&colPage>0)setColPage(p=>p-1);};
 
-  const allEvents=[...(calQueue||[]).map(e=>({day:new Date(e.date+'T12:00').toLocaleDateString('en-US',{weekday:'short'}),name:e.title,time:e.time,added:true}))];
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', cardMode, spotlightMode, activities, isMobile, timeFilter };
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', cardMode, spotlightMode, activities, isMobile };
+  // Calendar strip data — sort calQueue into Fri/Sat/Sun buckets
+  const now2 = new Date();
+  const day2 = now2.getDay();
+  let daysToFri2 = (5-day2+7)%7;
+  if (day2===6) daysToFri2=6; else if (day2===0) daysToFri2=5;
+  const fri2 = new Date(now2); fri2.setDate(now2.getDate()+(day2===6?-1:day2===0?-2:daysToFri2)); fri2.setHours(0,0,0,0);
+  const sat2 = new Date(fri2); sat2.setDate(fri2.getDate()+1);
+  const sun2 = new Date(fri2); sun2.setDate(fri2.getDate()+2);
+  const fmtDate2 = d => d.toISOString().split('T')[0];
+  const calStrip = { fri:[], sat:[], sun:[] };
+  for (const e of (calQueue||[])) {
+    if (e.date===fmtDate2(fri2)) calStrip.fri.push(e);
+    else if (e.date===fmtDate2(sat2)) calStrip.sat.push(e);
+    else if (e.date===fmtDate2(sun2)) calStrip.sun.push(e);
+  }
 
   return (
-    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto 1fr auto',height:'100%',background:'#F4F1EB',overflow:'hidden'}}>
+    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto auto 1fr auto',height:'100%',background:'#F4F1EB',overflow:'hidden'}}>
 
       {/* ── Header ── */}
       <div style={{background:'#1C1A17',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -697,7 +802,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           <span style={{fontSize:11,color:'rgba(255,255,255,.28)'}}>{settings.city}</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
-          {/* Card mode toggle */}
           <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:8,overflow:'hidden'}}>
             {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>(
               <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
@@ -708,15 +812,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             ))}
           </div>
           <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ask</button>
-          {/* Data status dot — hover for details */}
-          <div
-            title={`Activities: ${activitiesSource} · Weather: ${weatherSource}\n${activitiesSource==='mock'?'Backend offline — showing demo data':'Live data from backend'}`}
-            style={{
-              width:8, height:8, borderRadius:'50%', flexShrink:0, cursor:'help',
-              background: activitiesSource==='live' ? '#22c55e' : activitiesSource==='mock' ? '#f59e0b' : '#94a3b8',
-              boxShadow: activitiesSource==='live' ? '0 0 6px #22c55e88' : activitiesSource==='mock' ? '0 0 6px #f59e0b66' : 'none',
-            }}
-          />
+          <div title={`Activities: ${activitiesSource}`} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:activitiesSource==='live'?'#22c55e':'#f59e0b',boxShadow:activitiesSource==='live'?'0 0 6px #22c55e88':'0 0 6px #f59e0b66'}}/>
           <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'DM Sans,sans-serif'}}>♥</button>
           <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'DM Sans,sans-serif'}}>
             <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
@@ -728,7 +824,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         </div>
       </div>
 
-      {/* ── Quick prompts + Ask anything ── */}
+      {/* ── Quick prompts ── */}
       <div style={{background:'#252220',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
           {QUICK_PROMPTS.map(p=>(
@@ -749,28 +845,31 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         </div>
       </div>
 
-      {/* ── Spotlight strip ── */}
-      {spotlightMode==='strip' && <SpotlightStrip activities={activities} onCal={onCalendar} onReserve={(act,cid)=>setReserveAct({act,catId:cid})} />}
+      {/* ── Spotlight + Weather combined bar ── */}
+      <SpotlightWeatherBar activities={activities} weather={weather} onCal={onCalendar} onWeather={onWeather} />
 
-      {/* ── Weather strip ── */}
-      <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,.08)',display:'flex'}}>
-        {weekendWeather.map((d,i)=>(
-          <button key={d.day||i} onClick={()=>onWeather(weather.indexOf(d)>=0?weather.indexOf(d):i)} style={{
-            flex:1,padding:'6px 14px',display:'flex',alignItems:'center',gap:8,
-            background:'transparent',border:'none',borderRight:i<2?'0.5px solid rgba(0,0,0,.08)':'none',
-            cursor:'pointer',fontFamily:'DM Sans,sans-serif',transition:'background .12s',
-          }}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(0,0,0,.03)'}
-            onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-          >
-            <span style={{fontSize:11,fontWeight:600,color:'#8A8378',letterSpacing:'.04em',textTransform:'uppercase',minWidth:28}}>{d.day}</span>
-            <span style={{fontSize:isMobile?16:20}}>{d.icon}</span>
-            {!isMobile&&<div style={{flex:1}}>
-              <div style={{fontSize:12,fontWeight:500,color:'#3A3530',lineHeight:1.2}}>{d.desc}</div>
-              <div style={{fontSize:11,color:'#8A8378'}}>{d.hi}°/{d.lo}°{d.precip>20?` · ${d.precip}%`:''}</div>
-            </div>}
-            {isMobile&&<span style={{fontSize:11,color:'#3A3530',fontWeight:500}}>{d.hi}°</span>}
-          </button>
+      {/* ── Calendar strip Fri/Sat/Sun × Morning/Midday/Evening ── */}
+      <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,.08)',display:'grid',gridTemplateColumns:'36px 1fr 1fr 1fr',flexShrink:0,fontSize:10}}>
+        <div style={{borderRight:'0.5px solid rgba(0,0,0,.06)',borderBottom:'0.5px solid rgba(0,0,0,.06)'}}/>
+        {[{l:'FRI',d:fri2},{l:'SAT',d:sat2},{l:'SUN',d:sun2}].map(({l,d})=>(
+          <div key={l} style={{borderRight:'0.5px solid rgba(0,0,0,.06)',borderBottom:'0.5px solid rgba(0,0,0,.06)',padding:'3px 0',textAlign:'center',fontWeight:700,letterSpacing:'.06em',color:'#8A8378'}}>{l} {d.getDate()}</div>
+        ))}
+        {[{slot:'morning',label:'AM'},{slot:'midday',label:'PM'},{slot:'night',label:'EVE'}].map(({slot,label})=>(
+          [
+            <div key={`lbl-${slot}`} style={{borderRight:'0.5px solid rgba(0,0,0,.06)',padding:'2px 0',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:600,color:'#C8C3BB',letterSpacing:'.04em'}}>{label}</div>,
+            ...[calStrip.fri,calStrip.sat,calStrip.sun].map((dayEvts,di)=>{
+              const slotEvts = dayEvts.filter(e=>{
+                const raw=(e.time||'').toLowerCase();
+                const m=raw.match(/(\d{1,2})(?::\d{2})?\s*(am|pm)/);
+                if(!m) return false;
+                let h=parseInt(m[1]); if(m[2]==='pm'&&h!==12)h+=12; if(m[2]==='am'&&h===12)h=0;
+                if(slot==='morning') return h<12; if(slot==='midday') return h>=12&&h<17; return h>=17;
+              });
+              return <div key={`${slot}-${di}`} style={{borderRight:'0.5px solid rgba(0,0,0,.06)',padding:'2px 3px',minHeight:18,background:slotEvts.length?(slot==='morning'?'#FFFBF0':slot==='midday'?'#F0F7FF':'#F5F0FF'):'transparent',display:'flex',flexWrap:'wrap',gap:2}}>
+                {slotEvts.map((e,i)=><div key={i} style={{fontSize:8,background:'#1C1A17',color:'rgba(255,255,255,.8)',borderRadius:3,padding:'1px 4px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}}>{e.title||e.name}</div>)}
+              </div>;
+            })
+          ]
         ))}
       </div>
 
@@ -817,8 +916,9 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           </div>
       }
 
-      {/* ── Footer category filter ── */}
-      <div style={{background:'#F4F1EB',borderTop:'0.5px solid rgba(0,0,0,.08)',padding:'6px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto'}} className="no-scroll">
+      {/* ── Footer: category + time filter ── */}
+      <div style={{background:'#F4F1EB',borderTop:'0.5px solid rgba(0,0,0,.08)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto',flexWrap:'wrap'}} className="no-scroll">
+        {/* Category pills */}
         {[{id:'all',label:'All',icon:'✦'},...ALL_CATEGORIES].map(c=>(
           <button key={c.id} onClick={()=>{setActiveCat(c.id);setColPage(0);}} style={{
             fontSize:11,padding:'4px 11px',borderRadius:99,cursor:'pointer',whiteSpace:'nowrap',
@@ -827,6 +927,18 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             border:activeCat===c.id?'none':'0.5px solid rgba(0,0,0,.12)',
             fontFamily:'DM Sans,sans-serif',transition:'all .15s',flexShrink:0,
           }}>{c.icon?`${c.icon} `:''}{c.label}</button>
+        ))}
+        {/* Divider */}
+        <div style={{width:1,height:18,background:'rgba(0,0,0,.12)',margin:'0 4px',flexShrink:0}}/>
+        {/* Time-of-day pills */}
+        {[{id:'all',label:'Any time'},{id:'morning',label:'🌅 Morning'},{id:'midday',label:'☀️ Midday'},{id:'night',label:'🌙 Evening'}].map(t=>(
+          <button key={t.id} onClick={()=>setTimeFilter(t.id)} style={{
+            fontSize:11,padding:'4px 10px',borderRadius:99,cursor:'pointer',whiteSpace:'nowrap',
+            background:timeFilter===t.id?'#3A3530':'transparent',
+            color:timeFilter===t.id?'rgba(255,255,255,.85)':'#8A8378',
+            border:timeFilter===t.id?'none':'0.5px solid rgba(0,0,0,.12)',
+            fontFamily:'DM Sans,sans-serif',transition:'all .15s',flexShrink:0,
+          }}>{t.label}</button>
         ))}
       </div>
 
