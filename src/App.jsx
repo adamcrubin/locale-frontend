@@ -187,7 +187,7 @@ function DebugPanel({ activitiesSource, weatherSource, settings, activeProfile }
     }),
     section: { padding: '12px 14px' },
     h: { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', marginBottom: 10 },
-    btn: (color = 'rgba(255,255,255,.8)') => ({
+    btn: (color = '#ffffff') => ({
       fontSize: 11, padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
       border: `0.5px solid ${color}44`, background: `${color}18`,
       color: color, fontFamily: 'DM Sans, sans-serif', flexShrink: 0,
@@ -216,7 +216,14 @@ function DebugPanel({ activitiesSource, weatherSource, settings, activeProfile }
           <span style={{ fontSize: 11, color: c, fontWeight: 600 }}>
             {ok ? '✓' : '✗'} {res.status} · {res.ms}ms
           </span>
-          <button style={{ ...s.btn(), marginLeft: 'auto', background: copied===k ? 'rgba(34,197,94,.2)' : undefined, color: copied===k ? '#22c55e' : 'rgba(255,255,255,.6)' }}
+          <button
+            style={{
+              fontSize: 11, padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
+              border: copied===k ? '0.5px solid #22c55e44' : '0.5px solid #ffffff44',
+              background: copied===k ? '#22c55e18' : '#ffffff18',
+              color: copied===k ? '#22c55e' : 'rgba(255,255,255,.6)',
+              fontFamily: 'DM Sans, sans-serif', flexShrink: 0, marginLeft: 'auto',
+            }}
             onClick={() => copy(k)}>
             {copied === k ? '✓ Copied' : '📋 Copy'}
           </button>
