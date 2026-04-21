@@ -128,6 +128,15 @@ function DebugPanel({ activitiesSource, weatherSource, settings, activeProfile }
       color: '#a78bfa',
     },
     {
+      key:   'debug_extract',
+      label: '🔬 Debug extraction (sync)',
+      desc:  'Runs extraction on ONE source synchronously and returns the full result inline. Use this to diagnose extraction failures.',
+      path:  '/admin/extract/debug',
+      method:'POST',
+      body:  { zip },
+      color: '#f97316',
+    },
+    {
       key:   'run_full',
       label: '🚀 Full pipeline (scrape + extract)',
       desc:  'Runs both steps end-to-end. Takes 45–90s. Use this to get first live events.',
