@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { ALL_CATEGORIES, ACTIVITIES as MOCK_ACTIVITIES, WEATHER as MOCK_WEATHER, CALENDAR_EVENTS, PROFILE_COLORS } from '../data/content';
 import AIPromptModal from './AIPromptModal';
 import WeatherIcon from './WeatherIcon';
+import ThemeToggle, { useTheme } from './ThemeToggle';
 import { postFeedback, fetchPromptResponse } from '../lib/api';
 
 const QUICK_PROMPTS = [
@@ -154,8 +155,8 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
 
   return (
     <div style={{
-      background:   isRec ? '#F9F7F4' : '#fff',
-      border:       `0.5px solid ${isRec ? 'rgba(0,0,0,.1)' : 'rgba(0,0,0,.07)'}`,
+      background:   isRec ? 'var(--surface2)' : 'var(--surface)',
+      border:       `0.5px solid var(--border)`,
       borderRadius: 8,
       overflow:     'hidden',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
@@ -178,13 +179,13 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
           padding: isCompact ? '7px 10px' : '9px 12px 6px',
           display: 'flex', alignItems: 'center', gap: 8,
           cursor: 'pointer',
-          background: isRec ? '#F9F7F4' : '#fff',
+          background: isRec ? 'var(--surface2)' : 'var(--surface)',
           userSelect: 'none',
         }}
       >
         {isRec && <span style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#1C1A17', lineHeight: 1.2,
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', lineHeight: 1.2,
             overflow: isCompact ? 'hidden' : 'visible',
             textOverflow: isCompact ? 'ellipsis' : 'clip',
             whiteSpace: isCompact ? 'nowrap' : 'normal',
@@ -207,7 +208,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
         )}
         {/* Chevron — ▾ when collapsed, ▴ when expanded */}
         <span style={{
-          fontSize: 10, color: '#B8B3AA', flexShrink: 0,
+          fontSize: 10, color: 'var(--subtle)', flexShrink: 0,
           transition: 'transform .2s',
           transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
           display: 'inline-block',
@@ -223,14 +224,14 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
         <div ref={contentRef} style={{ padding: '0 12px 10px' }}>
           {/* Why blurb */}
           {act.why && (
-            <div style={{ fontSize: 11, color: '#6A6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
               {act.why}
             </div>
           )}
           {/* Tags */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
             {act.tags?.map(t => (
-              <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'rgba(0,0,0,.05)', color: '#8A8378', border: '0.5px solid rgba(0,0,0,.08)' }}>{t}</span>
+              <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'var(--bg2)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>{t}</span>
             ))}
             {act.expires && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: '#FEF3E2', color: '#92400E' }}>expiring soon</span>}
           </div>
@@ -544,7 +545,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
   const showHero  = spotlightMode === 'hero';
 
   return (
-    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid rgba(0,0,0,.07)',minWidth:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
+    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
       <div className={`${cat.cls}`} style={{padding:'9px 13px 8px',display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
         <span style={{fontSize:15}}>{cat.icon}</span>
         <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',flex:1}}>{cat.label}</span>
@@ -552,7 +553,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
         <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7}} className="no-scroll">
+      <div style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7,background:'var(--bg)'}} className="no-scroll">
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here — check back Thursday</div>
@@ -731,6 +732,8 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const [showAsk,      setShowAsk]      = useState(false);
   const [overlayShown, setOverlayShown] = useState(false);
 
+  const { themeId, setTheme, currentTheme } = useTheme();
+
   const profileColor  = PROFILE_COLORS.find(c=>c.id===activeProfile?.colorId)||PROFILE_COLORS[0];
   const { boost, dim } = getWeatherBoost(weather);
   const weekendWeather = getWeekendWeather(weather);
@@ -793,39 +796,41 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   }
 
   return (
-    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto auto 1fr auto',height:'100%',background:'#F4F1EB',overflow:'hidden'}}>
+    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>
 
       {/* ── Header ── */}
-      <div style={{background:'#1C1A17',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div style={{background:'var(--header-bg)',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <span className="serif" style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em'}}>Locale</span>
-          <span style={{fontSize:11,color:'rgba(255,255,255,.28)'}}>{settings.city}</span>
+          <span style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',fontFamily:'var(--font-display)'}}>Locale</span>
+          <span style={{fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:'var(--font-body)'}}>{settings.city}</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
-          <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:8,overflow:'hidden'}}>
+          {/* Theme toggle */}
+          <ThemeToggle themeId={themeId} setTheme={setTheme} currentTheme={currentTheme} />
+          <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:'var(--radius-btn)',overflow:'hidden'}}>
             {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>(
               <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
                 padding:'4px 8px',border:'none',background:cardMode===mode?'rgba(255,255,255,.15)':'transparent',
                 color:cardMode===mode?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
-                fontSize:12,fontFamily:'DM Sans,sans-serif',transition:'all .12s',
+                fontSize:12,fontFamily:'var(--font-body)',transition:'all .12s',
               }}>{icon}</button>
             ))}
           </div>
-          <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ask</button>
+          <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ask</button>
           <div title={`Activities: ${activitiesSource}`} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:activitiesSource==='live'?'#22c55e':'#f59e0b',boxShadow:activitiesSource==='live'?'0 0 6px #22c55e88':'0 0 6px #f59e0b66'}}/>
-          <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'DM Sans,sans-serif'}}>♥</button>
-          <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'DM Sans,sans-serif'}}>
+          <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'var(--font-body)'}}>♥</button>
+          <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:6,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'var(--font-body)'}}>
             <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
             {!isMobile&&<span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>}
             <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
           </button>
-          <button onClick={() => onSettings()} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'DM Sans,sans-serif'}}>⚙</button>
-          <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:8,cursor:'pointer',background:'rgba(201,168,76,.14)',border:'0.5px solid rgba(201,168,76,.3)',color:'#C9A84C',fontFamily:'DM Sans,sans-serif'}}>Ambient</button>
+          <button onClick={() => onSettings()} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>⚙</button>
+          <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ambient</button>
         </div>
       </div>
 
       {/* ── Quick prompts ── */}
-      <div style={{background:'#252220',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>
+      <div style={{background:'var(--header-bg2)',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
           {QUICK_PROMPTS.map(p=>(
             <button key={p.label} onClick={()=>setAiPrompt(p)} style={{
@@ -849,7 +854,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       <SpotlightWeatherBar activities={activities} weather={weather} onCal={onCalendar} onWeather={onWeather} />
 
       {/* ── Calendar strip Fri/Sat/Sun × Morning/Midday/Evening ── */}
-      <div style={{background:'#fff',borderBottom:'0.5px solid rgba(0,0,0,.08)',display:'grid',gridTemplateColumns:'36px 1fr 1fr 1fr',flexShrink:0,fontSize:10}}>
+      <div style={{background:'var(--surface)',borderBottom:'0.5px solid var(--border)',display:'grid',gridTemplateColumns:'36px 1fr 1fr 1fr',flexShrink:0,fontSize:10}}>
         <div style={{borderRight:'0.5px solid rgba(0,0,0,.06)',borderBottom:'0.5px solid rgba(0,0,0,.06)'}}/>
         {[{l:'FRI',d:fri2},{l:'SAT',d:sat2},{l:'SUN',d:sun2}].map(({l,d})=>(
           <div key={l} style={{borderRight:'0.5px solid rgba(0,0,0,.06)',borderBottom:'0.5px solid rgba(0,0,0,.06)',padding:'3px 0',textAlign:'center',fontWeight:700,letterSpacing:'.06em',color:'#8A8378'}}>{l} {d.getDate()}</div>
@@ -917,27 +922,24 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       }
 
       {/* ── Footer: category + time filter ── */}
-      <div style={{background:'#F4F1EB',borderTop:'0.5px solid rgba(0,0,0,.08)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto',flexWrap:'wrap'}} className="no-scroll">
-        {/* Category pills */}
+      <div style={{background:'var(--bg2)',borderTop:'0.5px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto',flexWrap:'wrap'}} className="no-scroll">
         {[{id:'all',label:'All',icon:'✦'},...ALL_CATEGORIES].map(c=>(
           <button key={c.id} onClick={()=>{setActiveCat(c.id);setColPage(0);}} style={{
-            fontSize:11,padding:'4px 11px',borderRadius:99,cursor:'pointer',whiteSpace:'nowrap',
-            background:activeCat===c.id?'#1C1A17':'transparent',
-            color:activeCat===c.id?'rgba(255,255,255,.85)':'#8A8378',
-            border:activeCat===c.id?'none':'0.5px solid rgba(0,0,0,.12)',
-            fontFamily:'DM Sans,sans-serif',transition:'all .15s',flexShrink:0,
+            fontSize:11,padding:'4px 11px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
+            background:activeCat===c.id?'var(--dark)':'transparent',
+            color:activeCat===c.id?'rgba(255,255,255,.85)':'var(--muted)',
+            border:activeCat===c.id?'none':'0.5px solid var(--border)',
+            fontFamily:'var(--font-body)',transition:'all .15s',flexShrink:0,
           }}>{c.icon?`${c.icon} `:''}{c.label}</button>
         ))}
-        {/* Divider */}
-        <div style={{width:1,height:18,background:'rgba(0,0,0,.12)',margin:'0 4px',flexShrink:0}}/>
-        {/* Time-of-day pills */}
+        <div style={{width:1,height:18,background:'var(--border)',margin:'0 4px',flexShrink:0}}/>
         {[{id:'all',label:'Any time'},{id:'morning',label:'🌅 Morning'},{id:'midday',label:'☀️ Midday'},{id:'night',label:'🌙 Evening'}].map(t=>(
           <button key={t.id} onClick={()=>setTimeFilter(t.id)} style={{
-            fontSize:11,padding:'4px 10px',borderRadius:99,cursor:'pointer',whiteSpace:'nowrap',
-            background:timeFilter===t.id?'#3A3530':'transparent',
-            color:timeFilter===t.id?'rgba(255,255,255,.85)':'#8A8378',
-            border:timeFilter===t.id?'none':'0.5px solid rgba(0,0,0,.12)',
-            fontFamily:'DM Sans,sans-serif',transition:'all .15s',flexShrink:0,
+            fontSize:11,padding:'4px 10px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
+            background:timeFilter===t.id?'var(--dark)':'transparent',
+            color:timeFilter===t.id?'rgba(255,255,255,.85)':'var(--muted)',
+            border:timeFilter===t.id?'none':'0.5px solid var(--border)',
+            fontFamily:'var(--font-body)',transition:'all .15s',flexShrink:0,
           }}>{t.label}</button>
         ))}
       </div>
