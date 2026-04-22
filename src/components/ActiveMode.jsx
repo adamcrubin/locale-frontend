@@ -131,16 +131,13 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
 }
 
 // ── Activity card ─────────────────────────────────────────────────────────────
-function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, cardMode, forceExpand }) {
-  const [expanded,      setExpanded]      = useState(forceExpand || false);
+function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
+  const [expanded,      setExpanded]      = useState(false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
-  const contentRef = useRef(null);
 
   const isRec      = act.content_type === 'recommendation';
-  const score      = act.final_score || act.base_score || 0.5;
-  const autoExpand = forceExpand || (cardMode === 'relevancy' && score >= 0.75);
-  const isExpanded = autoExpand || expanded;
+  const isExpanded = expanded;
   const isCompact  = !isExpanded;
 
   const sendFeedback = (fb) => {
@@ -159,6 +156,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
       border:       '1px solid rgba(0,0,0,0.10)',
       borderRadius: 8,
       minHeight:    44,
+      flexShrink:   0,
       boxShadow:    '0 1px 3px rgba(0,0,0,0.06)',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
       transition:   'box-shadow .15s',
@@ -217,13 +215,9 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
         }}>▾</span>
       </div>
 
-      {/* ── Expanded body -- smooth height transition via max-height ── */}
-      <div style={{
-        maxHeight: isExpanded ? 600 : 0,
-        overflow: 'hidden',
-        transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      }}>
-        <div ref={contentRef} style={{ padding: '0 12px 10px' }}>
+      {/* ── Expanded body -- conditional render so card height is always honest ── */}
+      {isExpanded && (
+        <div style={{ padding: '0 12px 10px' }}>
           {/* Why blurb */}
           {act.why && (
             <div style={{ fontSize: 11, color: '#6B6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
@@ -241,7 +235,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
             onReserve={onReserve} homeAddress={homeAddress} />
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -704,7 +698,7 @@ function AskClaude({ settings, activeProfile, onClose }) {
 }
 
 // ── Column ────────────────────────────────────────────────────────────────────
-function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode, isMobile, timeFilter, hasConflict }) {
+function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict }) {
   const allActs = (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
     .filter(a => !removed[`${cat.id}::${a.title}`])
     .filter(a => !isPastEvent(a))
@@ -741,7 +735,6 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
                 onReserve={onReserve}
                 homeAddress={homeAddress}
                 profileId={profileId}
-                cardMode={cardMode}
               />
             ))
         }
@@ -751,7 +744,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
 }
 
 // ── Mobile single-column layout ───────────────────────────────────────────────
-function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, cardMode, spotlightMode, timeFilter }) {
+function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter }) {
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
@@ -877,7 +870,6 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
               onReserve={onReserve}
               homeAddress={homeAddress}
               profileId={profileId}
-              cardMode={cardMode}
             />
           ))
         )}
@@ -989,7 +981,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const weekendWeather = getWeekendWeather(weather);
   const homeAddress    = settings?.homeAddress||activeProfile?.homeAddress||'';
 
-  const cardMode     = settings?.cardMode     || 'compact';
   const spotlightMode= settings?.spotlightMode|| 'strip';
   const columnOrder  = settings?.columnOrder  || 'relevancy';
 
@@ -1027,7 +1018,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const onTM = e=>{if(swipeDir.current)return;const dx=Math.abs(e.touches[0].clientX-swipeX.current);const dy=Math.abs(e.touches[0].clientY-swipeX.current);if(dx>6||dy>6)swipeDir.current=dx>dy?'h':'v';};
   const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&colPage<numPages-1)setColPage(p=>p+1);else if(dx>40&&colPage>0)setColPage(p=>p-1);};
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', cardMode, spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict };
 
   // Calendar strip data -- sort calQueue into Fri/Sat/Sun buckets
   const now2 = new Date();
@@ -1057,21 +1048,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           {/* Theme toggle -- always shown */}
           <ThemeToggle themeId={themeId} setTheme={setTheme} currentTheme={currentTheme} />
-          {/* Card mode toggle -- desktop only */}
-          {!isMobile && (
-            <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:'var(--radius-btn)',overflow:'hidden'}}>
-              {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>{
-                const active = (cardMode||'compact') === mode;
-                return (
-                  <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
-                    padding:'4px 8px',border:'none',background:active?'rgba(255,255,255,.15)':'transparent',
-                    color:active?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
-                    fontSize:12,fontFamily:'var(--font-body)',transition:'all .12s',
-                  }}>{icon}</button>
-                );
-              })}
-            </div>
-          )}
           {/* Ask -- always shown */}
           <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>
             {isMobile ? '✏️' : 'Ask'}
