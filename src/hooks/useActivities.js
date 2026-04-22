@@ -38,24 +38,27 @@ function transformFeed(feed) {
     // Map time-bound events from the `events` table
     const events = (data.events || []).map(e => ({
       ...e,
-      // Normalize field names to match card component prop expectations.
-      // Backend uses when_display; cards expect `when`.
       title:      e.title,
       when:       e.when_display || e.start_date || 'This weekend',
       where:      e.venue ? `${e.venue}${e.neighborhood ? ', ' + e.neighborhood : ''}` : e.neighborhood,
-      cost:       e.cost_display || 'See details',
+      cost:       e.cost_display || null,   // null = formatCost will guess; never 'See details'
       why:        e.description || '',
       tags:       e.tags || [],
+      categories: e.categories || [],
       expires:    !!e.expires_at,
-      // reservable drives the ReserveModal — true if the event has a ticket price
       reservable: e.cost_cents_min > 0,
       address:    e.address,
       url:        e.url,
+      start_date: e.start_date,
+      start_time: e.start_time,
+      end_time:   e.end_time,
+      neighborhood: e.neighborhood,
+      venue:      e.venue,
       id:           e.id,
       content_type: 'event',
-      base_score:   e.base_score,   // 0.0–1.0 float (set by extractor)
-      final_score:  e.final_score,  // 0.0–1.0 float (after modifier stack)
-      confidence:   e.confidence,   // "confirmed" | "inferred" (from extractor)
+      base_score:   e.base_score,
+      final_score:  e.final_score,
+      confidence:   e.confidence,
     }));
 
     // Map always-available evergreen venues from the `evergreen_events` table.
