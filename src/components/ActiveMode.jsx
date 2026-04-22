@@ -220,8 +220,8 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
       {/* ── Expanded body -- smooth height transition via max-height ── */}
       <div style={{
         maxHeight: isExpanded ? 600 : 0,
-        overflow: isExpanded ? 'visible' : 'hidden',
-        transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+        overflow: 'hidden',
+        transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         <div ref={contentRef} style={{ padding: '0 12px 10px' }}>
           {/* Why blurb */}
@@ -720,7 +720,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
   const showHero  = spotlightMode === 'hero';
 
   return (
-    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
+    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
       <div className={`${cat.cls}`} style={{padding:'9px 13px 8px',display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
         <span style={{fontSize:15}}>{cat.icon}</span>
         <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',flex:1}}>{cat.label}</span>
