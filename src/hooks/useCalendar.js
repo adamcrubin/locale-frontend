@@ -1,22 +1,17 @@
 // ── useCalendar.js ────────────────────────────────────────────────────────────
 //
-// Manages Google Calendar OAuth and event sync.
+// Google Calendar integration, now unified with Google Sign-In.
 //
-// Auth strategy: uses a stable deviceId (UUID stored in localStorage) as the
-// userId for the OAuth flow. No Supabase auth required -- the backend stores
-// tokens keyed by deviceId + profileId.
+// When user signs in with Google via Supabase, we get a provider_token (Google
+// OAuth access token) stored in sessionStorage as 'locale-gcal-token'.
+// We send this to the backend as the userId for calendar operations.
 //
-// Flow:
-//   1. connect() opens a popup to /api/auth/google?userId=DEVICE_ID&profileId=X
-//   2. Backend redirects to Google OAuth, gets tokens, stores in google_tokens
-//   3. Popup closes and postMessages 'gcal_connected' back to parent
-//   4. useCalendar catches the message, sets connected=true, loads events
-//   5. Events shown in WeekendSidebar and checked for conflicts
+// Fallback: if no provider_token, fall back to the old deviceId-based flow
+// (for users who connected calendar separately before auth was added).
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchCalendarEvents, addCalendarEvent } from '../lib/api';
 
-// Get or create a stable device ID -- used as userId for the OAuth flow
 function getDeviceId() {
   try {
     let id = localStorage.getItem('locale-device-id');
@@ -28,10 +23,17 @@ function getDeviceId() {
   } catch { return 'anonymous'; }
 }
 
+function getGcalToken() {
+  try { return sessionStorage.getItem('locale-gcal-token'); } catch { return null; }
+}
+
 export function useCalendar(activeProfile) {
-  const profileId  = activeProfile?.id || 'default';
-  const deviceId   = getDeviceId();
-  const BASE        = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const profileId = activeProfile?.id || 'default';
+  const BASE      = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+  // Prefer Google OAuth token from sign-in; fall back to deviceId
+  const gcalToken = getGcalToken();
+  const deviceId  = gcalToken || getDeviceId();
 
   const [connected, setConnected] = useState(false);
   const [events,    setEvents]    = useState([]);
@@ -39,12 +41,12 @@ export function useCalendar(activeProfile) {
   const [email,     setEmail]     = useState(null);
   const pollRef = useRef(null);
 
-  // Check connection status on mount and when profileId changes
+  // Check connection on mount / profile change
   useEffect(() => {
     checkStatus();
-  }, [profileId]);
+  }, [profileId, gcalToken]);
 
-  // Listen for postMessage from the OAuth popup
+  // Listen for postMessage from OAuth popup (legacy flow)
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'gcal_connected' && e.data?.profileId === profileId) {
@@ -60,7 +62,7 @@ export function useCalendar(activeProfile) {
 
   const checkStatus = useCallback(async () => {
     try {
-      const res  = await fetch(`${BASE}/auth/google/status?userId=${deviceId}&profileId=${profileId}`);
+      const res  = await fetch(`${BASE}/auth/google/status?userId=${encodeURIComponent(deviceId)}&profileId=${profileId}`);
       const data = await res.json();
       setConnected(data.connected);
       if (data.email) setEmail(data.email);
@@ -82,33 +84,22 @@ export function useCalendar(activeProfile) {
     setLoading(false);
   }, [profileId, deviceId]);
 
-  // Open OAuth popup and poll for completion
+  // connect() — for users without Google Sign-In (legacy popup flow)
   const connect = useCallback(() => {
     const popup = window.open(
-      `${BASE}/auth/google?userId=${deviceId}&profileId=${profileId}`,
-      'gcal_oauth',
-      'width=600,height=700,scrollbars=yes'
+      `${BASE}/auth/google?userId=${encodeURIComponent(deviceId)}&profileId=${profileId}`,
+      'gcal_oauth', 'width=600,height=700,scrollbars=yes'
     );
-
-    // Fallback polling -- check status every second after popup opens,
-    // and also re-check when popup closes
     let tries = 0;
     pollRef.current = setInterval(async () => {
       tries++;
-      // After popup closes, do one final status check
       if (popup?.closed) {
         clearInterval(pollRef.current);
         await checkStatus();
         return;
       }
-      // Also check status every 3 seconds while popup is open
-      // in case postMessage was missed
-      if (tries % 3 === 0) {
-        await checkStatus();
-      }
+      if (tries % 3 === 0) await checkStatus();
     }, 1000);
-
-    // Stop polling after 3 minutes
     setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 180000);
   }, [deviceId, profileId, checkStatus]);
 
@@ -137,25 +128,20 @@ export function useCalendar(activeProfile) {
     }
   }, [connected, profileId, deviceId, loadEvents]);
 
-  // Check if an event conflicts with existing calendar entries
   const hasConflict = useCallback((activity) => {
     if (!events.length || !activity.start_date) return false;
     const actDate = activity.start_date?.split('T')[0];
     return events.some(e => {
       const evDate = e.start?.dateTime?.split('T')[0] || e.start?.date;
       if (evDate !== actDate) return false;
-      // If both have times, check overlap
       if (activity.start_time && e.start?.dateTime) {
         const actH = parseInt(activity.start_time);
         const evH  = new Date(e.start.dateTime).getHours();
-        return Math.abs(actH - evH) < 2; // within 2 hours = conflict
+        return Math.abs(actH - evH) < 2;
       }
-      return true; // same day, no time = soft conflict
+      return true;
     });
   }, [events]);
 
-  return {
-    connected, events, loading, email, deviceId,
-    connect, disconnect, addEvent, reload: loadEvents, hasConflict,
-  };
+  return { connected, events, loading, email, deviceId, connect, disconnect, addEvent, reload: loadEvents, hasConflict };
 }
