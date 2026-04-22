@@ -12,6 +12,101 @@ const QUICK_PROMPTS = [
   { label:'With Kailee' }, { label:'Weekend away' },
 ];
 
+// ── Frontend blocklist — catches anything that slipped past the backend ─────────
+const FRONTEND_BLOCKLIST = [
+  'support group','surgery support','rotator cuff','online healing','online session',
+  'virtual event','webinar','zoom meeting','online only','certification course',
+  'ceu credits','continuing education','hoa meeting','homeowners association',
+  'aa meeting','na meeting','anonymous meeting','therapy session','counseling session',
+  'mental health workshop','timeshare','real estate seminar','investment seminar',
+  'civic federation','wound care','recovery meeting','shoulder surgery',
+];
+
+function isFrontendBlocked(act) {
+  const combined = `${(act.title||'')} ${(act.description||'')}`.toLowerCase();
+  return FRONTEND_BLOCKLIST.some(kw => combined.includes(kw));
+}
+
+// ── Smart when display: strip years, long date strings → "Sat · Venue" ────────
+function formatWhen(act) {
+  const raw = (act.when_display || act.when || '').trim();
+  if (!raw) return '';
+
+  // Map full day names and date patterns to short day abbreviations
+  const lower = raw.toLowerCase();
+
+  // Detect day of week
+  let day = '';
+  if (lower.includes('friday') || lower.startsWith('fri')) day = 'Fri';
+  else if (lower.includes('saturday') || lower.startsWith('sat')) day = 'Sat';
+  else if (lower.includes('sunday') || lower.startsWith('sun')) day = 'Sun';
+  else if (lower.includes('through') || lower.includes('thru') || lower.includes('–') || lower.includes('-')) {
+    // Multi-day range like "Through May 3" or "April 24–26"
+    day = 'Fri–Sun';
+  }
+
+  // Extract time if present (e.g. "7:00 PM", "8pm", "7:00 a.m.")
+  const timeMatch = raw.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|AM|PM))/i);
+  const time = timeMatch ? timeMatch[1].replace(/\./g,'').replace(/\s/g,'').toUpperCase() : '';
+
+  if (day && time) return `${day} · ${time}`;
+  if (day) return day;
+
+  // Fallback: strip year and long date format, keep first 30 chars
+  return raw
+    .replace(/,?\s*20\d{2}/g, '')       // remove year
+    .replace(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*/gi, (m) => {
+      // "April 25" → just return empty, we already have day from above
+      return '';
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 35);
+}
+
+// ── Smart venue display: neighborhood or short venue name ────────────────────
+function formatVenue(act) {
+  const venue = act.venue || act.where || '';
+  const neighborhood = act.neighborhood || '';
+
+  // Prefer neighborhood for brevity, fall back to venue truncated
+  const place = neighborhood || venue;
+  if (!place) return '';
+
+  // Strip city/state suffixes like ", Washington, DC" or ", Falls Church, VA"
+  return place
+    .replace(/,?\s*(Washington|DC|Falls Church|Arlington|Alexandria|Northern Virginia|NoVA|VA|MD)\b.*/gi, '')
+    .trim()
+    .slice(0, 30);
+}
+
+// ── Cost cleanup: filter junk non-prices ────────────────────────────────────
+const JUNK_COSTS = [
+  'see details','check website','varies','tbd','register','visit website',
+  'zoo admission','general admission','tickets required','price varies',
+  'contact organizer','check eventbrite','more info',
+];
+
+function formatCost(act) {
+  const raw = (act.cost_display || act.cost || '').toLowerCase().trim();
+  if (!raw) return '';
+  if (JUNK_COSTS.some(j => raw.includes(j))) return '$?';
+  // If it doesn't contain a $ or "free", it's probably junk
+  if (!raw.includes('$') && !raw.includes('free')) return '$?';
+  return act.cost_display || act.cost || '';
+}
+
+// ── Deduplicate activities across categories by normalized title ──────────────
+function dedupeActivities(acts) {
+  const seen = new Set();
+  return acts.filter(a => {
+    const key = (a.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // Time-of-day buckets derived from start_time or when_display
 function getTimeOfDay(act) {
   const when = (act.start_time || act.when_display || act.when || '').toLowerCase();
@@ -195,17 +290,18 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             textOverflow: isCompact ? 'ellipsis' : 'clip',
             whiteSpace: isCompact ? 'nowrap' : 'normal',
           }}>
-            {act.when}{act.where ? ` · ${act.where}` : ''}{act.cost ? ` · ${act.cost}` : ''}
+            {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
           </div>
         </div>
-          {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
-        {/* Link icon -- opens event URL in new tab, stops propagation so it doesn't toggle card */}
-        {act.url && (
-          <a href={act.url} target="_blank" rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            style={{ fontSize: 13, color: '#2563EB', flexShrink: 0, textDecoration: 'none', lineHeight: 1, fontSize: 14 }}
-            title="Open event page">🔗</a>
-        )}
+        {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
+        {/* Link icon — always shown. Uses stored URL or falls back to Google search */}
+        <a
+          href={act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`}
+          target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          style={{ flexShrink: 0, textDecoration: 'none', lineHeight: 1, opacity: act.url ? 1 : 0.45 }}
+          title={act.url ? 'Open event page' : 'Search for this event'}
+        >🔗</a>
         {/* Chevron -- ▾ when collapsed, ▴ when expanded */}
         <span style={{
           fontSize: 10, color: 'var(--subtle)', flexShrink: 0,
@@ -699,14 +795,17 @@ function AskClaude({ settings, activeProfile, onClose }) {
 
 // ── Column ────────────────────────────────────────────────────────────────────
 function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict }) {
-  const allActs = (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
-    .filter(a => !removed[`${cat.id}::${a.title}`])
-    .filter(a => !isPastEvent(a))
-    .filter(a => {
-      if (!timeFilter || timeFilter === 'all') return true;
-      const tod = getTimeOfDay(a);
-      return tod === timeFilter || tod === 'any';
-    });
+  const allActs = dedupeActivities(
+    (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
+      .filter(a => !removed[`${cat.id}::${a.title}`])
+      .filter(a => !isPastEvent(a))
+      .filter(a => !isFrontendBlocked(a))
+      .filter(a => {
+        if (!timeFilter || timeFilter === 'all') return true;
+        const tod = getTimeOfDay(a);
+        return tod === timeFilter || tod === 'any';
+      })
+  );
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -739,6 +838,22 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
             ))
         }
       </div>
+    </div>
+  );
+}
+
+// ── Stacked column: two low-count categories sharing one column slot ──────────
+function StackedColumn({ cats, activities, ...colProps }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', borderRight:'0.5px solid var(--border)', minWidth:0, minHeight:0, overflow:'hidden' }}>
+      {cats.map((cat, i) => (
+        <div key={cat.id} style={{
+          flex: 1, display:'flex', flexDirection:'column', minHeight:0,
+          borderBottom: i < cats.length-1 ? '1px solid var(--border)' : 'none',
+        }}>
+          <CatColumn cat={cat} {...colProps} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1103,14 +1218,37 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         ? <MobileLayout visibleCats={visibleCats} {...colProps} />
         : <div style={{display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
             <div style={{flex:1,display:'flex',minHeight:0,overflow:'hidden'}}>
-              {/* Columns grid */}
-              <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
-                style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${pageCats.length},1fr)`,minHeight:0}}
-              >
-                {pageCats.map(cat=>(
-                  <CatColumn key={cat.id} cat={cat} {...colProps} />
-                ))}
-              </div>
+              {/* Columns grid -- low-count categories get stacked 2-per-column */}
+              {(() => {
+                // Build column slots: pair cats with ≤3 events together
+                const slots = [];
+                let i = 0;
+                while (i < pageCats.length) {
+                  const cat = pageCats[i];
+                  const count = (activities[cat.id] || []).filter(a => !isFrontendBlocked(a)).length;
+                  const nextCat = pageCats[i+1];
+                  const nextCount = nextCat ? (activities[nextCat.id] || []).filter(a => !isFrontendBlocked(a)).length : 999;
+                  // Stack if both this and next are low-count (≤3 events each)
+                  if (count <= 3 && nextCat && nextCount <= 3) {
+                    slots.push({ type:'stacked', cats:[cat, nextCat] });
+                    i += 2;
+                  } else {
+                    slots.push({ type:'single', cat });
+                    i += 1;
+                  }
+                }
+                return (
+                  <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
+                    style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${slots.length},1fr)`,minHeight:0}}
+                  >
+                    {slots.map((slot, si) =>
+                      slot.type === 'stacked'
+                        ? <StackedColumn key={slot.cats.map(c=>c.id).join('+')} cats={slot.cats} {...colProps} />
+                        : <CatColumn key={slot.cat.id} cat={slot.cat} {...colProps} />
+                    )}
+                  </div>
+                );
+              })()}
               {/* Sidebar -- RIGHT side, outside the columns grid */}
               <WeekendSidebar
                 activities={activities}
