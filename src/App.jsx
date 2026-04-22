@@ -259,16 +259,19 @@ export default function App() {
   // ── Auth loading splash ───────────────────────────────────────────────────
   if (authLoading && !demoMode) return <LoadingSplash />;
 
-  // ── Welcome screen: first visit OR not logged in (and not in demo mode) ──
-  const needsAuth = authEnabled && !user && !demoMode;
-  const showWelcome = needsAuth && (firstVisit || true); // always show welcome if not authed
+  // ── Welcome screen ────────────────────────────────────────────────────────
+  // Show when: no user logged in AND not in demo mode AND onboarding is done
+  // (if onboarding not done, new user flow handles that after sign-in)
+  // When Supabase isn't configured, the Google button shows an error message
+  // explaining what env vars are needed — useful during development.
+  const showWelcome = !user && !demoMode;
   if (showWelcome) {
     return (
       <WelcomeScreen
         onGoogleSignIn={signInWithGoogle}
         onDemo={() => { setDemoMode(true); markVisited(); }}
         loading={authLoading}
-        error={authError}
+        error={authError || (!authEnabled ? 'Auth not configured — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify environment variables, then redeploy.' : null)}
       />
     );
   }
