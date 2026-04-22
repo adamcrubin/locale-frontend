@@ -121,7 +121,7 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn icon="🎟" title="Reserve/tickets" onClick={()=>onReserve(act,catId)} dim={!act.reservable&&!['sports','music'].includes(catId)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
-      <ABtn icon="✕" title="Hide" onClick={onRemove} hoverBg="#FFF1F2" hoverColor="#E53E3E" />
+
       <div style={{flex:1}}/>
       <ABtn icon="♥" title="Save" onClick={()=>onHeart(act)} hoverBg="#FFF1F2" hoverColor="#E53E3E" color="#E53E3E" />
       <ABtn icon="👍" title={thumbed==='up'?"Undo":"More like this"} onClick={()=>{setThumbed(t=>t==='up'?null:'up');onThumbUp(act);}} active={thumbed==='up'} activeBg="#E8F5EC" activeColor="#1A6332" />
@@ -1061,13 +1061,16 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           {/* Card mode toggle -- desktop only */}
           {!isMobile && (
             <div style={{display:'flex',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.1)',borderRadius:'var(--radius-btn)',overflow:'hidden'}}>
-              {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>(
-                <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
-                  padding:'4px 8px',border:'none',background:cardMode===mode?'rgba(255,255,255,.15)':'transparent',
-                  color:cardMode===mode?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
-                  fontSize:12,fontFamily:'var(--font-body)',transition:'all .12s',
-                }}>{icon}</button>
-              ))}
+              {[['compact','≡','Compact'],['relevancy','⬛','Smart'],['full','▤','Full']].map(([mode,icon,label])=>{
+                const active = (cardMode||'compact') === mode;
+                return (
+                  <button key={mode} onClick={()=>onSettings&&onSettings({cardMode:mode})} title={label} style={{
+                    padding:'4px 8px',border:'none',background:active?'rgba(255,255,255,.15)':'transparent',
+                    color:active?'rgba(255,255,255,.9)':'rgba(255,255,255,.35)',cursor:'pointer',
+                    fontSize:12,fontFamily:'var(--font-body)',transition:'all .12s',
+                  }}>{icon}</button>
+                );
+              })}
             </div>
           )}
           {/* Ask -- always shown */}
@@ -1124,10 +1127,10 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       {isMobile
         ? <MobileLayout visibleCats={visibleCats} {...colProps} />
         : <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+            <div style={{flex:1,display:'flex',minHeight:0}}>
               {/* Columns grid */}
               <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
-                style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${pageCats.length},1fr)`,overflow:'hidden'}}
+                style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${pageCats.length},1fr)`,minHeight:0}}
               >
                 {pageCats.map(cat=>(
                   <CatColumn key={cat.id} cat={cat} {...colProps} />
