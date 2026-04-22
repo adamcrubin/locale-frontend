@@ -90,16 +90,26 @@ export function useCalendar(activeProfile) {
       'width=600,height=700,scrollbars=yes'
     );
 
-    // Fallback polling in case postMessage doesn't fire
+    // Fallback polling -- check status every second after popup opens,
+    // and also re-check when popup closes
+    let tries = 0;
     pollRef.current = setInterval(async () => {
+      tries++;
+      // After popup closes, do one final status check
       if (popup?.closed) {
         clearInterval(pollRef.current);
         await checkStatus();
+        return;
       }
-    }, 1500);
+      // Also check status every 3 seconds while popup is open
+      // in case postMessage was missed
+      if (tries % 3 === 0) {
+        await checkStatus();
+      }
+    }, 1000);
 
     // Stop polling after 3 minutes
-    setTimeout(() => clearInterval(pollRef.current), 180000);
+    setTimeout(() => { if (pollRef.current) clearInterval(pollRef.current); }, 180000);
   }, [deviceId, profileId, checkStatus]);
 
   const disconnect = useCallback(async () => {
