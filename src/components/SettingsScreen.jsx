@@ -357,20 +357,51 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             <AdminButton
               label="🗑  Clear all events & re-extract"
-              desc="Wipes DB, re-scrapes all sources, re-runs Haiku extraction. Takes 1-2 minutes."
+              desc="Wipes DB, re-scrapes all sources, re-runs Haiku extraction. Takes 2-4 minutes."
               color="#F59E0B"
               dangerous
               onClick={async () => {
-                if (!window.confirm('Delete ALL events and scraped content, then re-run the full pipeline?\n\nThis takes 1-2 minutes. Good for clearing stale/inappropriate events after extraction rules change.')) return;
+                if (!window.confirm('Delete ALL events and scraped content, then re-run the full pipeline?\n\nThis takes 2-4 minutes. Good for clearing stale/inappropriate events after extraction rules change.')) return;
                 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
                 try {
                   alert('Step 1/3: Clearing database...');
                   const clr = await (await fetch(`${BASE}/admin/clear-events`, {method:'POST'})).json();
-                  alert(`Cleared ${clr.eventsDeleted} events, ${clr.scrapedDeleted} scrapes.\n\nStep 2/3: Refreshing sources (scraping HTML)...`);
+                  alert(`Cleared ${clr.eventsDeleted} events.\n\nStep 2/3: Scraping sources — this takes 2-3 minutes.\nClick OK and wait for the next alert.`);
+
+                  // Kick off scraping (async on backend)
                   await fetch(`${BASE}/admin/refresh/sources`, {method:'POST'});
-                  alert('Step 3/3: Running extraction (Haiku)...');
-                  const ext = await (await fetch(`${BASE}/admin/extract`, {method:'POST'})).json();
-                  alert(`Done! ${ext.inserted || 0} events inserted, ${ext.skipped || 0} skipped.\nReload the page to see new events.`);
+
+                  // Poll scraped_content count until rows appear or 4 min timeout
+                  let scraped = 0;
+                  const start = Date.now();
+                  while (scraped === 0 && Date.now() - start < 240000) {
+                    await new Promise(r => setTimeout(r, 8000)); // wait 8s between checks
+                    try {
+                      const check = await (await fetch(`${BASE}/admin/scraped?zip=22046`)).json();
+                      scraped = check.scraped?.length || 0;
+                    } catch {}
+                  }
+
+                  if (scraped === 0) {
+                    alert('Scraping timed out — no content found after 4 minutes.\nCheck Render logs for errors.');
+                    return;
+                  }
+
+                  alert(`✓ Scraped ${scraped} sources.\n\nStep 3/3: Running Haiku extraction...`);
+                  await fetch(`${BASE}/admin/extract`, {method:'POST'});
+
+                  // Wait for extraction (also async) — poll events count
+                  let events = 0;
+                  const extStart = Date.now();
+                  while (events === 0 && Date.now() - extStart < 120000) {
+                    await new Promise(r => setTimeout(r, 5000));
+                    try {
+                      const check = await (await fetch(`${BASE}/admin/events?zip=22046&limit=5`)).json();
+                      events = check.count || 0;
+                    } catch {}
+                  }
+
+                  alert(`✓ Done! ${events} events in database.\nReload the page to see new events.`);
                 } catch (e) {
                   alert('Pipeline failed: ' + e.message);
                 }
@@ -378,13 +409,36 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             />
             <AdminButton
               label="🔄  Just re-extract (keep scraped HTML)"
-              desc="Re-runs Haiku on existing scraped_content. Faster - 30 seconds."
+              desc="Re-runs Haiku on existing scraped_content. Use this if scraping already ran recently."
               color="#2563EB"
               onClick={async () => {
                 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
                 try {
-                  const ext = await (await fetch(`${BASE}/admin/extract`, {method:'POST'})).json();
-                  alert(`Done! ${ext.inserted || 0} events inserted, ${ext.skipped || 0} skipped.`);
+                  // First check if there's anything to extract
+                  const check = await (await fetch(`${BASE}/admin/scraped?zip=22046`)).json();
+                  const sources = check.scraped?.length || 0;
+                  if (sources === 0) {
+                    alert('No scraped content found in database.\nRun "Clear all events & re-extract" first to scrape sources.');
+                    return;
+                  }
+
+                  alert(`Found ${sources} scraped sources. Running Haiku extraction — takes ~60 seconds.\nClick OK and wait.`);
+                  await fetch(`${BASE}/admin/extract`, {method:'POST'});
+
+                  // Poll for events
+                  let events = 0;
+                  const start = Date.now();
+                  while (events === 0 && Date.now() - start < 90000) {
+                    await new Promise(r => setTimeout(r, 5000));
+                    try {
+                      const ev = await (await fetch(`${BASE}/admin/events?zip=22046&limit=5`)).json();
+                      events = ev.count || 0;
+                    } catch {}
+                  }
+
+                  alert(events > 0
+                    ? `✓ Done! ${events} events in database. Reload to see them.`
+                    : 'Extraction ran but 0 events found. Check Render logs — may be a prompt or DB issue.');
                 } catch (e) {
                   alert('Extract failed: ' + e.message);
                 }
