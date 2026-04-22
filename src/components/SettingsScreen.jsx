@@ -172,7 +172,7 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
   );
 }
 
-export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut }) {
+export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources }) {
   const [city,         setCity]        = useState(settings.city);
   const [homeAddress,  setHomeAddress] = useState(settings.homeAddress || '');
   const [interval,     setIntervalV]   = useState(settings.intervalMinutes);
@@ -464,6 +464,18 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
               )}
             </div>
           </Section>
+        )}
+
+        {/* Sources page link */}
+        {onShowSources && (
+          <button onClick={() => { onClose(); onShowSources(); }} style={{
+            width:'100%', padding:11, background:'rgba(255,255,255,.04)',
+            color:'rgba(255,255,255,.5)', border:'0.5px solid rgba(255,255,255,.1)',
+            borderRadius:9, fontSize:13, cursor:'pointer', fontFamily:'DM Sans, sans-serif',
+            marginBottom:8, display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          }}>
+            📡 Manage sources →
+          </button>
         )}
 
         <button onClick={save} style={{ width:'100%', padding:11, background:'rgba(26,99,50,.35)', color:'#6EE7A0', border:'0.5px solid rgba(110,231,160,.25)', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans, sans-serif', marginTop:4 }}>Save & close</button>
