@@ -267,7 +267,6 @@ export const DEFAULT_SETTINGS = {
   testMode:false,
   ambientTimeoutMinutes:10,
   // Display modes
-  cardMode:'compact',         // 'compact' | 'full' | 'relevancy'
   spotlightMode:'strip',      // 'none' | 'strip' | 'hero' | 'overlay' | 'sidebar'
   columnOrder:'relevancy',    // 'relevancy' | 'fixed' | 'random'
   mobileLayout:true,          // auto-switch on small screens
