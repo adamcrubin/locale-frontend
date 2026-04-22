@@ -158,7 +158,6 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
       background:   isRec ? '#F9F7F4' : '#FFFFFF',
       border:       '1px solid rgba(0,0,0,0.10)',
       borderRadius: 8,
-      overflow:     'hidden',
       minHeight:    44,
       boxShadow:    '0 1px 3px rgba(0,0,0,0.06)',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
@@ -221,8 +220,8 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
 
       {/* ── Expanded body -- smooth height transition via max-height ── */}
       <div style={{
-        maxHeight: isExpanded ? 400 : 0,
-        overflow: 'hidden',
+        maxHeight: isExpanded ? 600 : 0,
+        overflow: isExpanded ? 'visible' : 'hidden',
         transition: 'max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       }}>
         <div ref={contentRef} style={{ padding: '0 12px 10px' }}>
