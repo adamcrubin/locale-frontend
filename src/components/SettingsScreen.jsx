@@ -377,8 +377,63 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
           </div>
         </Section>
 
+        <Section title="Event Pipeline (Admin)" desc="Rebuild event data from scratch">
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            <AdminButton
+              label="🗑  Clear all events & re-extract"
+              desc="Wipes DB, re-scrapes all sources, re-runs Haiku extraction. Takes 1-2 minutes."
+              color="#F59E0B"
+              dangerous
+              onClick={async () => {
+                if (!window.confirm('Delete ALL events and scraped content, then re-run the full pipeline?\n\nThis takes 1-2 minutes. Good for clearing stale/inappropriate events after extraction rules change.')) return;
+                const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+                try {
+                  alert('Step 1/3: Clearing database...');
+                  const clr = await (await fetch(`${BASE}/admin/clear-events`, {method:'POST'})).json();
+                  alert(`Cleared ${clr.eventsDeleted} events, ${clr.scrapedDeleted} scrapes.\n\nStep 2/3: Refreshing sources (scraping HTML)...`);
+                  await fetch(`${BASE}/admin/refresh/sources`, {method:'POST'});
+                  alert('Step 3/3: Running extraction (Haiku)...');
+                  const ext = await (await fetch(`${BASE}/admin/extract`, {method:'POST'})).json();
+                  alert(`Done! ${ext.inserted || 0} events inserted, ${ext.skipped || 0} skipped.\nReload the page to see new events.`);
+                } catch (e) {
+                  alert('Pipeline failed: ' + e.message);
+                }
+              }}
+            />
+            <AdminButton
+              label="🔄  Just re-extract (keep scraped HTML)"
+              desc="Re-runs Haiku on existing scraped_content. Faster - 30 seconds."
+              color="#2563EB"
+              onClick={async () => {
+                const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+                try {
+                  const ext = await (await fetch(`${BASE}/admin/extract`, {method:'POST'})).json();
+                  alert(`Done! ${ext.inserted || 0} events inserted, ${ext.skipped || 0} skipped.`);
+                } catch (e) {
+                  alert('Extract failed: ' + e.message);
+                }
+              }}
+            />
+          </div>
+        </Section>
+
         <button onClick={save} style={{ width:'100%', padding:11, background:'rgba(26,99,50,.35)', color:'#6EE7A0', border:'0.5px solid rgba(110,231,160,.25)', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans, sans-serif', marginTop:4 }}>Save & close</button>
       </div>
     </div>
+  );
+}
+
+function AdminButton({ label, desc, color, onClick, dangerous }) {
+  return (
+    <button onClick={onClick} style={{
+      display:'flex', flexDirection:'column', alignItems:'flex-start', gap:2,
+      padding:'10px 14px', borderRadius:9, cursor:'pointer', textAlign:'left',
+      background: dangerous ? 'rgba(245,158,11,.1)' : 'rgba(37,99,235,.1)',
+      border: `0.5px solid ${color}44`,
+      fontFamily:'DM Sans, sans-serif',
+    }}>
+      <span style={{fontSize:12, fontWeight:600, color}}>{label}</span>
+      <span style={{fontSize:10, color:'rgba(255,255,255,.4)', lineHeight:1.4}}>{desc}</span>
+    </button>
   );
 }
