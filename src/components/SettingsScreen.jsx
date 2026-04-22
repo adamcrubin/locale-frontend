@@ -179,12 +179,11 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
   const [testMode,     setTestMode]    = useState(settings.testMode || false);
   const [gcal,         setGcal]        = useState(settings.gcalConnected);
   const [ambientMins,  setAmbient]     = useState(settings.ambientTimeoutMinutes || 10);
-  const [cardMode,     setCardMode]    = useState(settings.cardMode || 'compact');
   const [spotlightMode,setSpotlight]   = useState(settings.spotlightMode || 'strip');
   const [columnOrder,  setColumnOrder] = useState(settings.columnOrder || 'relevancy');
 
   const save = () => {
-    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, ambientTimeoutMinutes:ambientMins, cardMode, spotlightMode, columnOrder });
+    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, ambientTimeoutMinutes:ambientMins, spotlightMode, columnOrder });
     onClose();
   };
 
@@ -244,29 +243,6 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             )}
           </div>
           <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:5 }}>Events you add will appear in your Google Calendar. Shared across Adam and Kailee.</div>
-        </Section>
-
-        <Section title="Card Display" desc="How activity cards appear in the columns">
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {[
-              ['compact',   '≡ Compact',   'Title + when/where only. Tap to expand. Best for scanning.'],
-              ['relevancy', '⬛ Relevancy', '75% compact, 25% expanded based on score. Recommended.'],
-              ['full',      '▤ Full',       'All details always visible. Better for browsing.'],
-            ].map(([mode, label, desc]) => (
-              <div key={mode} onClick={() => setCardMode(mode)} style={{
-                display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
-                borderRadius:9, border:`0.5px solid ${cardMode===mode?'rgba(201,168,76,.4)':'rgba(255,255,255,.1)'}`,
-                background: cardMode===mode ? 'rgba(201,168,76,.1)' : 'rgba(255,255,255,.04)',
-                cursor:'pointer', transition:'all .15s',
-              }}>
-                <div style={{ width:16, height:16, borderRadius:'50%', border:`2px solid ${cardMode===mode?'#C9A84C':'rgba(255,255,255,.2)'}`, background:cardMode===mode?'#C9A84C':'transparent', flexShrink:0, transition:'all .15s' }} />
-                <div>
-                  <div style={{ fontSize:12, fontWeight:600, color:cardMode===mode?'#C9A84C':'rgba(255,255,255,.8)' }}>{label}</div>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', marginTop:1 }}>{desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
         </Section>
 
         <Section title="Spotlight" desc="How to surface the top event of the weekend">
