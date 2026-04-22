@@ -6,15 +6,31 @@
 }
 
 :root {
-  --bg:      #F4F1EB;
-  --surface: #FFFFFF;
-  --dark:    #1C1A17;
-  --darker:  #141210;
-  --border:  rgba(0,0,0,0.09);
-  --text:    #1C1A17;
-  --muted:   #8A8378;
-  --subtle:  #B8B3AA;
-  --gold:    #C9A84C;
+  /* ── Base palette (Hearthside theme defaults) ── */
+  --bg:             #F4F1EB;
+  --bg2:            #EDE9E0;
+  --surface:        #FFFFFF;
+  --surface2:       #F9F7F4;
+  --dark:           #1C1A17;
+  --darker:         #141210;
+  --header-bg:      #1C1A17;
+  --header-bg2:     #252220;
+  --border:         rgba(0,0,0,0.09);
+  --border-strong:  rgba(0,0,0,0.15);
+  --text:           #1C1A17;
+  --text2:          #3A3530;
+  --muted:          #8A8378;
+  --subtle:         #B8B3AA;
+  --gold:           #C9A84C;
+  --accent:         #C9A84C;
+  --accent-bg:      rgba(201,168,76,0.12);
+  --accent-border:  rgba(201,168,76,0.3);
+  --radius-card:    8px;
+  --radius-pill:    99px;
+  --radius-btn:     8px;
+  --font-display:   'Cormorant Garamond', serif;
+  --font-body:      'DM Sans', sans-serif;
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.06);
   --c-outdoors-bg:#E8F5EC; --c-outdoors:#1A6332;
   --c-food-bg:    #FFF1EE; --c-food:    #9A3412;
   --c-arts-bg:    #F3F0FF; --c-arts:    #5B21B6;
