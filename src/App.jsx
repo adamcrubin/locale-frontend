@@ -6,9 +6,12 @@ import WeatherScreen        from './components/WeatherScreen';
 import CalendarModal        from './components/CalendarModal';
 import SettingsScreen       from './components/SettingsScreen';
 import ProfilePicker        from './components/ProfilePicker';
+import ProfileSelectScreen  from './components/ProfileSelectScreen';
+import WelcomeScreen        from './components/WelcomeScreen';
 import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
 import PostEventFeedback    from './components/PostEventFeedback';
+import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
 import { useWeekdayActivities } from './hooks/useWeekdayActivities';
@@ -17,6 +20,14 @@ import { useCalendar }      from './hooks/useCalendar';
 import { usePhotos }        from './hooks/usePhotos';
 import { usePostEventFeedback, trackForFeedback } from './hooks/usePostEventFeedback';
 import { postFeedback }     from './lib/api';
+
+// ── First-visit detection ─────────────────────────────────────────────────────
+function hasVisitedBefore() {
+  try { return localStorage.getItem('locale-visited') === 'true'; } catch { return false; }
+}
+function markVisited() {
+  try { localStorage.setItem('locale-visited', 'true'); } catch {}
+}
 
 // ── Loading splash ────────────────────────────────────────────────────────────
 function LoadingSplash() {
@@ -85,19 +96,48 @@ function DataBadge({ activitiesSource, weatherSource }) {
 }
 
 export default function App() {
-  // ── Auth-free: no login required, all local + optional Supabase sync ──
-  const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(null);
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  const { user, loading: authLoading, error: authError, signInWithGoogle, signOut, isEnabled: authEnabled } = useAuth();
 
-  // ── Live data hooks (fall back to mock if backend down) ──
+  // ── Demo mode (no login) ──────────────────────────────────────────────────
+  const [demoMode, setDemoMode] = useState(false);
+
+  // ── First-visit flag ──────────────────────────────────────────────────────
+  const [firstVisit] = useState(() => !hasVisitedBefore());
+
+  // ── Settings (keyed to user.id when logged in, localStorage otherwise) ──
+  const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(user);
+
+  // ── Profile select screen (shown after login when 2+ profiles exist) ──────
+  const [showProfileSelect, setShowProfileSelect] = useState(false);
+
+  // When user logs in, show profile select if multiple profiles
+  useEffect(() => {
+    if (user && settings.onboardingDone && settings.profiles?.length > 1) {
+      // Only show if no profile was remembered on this device
+      const remembered = (() => { try { return localStorage.getItem('locale-active-profile'); } catch { return null; } })();
+      if (!remembered) setShowProfileSelect(true);
+      else {
+        const valid = settings.profiles.find(p => p.id === remembered);
+        if (valid) switchProfile(remembered);
+      }
+    }
+  }, [user?.id]);
+
+  // Mark visited on first auth success or demo
+  useEffect(() => {
+    if ((user || demoMode) && firstVisit) markVisited();
+  }, [user, demoMode]);
+
+  // ── Live data hooks ───────────────────────────────────────────────────────
   const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile);
   const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
   const { weather,            source: weatherSource    } = useWeather(settings.city);
   const { photos }                                       = usePhotos(settings.city);
 
-  // ── Post-event feedback ──
   const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
 
-  // ── Screen state ──
+  // ── Screen state ──────────────────────────────────────────────────────────
   const [screen,        setScreen]        = useState('ambient');
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
@@ -107,12 +147,8 @@ export default function App() {
   const [calQueue,      setCalQueue]      = useState([]);
   const [transitioning, setTransitioning] = useState(false);
 
-  // Google Calendar integration -- auth-free, uses stable deviceId
   const calendar = useCalendar(activeProfile);
 
-  // Merge real Google Calendar events into calQueue for display in sidebar
-  // Real events come back as Google Calendar event objects; normalize them
-  // to the same shape calQueue uses: { title, date, time, added: true }
   useEffect(() => {
     if (!calendar.events?.length) return;
     const normalized = calendar.events.map(e => ({
@@ -121,26 +157,18 @@ export default function App() {
       time:  e.start?.dateTime
         ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
         : 'All day',
-      added:      true,
-      fromGoogle: true,
-      googleId:   e.id,
+      added: true, fromGoogle: true, googleId: e.id,
     }));
-    // Keep locally-added items (fromGoogle=false), replace google ones
-    setCalQueue(prev => [
-      ...prev.filter(e => !e.fromGoogle),
-      ...normalized,
-    ]);
+    setCalQueue(prev => [...prev.filter(e => !e.fromGoogle), ...normalized]);
   }, [calendar.events]);
 
   const ambientEnteredAt = useRef(null);
   const idleTimer        = useRef(null);
 
-  // Track ambient entry time for profile-picker threshold
   useEffect(() => {
     if (screen === 'ambient') ambientEnteredAt.current = Date.now();
   }, [screen]);
 
-  // Auto-return to ambient after idle
   const resetIdleTimer = () => {
     clearTimeout(idleTimer.current);
     if (screen !== 'ambient') {
@@ -156,10 +184,7 @@ export default function App() {
   const transitionTo = (nextScreen) => {
     if (transitioning) return;
     setTransitioning(true);
-    setTimeout(() => {
-      setScreen(nextScreen);
-      setTransitioning(false);
-    }, 50);
+    setTimeout(() => { setScreen(nextScreen); setTransitioning(false); }, 50);
   };
 
   const exitAmbient = () => {
@@ -173,19 +198,25 @@ export default function App() {
   };
 
   const onProfileSelected = (profileId) => {
+    if (profileId === '__add__') {
+      setShowProfileSelect(false);
+      setShowPicker(false);
+      setSettingsOpen(true);
+      return;
+    }
     switchProfile(profileId);
+    try { localStorage.setItem('locale-active-profile', profileId); } catch {}
+    setShowProfileSelect(false);
     setShowPicker(false);
     transitionTo('active');
   };
 
-  // Calendar add — also tracks for post-event feedback
   const onAdded = (entry) => {
     setCalQueue(q => [...q, entry]);
     setCalModal(null);
     if (entry?.title) trackForFeedback(entry);
   };
 
-  // Save item to profile
   const onSaveItem = (item) => {
     const current = activeProfile?.savedItems || [];
     if (!current.find(s => s.title === item.title)) {
@@ -199,57 +230,66 @@ export default function App() {
     });
   };
 
-  // Feedback loop — thumbs up/down posts to backend and updates profile prefs
   const onThumbUp = async (catId, act) => {
-    // Post to backend
-    if (act.id) {
-      postFeedback(activeProfile?.id, act.id, act.content_type || 'event', 'up', settings.city)
-        .catch(() => {});
-    }
-    // Also save to profile liked tags so future AI prompts know about it
+    if (act.id) postFeedback(activeProfile?.id, act.id, act.content_type || 'event', 'up', settings.city).catch(() => {});
     const likedTags = [...new Set([...(activeProfile?.likedTags || []), ...(act.tags || [])])];
     updateProfile(activeProfile.id, { likedTags });
   };
 
   const onThumbDown = async (catId, act) => {
-    if (act.id) {
-      postFeedback(activeProfile?.id, act.id, act.content_type || 'event', 'down', settings.city)
-        .catch(() => {});
-    }
+    if (act.id) postFeedback(activeProfile?.id, act.id, act.content_type || 'event', 'down', settings.city).catch(() => {});
     const dislikedTags = [...new Set([...(activeProfile?.dislikedTags || []), ...(act.tags || [])])];
     updateProfile(activeProfile.id, { dislikedTags });
   };
 
-  // Common props passed to all screen components
   const commonProps = {
-    settings,
-    activeProfile,
-    calQueue,
-    activities,
-    weather,
-    activitiesSource,
-    weatherSource,
-    calendar,
+    settings, activeProfile, calQueue, activities, weather,
+    activitiesSource, weatherSource, calendar,
     onCalendar:      setCalModal,
     onWeather:       setWeatherDay,
     onSettings:      (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true),
     onAmbient:       () => transitionTo('ambient'),
     onSwitchProfile: () => setShowPicker(true),
-    onSaveItem,
-    onRemoveSaved,
+    onSaveItem, onRemoveSaved,
     onShowSaved:     () => setShowSaved(true),
-    onThumbUp,
-    onThumbDown,
+    onThumbUp, onThumbDown,
+    user, onSignOut: signOut,
   };
 
-  // ── Onboarding — show on first launch ──
+  // ── Auth loading splash ───────────────────────────────────────────────────
+  if (authLoading && !demoMode) return <LoadingSplash />;
+
+  // ── Welcome screen: first visit OR not logged in (and not in demo mode) ──
+  const needsAuth = authEnabled && !user && !demoMode;
+  const showWelcome = needsAuth && (firstVisit || true); // always show welcome if not authed
+  if (showWelcome) {
+    return (
+      <WelcomeScreen
+        onGoogleSignIn={signInWithGoogle}
+        onDemo={() => { setDemoMode(true); markVisited(); }}
+        loading={authLoading}
+        error={authError}
+      />
+    );
+  }
+
+  // ── Onboarding (new user, post-login) ─────────────────────────────────────
   if (!settings.onboardingDone) {
     return (
       <OnboardingFlow
-        showDemoButton={true}
-        onComplete={(patch) => {
-          update({ ...patch, onboardingDone: true });
-        }}
+        showDemoButton={false}
+        onComplete={(patch) => update({ ...patch, onboardingDone: true })}
+      />
+    );
+  }
+
+  // ── Profile select (post-login, multi-profile) ────────────────────────────
+  if (showProfileSelect) {
+    return (
+      <ProfileSelectScreen
+        profiles={settings.profiles}
+        user={user}
+        onSelect={onProfileSelected}
       />
     );
   }
@@ -327,6 +367,8 @@ export default function App() {
           addProfile={addProfile}
           removeProfile={removeProfile}
           onClose={() => setSettingsOpen(false)}
+          user={user}
+          onSignOut={signOut}
         />
       )}
 
