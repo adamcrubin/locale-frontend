@@ -6,7 +6,7 @@ import WeatherScreen        from './components/WeatherScreen';
 import CalendarModal        from './components/CalendarModal';
 import SettingsScreen       from './components/SettingsScreen';
 import ProfilePicker        from './components/ProfilePicker';
-import ProfileSelectScreen  from './components/ProfileSelectScreen';
+import SourcesScreen        from './components/SourcesScreen';
 import WelcomeScreen        from './components/WelcomeScreen';
 import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
@@ -142,6 +142,7 @@ export default function App() {
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
+  const [showSources,   setShowSources]   = useState(false);
   const [showPicker,    setShowPicker]    = useState(false);
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
@@ -361,6 +362,10 @@ export default function App() {
         />
       )}
 
+      {showSources && (
+        <SourcesScreen onClose={() => setShowSources(false)} />
+      )}
+
       {settingsOpen && (
         <SettingsScreen
           settings={settings}
@@ -372,6 +377,7 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
           user={user}
           onSignOut={signOut}
+          onShowSources={() => setShowSources(true)}
         />
       )}
 
