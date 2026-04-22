@@ -122,19 +122,55 @@ function formatVenue(act) {
     .slice(0, 30);
 }
 
-// ── Cost cleanup: filter junk non-prices ────────────────────────────────────
+// ── Cost cleanup + smart guessing ────────────────────────────────────────────
 const JUNK_COSTS = [
   'see details','check website','varies','tbd','register','visit website',
   'zoo admission','general admission','tickets required','price varies',
-  'contact organizer','check eventbrite','more info',
+  'contact organizer','check eventbrite','more info','see website',
+  'ticket required','admission','check schedule',
 ];
+
+// Category-based price heuristics for when cost is unknown
+const COST_HINTS = {
+  food:     '$$ (?)',   // restaurants default mid-range
+  music:    '$$ (?)',   // shows usually $15-40
+  sports:   '$$ (?)',   // games/leagues vary
+  arts:     '$ (?)',    // many free or low-cost
+  outdoors: 'Free (?)',
+  miss:     '$$ (?)',
+  nerdy:    '$ (?)',    // talks/trivia often cheap
+  away:     '$$$ (?)',  // travel costs more
+  trips:    '$$ (?)',
+  breweries:'$ (?)',
+  comedy:   '$$ (?)',
+  markets:  'Free (?)',
+  wellness: '$$ (?)',
+  family:   '$ (?)',
+  film:     '$ (?)',
+};
 
 function formatCost(act) {
   const raw = (act.cost_display || act.cost || '').toLowerCase().trim();
-  if (!raw) return '';
-  if (JUNK_COSTS.some(j => raw.includes(j))) return '$?';
-  // If it doesn't contain a $ or "free", it's probably junk
-  if (!raw.includes('$') && !raw.includes('free')) return '$?';
+
+  // Junk values → guess from category
+  if (!raw || JUNK_COSTS.some(j => raw.includes(j))) {
+    // Try category-based guess
+    const cats = act.categories || [];
+    for (const cat of cats) {
+      if (COST_HINTS[cat]) return COST_HINTS[cat];
+    }
+    return '$? (?)';
+  }
+
+  // Must contain $ or 'free' to be a real price
+  if (!raw.includes('$') && !raw.includes('free')) {
+    const cats = act.categories || [];
+    for (const cat of cats) {
+      if (COST_HINTS[cat]) return COST_HINTS[cat];
+    }
+    return '$? (?)';
+  }
+
   return act.cost_display || act.cost || '';
 }
 
@@ -844,12 +880,21 @@ function AskClaude({ settings, activeProfile, onClose }) {
 }
 
 // ── Column ────────────────────────────────────────────────────────────────────
-function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict }) {
+function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict, crossCatSeen }) {
   const allActs = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
       .filter(a => !isPastEvent(a))
       .filter(a => !isFrontendBlocked(a))
+      .filter(a => {
+        // Cross-category dedup: skip if another column already claimed this title
+        if (crossCatSeen) {
+          const key = (a.title||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
+          if (crossCatSeen.has(key)) return false;
+          crossCatSeen.add(key);
+        }
+        return true;
+      })
       .filter(a => {
         if (!timeFilter || timeFilter === 'all') return true;
         const tod = getTimeOfDay(a);
@@ -905,6 +950,7 @@ function StackedColumn({ cats, activities, ...colProps }) {
         <div key={cat.id} style={{
           flex: 1, display:'flex', flexDirection:'column', minHeight:0,
           borderBottom: i < cats.length-1 ? '1px solid var(--border)' : 'none',
+          overflow: 'hidden',
         }}>
           <CatColumn cat={cat} {...colProps} />
         </div>
@@ -1188,7 +1234,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const onTM = e=>{if(swipeDir.current)return;const dx=Math.abs(e.touches[0].clientX-swipeX.current);const dy=Math.abs(e.touches[0].clientY-swipeX.current);if(dx>6||dy>6)swipeDir.current=dx>dy?'h':'v';};
   const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&colPage<numPages-1)setColPage(p=>p+1);else if(dx>40&&colPage>0)setColPage(p=>p-1);};
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen };
 
   // Calendar strip data -- sort calQueue into Fri/Sat/Sun buckets
   const now2 = new Date();
