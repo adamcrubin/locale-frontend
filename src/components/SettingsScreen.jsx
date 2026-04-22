@@ -172,7 +172,7 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
   );
 }
 
-export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user }) {
+export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut }) {
   const [city,         setCity]        = useState(settings.city);
   const [homeAddress,  setHomeAddress] = useState(settings.homeAddress || '');
   const [interval,     setIntervalV]   = useState(settings.intervalMinutes);
@@ -392,6 +392,25 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             />
           </div>
         </Section>
+
+        {/* Account section */}
+        {(user || onSignOut) && (
+          <Section title="Account">
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+              <div>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.6)' }}>{user?.email || 'Signed in'}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>Synced across devices via Google</div>
+              </div>
+              {onSignOut && (
+                <button onClick={() => { onClose(); onSignOut(); }} style={{
+                  fontSize:11, padding:'5px 12px', borderRadius:8, cursor:'pointer',
+                  background:'rgba(255,255,255,.06)', border:'0.5px solid rgba(255,255,255,.12)',
+                  color:'rgba(255,255,255,.4)', fontFamily:'DM Sans, sans-serif',
+                }}>Sign out</button>
+              )}
+            </div>
+          </Section>
+        )}
 
         <button onClick={save} style={{ width:'100%', padding:11, background:'rgba(26,99,50,.35)', color:'#6EE7A0', border:'0.5px solid rgba(110,231,160,.25)', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans, sans-serif', marginTop:4 }}>Save & close</button>
       </div>
