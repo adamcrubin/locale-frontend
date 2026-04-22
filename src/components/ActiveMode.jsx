@@ -279,7 +279,9 @@ function ABtn({ icon, title, onClick, dim, isMap, hoverBg, hoverColor, color, ac
 }
 
 function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress }) {
-  const [thumbed, setThumbed] = useState(null);
+  const [thumbed,    setThumbed]    = useState(null);
+  const [copied,     setCopied]     = useState(false);
+  const [shareOpen,  setShareOpen]  = useState(false);
 
   const handleDirections = () => {
     const dest   = encodeURIComponent(act.address || act.where || act.title);
@@ -289,27 +291,136 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
       : `https://www.google.com/maps/search/?api=1&query=${dest}`, '_blank');
   };
 
-  const eventUrl = act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`;
+  const eventUrl  = act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`;
+  const shareText = `${act.title}${act.when ? ' — ' + act.when : ''}${act.where ? ' at ' + act.where : ''}`;
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    // Try native share first (works great on mobile)
+    if (navigator.share && navigator.canShare?.({ title: act.title, url: eventUrl })) {
+      try { await navigator.share({ title: act.title, text: shareText, url: eventUrl }); return; } catch {}
+    }
+    // Desktop: show popover
+    setShareOpen(s => !s);
+  };
+
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(eventUrl); } catch { prompt('Copy this link:', eventUrl); }
+    setCopied(true);
+    setTimeout(() => { setCopied(false); setShareOpen(false); }, 1800);
+  };
+
+  const SHARE_OPTIONS = [
+    {
+      label: 'Copy link',
+      icon: copied ? '✓' : '🔗',
+      color: copied ? '#22c55e' : '#6B6560',
+      action: copyLink,
+    },
+    {
+      label: 'Email',
+      icon: '✉️',
+      color: '#6B6560',
+      action: () => { window.open(`mailto:?subject=${encodeURIComponent(act.title)}&body=${encodeURIComponent(shareText + '\n\n' + eventUrl)}`); setShareOpen(false); },
+    },
+    {
+      label: 'WhatsApp',
+      icon: '💬',
+      color: '#25D366',
+      action: () => { window.open(`https://wa.me/?text=${encodeURIComponent(shareText + ' ' + eventUrl)}`,'_blank'); setShareOpen(false); },
+    },
+    {
+      label: 'Facebook',
+      icon: '📘',
+      color: '#1877F2',
+      action: () => { window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(eventUrl)}`,'_blank','width=600,height=400'); setShareOpen(false); },
+    },
+    {
+      label: 'X / Twitter',
+      icon: '✖',
+      color: '#1C1A17',
+      action: () => { window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(eventUrl)}`,'_blank','width=600,height=400'); setShareOpen(false); },
+    },
+  ];
 
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:4 }}>
+    <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, position:'relative' }}>
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn icon="🎟" title="Reserve/tickets" onClick={()=>onReserve(act,catId)} dim={!act.reservable&&!['sports','music'].includes(catId)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
-      {/* Link — opens event page or Google search fallback */}
+
+      {/* Link */}
       <a href={eventUrl} target="_blank" rel="noopener noreferrer"
-        onClick={e => e.stopPropagation()}
-        title={act.url ? 'Open event page' : 'Search for this event'}
+        onClick={e => e.stopPropagation()} title={act.url ? 'Open event page' : 'Search for this event'}
         style={{ textDecoration:'none' }}>
         <button style={{
           width:28, height:28, borderRadius:8,
           border:`0.5px solid ${act.url ? 'rgba(37,99,235,.3)' : 'rgba(0,0,0,.12)'}`,
           background: act.url ? 'rgba(37,99,235,.08)' : 'transparent',
           cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
-          color: act.url ? '#2563EB' : '#aaa',
-          opacity: act.url ? 1 : 0.5,
+          color: act.url ? '#2563EB' : '#aaa', opacity: act.url ? 1 : 0.5,
         }}>🔗</button>
       </a>
+
+      {/* Share button + popover */}
+      <div style={{ position:'relative' }}>
+        <button
+          onClick={handleShare}
+          title="Share this event"
+          style={{
+            width:28, height:28, borderRadius:8,
+            border:`0.5px solid ${shareOpen ? 'rgba(201,168,76,.4)' : 'rgba(0,0,0,.12)'}`,
+            background: shareOpen ? 'rgba(201,168,76,.1)' : 'transparent',
+            cursor:'pointer', fontSize:12, display:'flex', alignItems:'center', justifyContent:'center',
+            color: shareOpen ? '#C9A84C' : '#6B6560',
+            transition: 'all .15s',
+            fontWeight: 600,
+          }}
+        >↗</button>
+
+        {shareOpen && (
+          <>
+            {/* Backdrop */}
+            <div style={{ position:'fixed', inset:0, zIndex:98 }} onClick={()=>setShareOpen(false)} />
+            {/* Popover */}
+            <div style={{
+              position:'absolute', bottom:34, left:'50%', transform:'translateX(-50%)',
+              background:'#FFFFFF', border:'1px solid rgba(0,0,0,.1)',
+              borderRadius:10, boxShadow:'0 4px 20px rgba(0,0,0,.15)',
+              padding:'6px', zIndex:99,
+              display:'flex', flexDirection:'column', gap:1,
+              minWidth:140,
+              animation:'fadeIn 120ms ease both',
+            }}>
+              {/* Arrow */}
+              <div style={{
+                position:'absolute', bottom:-5, left:'50%', transform:'translateX(-50%)',
+                width:10, height:10, background:'#FFFFFF',
+                border:'1px solid rgba(0,0,0,.1)', borderTop:'none', borderLeft:'none',
+                transform:'translateX(-50%) rotate(45deg)',
+              }}/>
+              <div style={{ fontSize:9, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#B8B3AA', padding:'4px 8px 2px' }}>
+                Share event
+              </div>
+              {SHARE_OPTIONS.map(opt => (
+                <button key={opt.label} onClick={(e)=>{ e.stopPropagation(); opt.action(); }}
+                  style={{
+                    display:'flex', alignItems:'center', gap:8,
+                    padding:'7px 10px', borderRadius:7, border:'none',
+                    background:'transparent', cursor:'pointer', width:'100%', textAlign:'left',
+                    fontFamily:'DM Sans, sans-serif', transition:'background .1s',
+                  }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#F4F1EB'}
+                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                >
+                  <span style={{ fontSize:14, width:20, textAlign:'center' }}>{opt.icon}</span>
+                  <span style={{ fontSize:12, color: copied && opt.label==='Copy link' ? '#22c55e' : '#3A3530', fontWeight:500 }}>{copied && opt.label==='Copy link' ? 'Copied!' : opt.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
 
       <div style={{flex:1}}/>
       <ABtn icon="♥" title="Save" onClick={()=>onHeart(act)} hoverBg="#FFF1F2" hoverColor="#E53E3E" color="#E53E3E" />
@@ -1233,6 +1344,10 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const onTS = e=>{swipeX.current=e.touches[0].clientX;swipeDir.current=null;};
   const onTM = e=>{if(swipeDir.current)return;const dx=Math.abs(e.touches[0].clientX-swipeX.current);const dy=Math.abs(e.touches[0].clientY-swipeX.current);if(dx>6||dy>6)swipeDir.current=dx>dy?'h':'v';};
   const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&colPage<numPages-1)setColPage(p=>p+1);else if(dx>40&&colPage>0)setColPage(p=>p-1);};
+
+  // Cross-category dedup set — mutable, passed into each CatColumn
+  // First column to claim a title wins; subsequent columns skip duplicates
+  const crossCatSeen = new Set();
 
   const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen };
 
