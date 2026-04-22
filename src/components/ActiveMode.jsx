@@ -156,10 +156,11 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
   return (
     <div style={{
       background:   isRec ? '#F9F7F4' : '#FFFFFF',
-      border:       '0.5px solid rgba(0,0,0,0.08)',
+      border:       '1px solid rgba(0,0,0,0.10)',
       borderRadius: 8,
       overflow:     'hidden',
       minHeight:    44,
+      boxShadow:    '0 1px 3px rgba(0,0,0,0.06)',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
       transition:   'box-shadow .15s',
     }}>
@@ -694,7 +695,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
         <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'8px',display:'flex',flexDirection:'column',gap:cardMode==='compact'||cardMode==='relevancy'?4:7,background:'#F4F1EB'}} className="no-scroll">
+      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB'}} className="no-scroll">
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
