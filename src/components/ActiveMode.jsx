@@ -205,7 +205,7 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
         {act.url && (
           <a href={act.url} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            style={{ fontSize: 13, color: '#93BBFD', flexShrink: 0, textDecoration: 'none', lineHeight: 1 }}
+            style={{ fontSize: 13, color: '#2563EB', flexShrink: 0, textDecoration: 'none', lineHeight: 1, fontSize: 14 }}
             title="Open event page">🔗</a>
         )}
         {/* Chevron -- ▾ when collapsed, ▴ when expanded */}
@@ -330,7 +330,6 @@ function SpotlightWeatherBar({ activities, weather, onCal, onWeather }) {
           >
             <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.88)', lineHeight: 1.25, marginBottom: 3 }}>{act.title}</div>
             <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>{act.when}{act.cost ? ` · ${act.cost}` : ''}</div>
-            {act.expires && <div style={{ fontSize: 9, color: '#C9A84C', marginTop: 3 }}>⚡ Last chance</div>}
           </div>
         ))}
 
@@ -720,7 +719,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
   const showHero  = spotlightMode === 'hero';
 
   return (
-    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
+    <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,minHeight:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
       <div className={`${cat.cls}`} style={{padding:'9px 13px 8px',display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
         <span style={{fontSize:15}}>{cat.icon}</span>
         <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',flex:1}}>{cat.label}</span>
@@ -728,7 +727,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
         <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB'}}>
+      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB',minHeight:0}}>
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
@@ -1126,8 +1125,8 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       {/* ── Main content ── */}
       {isMobile
         ? <MobileLayout visibleCats={visibleCats} {...colProps} />
-        : <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            <div style={{flex:1,display:'flex',minHeight:0}}>
+        : <div style={{display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
+            <div style={{flex:1,display:'flex',minHeight:0,overflow:'hidden'}}>
               {/* Columns grid */}
               <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
                 style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${pageCats.length},1fr)`,minHeight:0}}
