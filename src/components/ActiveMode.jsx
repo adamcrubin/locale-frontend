@@ -27,41 +27,83 @@ function isFrontendBlocked(act) {
   return FRONTEND_BLOCKLIST.some(kw => combined.includes(kw));
 }
 
-// ── Smart when display: strip years, long date strings → "Sat · Venue" ────────
-function formatWhen(act) {
-  const raw = (act.when_display || act.when || '').trim();
+// ── Detect if event is a restaurant/dining (not a specific event) ────────────
+function isRestaurant(act) {
+  const cats = act.categories || [];
+  const tags = (act.tags || []).map(t => t.toLowerCase());
+  const title = (act.title || '').toLowerCase();
+  // Food category + no specific event keywords = likely a restaurant listing
+  if (!cats.includes('food')) return false;
+  const eventKeywords = ['festival', 'tasting', 'dinner', 'brunch', 'pop-up', 'popup', 'market', 'competition', 'contest', 'class', 'workshop'];
+  return !eventKeywords.some(kw => title.includes(kw) || tags.includes(kw));
+}
+
+// ── Format time string: "7:00 PM" → "7pm", "11:30 AM" → "11:30am" ───────────
+function formatTimeStr(raw) {
   if (!raw) return '';
+  const m = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|AM|PM)/i);
+  if (!m) return '';
+  const h = parseInt(m[1]);
+  const mins = m[2] && m[2] !== '00' ? `:${m[2]}` : '';
+  const period = m[3].replace(/\./g,'').toLowerCase();
+  return `${h}${mins}${period}`;
+}
 
-  // Map full day names and date patterns to short day abbreviations
+// ── Smart when display ────────────────────────────────────────────────────────
+function formatWhen(act) {
+  // Restaurants without a specific event: time is not meaningful
+  if (isRestaurant(act)) return '';
+
+  const raw = (act.when_display || act.when || '').trim();
+  const startTime = act.start_time || '';
+  const endTime   = act.end_time   || '';
+
+  // Detect day of week from raw string
   const lower = raw.toLowerCase();
-
-  // Detect day of week
   let day = '';
-  if (lower.includes('friday') || lower.startsWith('fri')) day = 'Fri';
-  else if (lower.includes('saturday') || lower.startsWith('sat')) day = 'Sat';
-  else if (lower.includes('sunday') || lower.startsWith('sun')) day = 'Sun';
-  else if (lower.includes('through') || lower.includes('thru') || lower.includes('–') || lower.includes('-')) {
-    // Multi-day range like "Through May 3" or "April 24–26"
+  if (lower.includes('friday')   || /^fri\b/.test(lower)) day = 'Fri';
+  else if (lower.includes('saturday') || /^sat\b/.test(lower)) day = 'Sat';
+  else if (lower.includes('sunday')   || /^sun\b/.test(lower)) day = 'Sun';
+  else if (lower.includes('through') || lower.includes('thru') || lower.includes('–') || lower.includes(' - ')) {
     day = 'Fri–Sun';
   }
 
-  // Extract time if present (e.g. "7:00 PM", "8pm", "7:00 a.m.")
-  const timeMatch = raw.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|AM|PM))/i);
-  const time = timeMatch ? timeMatch[1].replace(/\./g,'').replace(/\s/g,'').toUpperCase() : '';
+  // Also try start_date for day detection
+  if (!day && act.start_date) {
+    const d = new Date(act.start_date + 'T12:00:00');
+    const dow = d.getDay();
+    if (dow === 5) day = 'Fri';
+    else if (dow === 6) day = 'Sat';
+    else if (dow === 0) day = 'Sun';
+  }
 
-  if (day && time) return `${day} · ${time}`;
-  if (day) return day;
+  // Build short date in parens like "(4/26)"
+  let dateShort = '';
+  if (act.start_date) {
+    const d = new Date(act.start_date + 'T12:00:00');
+    dateShort = `(${d.getMonth()+1}/${d.getDate()})`;
+  }
 
-  // Fallback: strip year and long date format, keep first 30 chars
-  return raw
-    .replace(/,?\s*20\d{2}/g, '')       // remove year
-    .replace(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s*/gi, (m) => {
-      // "April 25" → just return empty, we already have day from above
-      return '';
-    })
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 35);
+  // Build time range
+  let timeStr = '';
+  const t1 = formatTimeStr(startTime) || formatTimeStr(raw.match(/\d{1,2}(?::\d{2})?\s*(?:am|pm)/i)?.[0] || '');
+  const t2 = formatTimeStr(endTime);
+
+  if (t1 && t2) timeStr = `${t1}–${t2}`;
+  else if (t1) timeStr = t1;
+  else if (/all.?day/i.test(raw)) timeStr = 'All day';
+
+  // Fallback time if none found — guess from category/tags
+  if (!timeStr) {
+    const combined = `${lower} ${(act.tags||[]).join(' ').toLowerCase()} ${(act.categories||[]).join(' ')}`;
+    if (combined.includes('morning') || combined.includes('breakfast') || combined.includes('brunch')) timeStr = 'Morning';
+    else if (combined.includes('evening') || combined.includes('night') || combined.includes('dinner') || combined.includes('music') || combined.includes('concert') || combined.includes('show')) timeStr = 'Evening';
+    else if (combined.includes('afternoon') || combined.includes('lunch') || combined.includes('midday')) timeStr = 'Afternoon';
+    else timeStr = 'Anytime';
+  }
+
+  const dayWithDate = [day, dateShort].filter(Boolean).join(' ');
+  return [dayWithDate, timeStr].filter(Boolean).join(' · ');
 }
 
 // ── Smart venue display: neighborhood or short venue name ────────────────────
@@ -211,11 +253,27 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
       : `https://www.google.com/maps/search/?api=1&query=${dest}`, '_blank');
   };
 
+  const eventUrl = act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`;
+
   return (
     <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:4 }}>
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn icon="🎟" title="Reserve/tickets" onClick={()=>onReserve(act,catId)} dim={!act.reservable&&!['sports','music'].includes(catId)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
+      {/* Link — opens event page or Google search fallback */}
+      <a href={eventUrl} target="_blank" rel="noopener noreferrer"
+        onClick={e => e.stopPropagation()}
+        title={act.url ? 'Open event page' : 'Search for this event'}
+        style={{ textDecoration:'none' }}>
+        <button style={{
+          width:28, height:28, borderRadius:8,
+          border:`0.5px solid ${act.url ? 'rgba(37,99,235,.3)' : 'rgba(0,0,0,.12)'}`,
+          background: act.url ? 'rgba(37,99,235,.08)' : 'transparent',
+          cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
+          color: act.url ? '#2563EB' : '#aaa',
+          opacity: act.url ? 1 : 0.5,
+        }}>🔗</button>
+      </a>
 
       <div style={{flex:1}}/>
       <ABtn icon="♥" title="Save" onClick={()=>onHeart(act)} hoverBg="#FFF1F2" hoverColor="#E53E3E" color="#E53E3E" />
@@ -294,14 +352,6 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
-        {/* Link icon — always shown. Uses stored URL or falls back to Google search */}
-        <a
-          href={act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`}
-          target="_blank" rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          style={{ flexShrink: 0, textDecoration: 'none', lineHeight: 1, opacity: act.url ? 1 : 0.45 }}
-          title={act.url ? 'Open event page' : 'Search for this event'}
-        >🔗</a>
         {/* Chevron -- ▾ when collapsed, ▴ when expanded */}
         <span style={{
           fontSize: 10, color: 'var(--subtle)', flexShrink: 0,
@@ -813,12 +863,17 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
 
   return (
     <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,minHeight:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
-      <div className={`${cat.cls}`} style={{padding:'9px 13px 8px',display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
-        <span style={{fontSize:15}}>{cat.icon}</span>
-        <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',flex:1}}>{cat.label}</span>
-        {isBoosted&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>☀ great today</span>}
-        {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
-        <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
+      <div className={`${cat.cls}`} style={{padding:'10px 13px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:3,flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:7,width:'100%'}}>
+          <span style={{fontSize:14}}>{cat.icon}</span>
+          <span style={{fontSize:12,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',textAlign:'center',flex:1}}>{cat.label}</span>
+          <span style={{fontSize:14}}>{cat.icon}</span>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:5}}>
+          {isBoosted&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>☀ great today</span>}
+          {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
+          <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
+        </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB',minHeight:0}}>
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
