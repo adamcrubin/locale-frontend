@@ -13,6 +13,7 @@ import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
 import { useWeekdayActivities } from './hooks/useWeekdayActivities';
 import { useWeather }       from './hooks/useWeather';
+import { useCalendar }      from './hooks/useCalendar';
 import { usePhotos }        from './hooks/usePhotos';
 import { usePostEventFeedback, trackForFeedback } from './hooks/usePostEventFeedback';
 import { postFeedback }     from './lib/api';
@@ -41,325 +42,42 @@ function LoadingSplash() {
   );
 }
 
-// ── Reactive isMobile hook ────────────────────────────────────────────────────
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() => window.innerWidth < 768);
-  useEffect(() => {
-    const handler = () => setMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-  return mobile;
-}
-
-// ── Full Debug Panel ──────────────────────────────────────────────────────────
-// Always visible in this build. Shows data sources, errors, and lets you
-// fire raw API requests and copy the responses to paste back to Claude.
-function DebugPanel({ activitiesSource, weatherSource, settings, activeProfile }) {
-  const [open,    setOpen]    = useState(false);
-  const [tab,     setTab]     = useState('status');   // 'status' | 'inspect' | 'pipeline' | 'env'
-  const [results, setResults] = useState({});
-  const [loading, setLoading] = useState({});
-  const [copied,  setCopied]  = useState(null);
-
-  const BASE      = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-  const city      = settings?.city || 'Falls Church, VA';
-  const profileId = activeProfile?.id || 'default';
-  const zip       = city.match(/\b(\d{5})\b/)?.[1] || '22046';
-
+// ── Dev data source indicator ─────────────────────────────────────────────────
+function DataBadge({ activitiesSource, weatherSource }) {
+  const [expanded, setExpanded] = useState(false);
   const allLive = activitiesSource === 'live' && weatherSource === 'live';
   const allMock = activitiesSource === 'mock' && weatherSource === 'mock';
-  const dot     = allLive ? '#22c55e' : allMock ? '#f59e0b' : '#60a5fa';
-  const label   = allLive ? 'LIVE' : allMock ? 'DEMO' : 'PARTIAL';
-
-  // ── Fire any request (GET or POST) ───────────────────────────────────────
-  const fire = async (key, path, method = 'GET', body = null) => {
-    setLoading(l => ({ ...l, [key]: true }));
-    const start = Date.now();
-    try {
-      const opts = { method, headers: { 'Content-Type': 'application/json' } };
-      if (body) opts.body = JSON.stringify(body);
-      const res  = await fetch(`${BASE}${path}`, opts);
-      const data = await res.json();
-      setResults(r => ({ ...r, [key]: { ok: res.ok, status: res.status, ms: Date.now() - start, data, method } }));
-    } catch (e) {
-      setResults(r => ({ ...r, [key]: { ok: false, status: 0, ms: Date.now() - start, error: e.message, method } }));
-    } finally {
-      setLoading(l => ({ ...l, [key]: false }));
-    }
-  };
-
-  const copy = (key) => {
-    navigator.clipboard.writeText(JSON.stringify(results[key], null, 2)).then(() => {
-      setCopied(key);
-      setTimeout(() => setCopied(null), 2000);
-    });
-  };
-
-  // ── Inspect checks (GET) ─────────────────────────────────────────────────
-  const INSPECT = [
-    { key: 'health',      label: '🟢 Health',       path: '/health' },
-    { key: 'weather',     label: '🌤 Weather',       path: `/weather?city=${encodeURIComponent(city)}` },
-    { key: 'events',      label: '📋 Events feed',   path: `/events?zip=${zip}&profileId=${profileId}&city=${encodeURIComponent(city)}` },
-    { key: 'sources',     label: '🗂 Sources',       path: `/sources?zip=${zip}` },
-    { key: 'scraped',     label: '🕷 Scraped content',path: `/admin/scraped?zip=${zip}` },
-    { key: 'dbevents',    label: '📌 DB events',     path: `/admin/events?zip=${zip}&limit=20` },
-    { key: 'cache',       label: '⚡ Cache keys',    path: '/admin/cache' },
-  ];
-
-  // ── Pipeline actions (POST) ──────────────────────────────────────────────
-  const PIPELINE = [
-    {
-      key:   'run_scrape',
-      label: '🕷 1. Run scrape',
-      desc:  'Fetches HTML from all active sources for your zip. Takes 15–30s.',
-      path:  '/admin/refresh/sources',
-      method:'POST',
-      body:  { zip },
-      color: '#60a5fa',
-    },
-    {
-      key:   'run_extract',
-      label: '🤖 2. Run extraction',
-      desc:  'Sends scraped content to Haiku to extract structured events. Takes 20–60s.',
-      path:  '/admin/extract',
-      method:'POST',
-      body:  { zip },
-      color: '#a78bfa',
-    },
-    {
-      key:   'debug_extract',
-      label: '🔬 Debug extraction (sync)',
-      desc:  'Runs extraction on ONE source synchronously and returns the full result inline. Use this to diagnose extraction failures.',
-      path:  '/admin/extract/debug',
-      method:'POST',
-      body:  { zip },
-      color: '#f97316',
-    },
-    {
-      key:   'run_full',
-      label: '🚀 Full pipeline (scrape + extract)',
-      desc:  'Runs both steps end-to-end. Takes 45–90s. Use this to get first live events.',
-      path:  '/admin/refresh/activities',
-      method:'POST',
-      body:  { zip },
-      color: '#34d399',
-    },
-    {
-      key:   'clear_cache',
-      label: '🗑 Clear cache',
-      desc:  'Flushes in-memory cache so next page load fetches fresh data.',
-      path:  '/admin/cache/clear',
-      method:'POST',
-      body:  {},
-      color: '#f59e0b',
-    },
-    {
-      key:   'verify_urls',
-      label: '🔍 Verify source URLs',
-      desc:  'Checks all source URLs are reachable. Marks broken ones inactive.',
-      path:  '/admin/validate-urls',
-      method:'POST',
-      body:  { zip },
-      color: '#94a3b8',
-    },
-  ];
-
-  // ── Styles ───────────────────────────────────────────────────────────────
-  const s = {
-    panel: {
-      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
-      fontFamily: 'DM Sans, sans-serif',
-      maxHeight: open ? '75vh' : 'auto',
-      display: 'flex', flexDirection: 'column',
-    },
-    bar: {
-      display: 'flex', alignItems: 'center', gap: 8,
-      background: 'rgba(8,8,8,.96)', borderTop: `2px solid ${dot}`,
-      padding: '7px 14px', cursor: 'pointer', backdropFilter: 'blur(12px)',
-      userSelect: 'none',
-    },
-    body: {
-      background: '#0a0a0a', overflowY: 'auto', flex: 1,
-      borderTop: '0.5px solid rgba(255,255,255,.08)',
-    },
-    tabs: {
-      display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,.08)',
-      background: '#080808',
-    },
-    tab: (active) => ({
-      fontSize: 11, padding: '8px 14px', cursor: 'pointer', border: 'none',
-      background: 'transparent', fontFamily: 'DM Sans, sans-serif',
-      color: active ? '#fff' : 'rgba(255,255,255,.35)',
-      borderBottom: active ? '2px solid #C9A84C' : '2px solid transparent',
-      fontWeight: active ? 600 : 400, transition: 'all .12s',
-    }),
-    section: { padding: '12px 14px' },
-    h: { fontSize: 10, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', marginBottom: 10 },
-    btn: (color = '#ffffff') => ({
-      fontSize: 11, padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
-      border: `0.5px solid ${color}44`, background: `${color}18`,
-      color: color, fontFamily: 'DM Sans, sans-serif', flexShrink: 0,
-      transition: 'all .12s',
-    }),
-    row: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
-    pre: (ok) => ({
-      fontSize: 11, color: ok ? 'rgba(255,255,255,.6)' : '#f87171',
-      background: 'rgba(255,255,255,.03)', border: '0.5px solid rgba(255,255,255,.07)',
-      borderRadius: 6, padding: '8px 10px', overflowX: 'auto',
-      maxHeight: 180, margin: '6px 0 0', whiteSpace: 'pre-wrap',
-      wordBreak: 'break-all', fontFamily: 'monospace',
-    }),
-  };
-
-  // ── Result row renderer (shared by both tabs) ────────────────────────────
-  const ResultRow = ({ k }) => {
-    const res = results[k];
-    if (!res) return null;
-    const ok = res.ok;
-    const c  = ok ? '#22c55e' : '#f87171';
-    const preview = JSON.stringify(res.error || res.data, null, 2);
-    return (
-      <div>
-        <div style={s.row}>
-          <span style={{ fontSize: 11, color: c, fontWeight: 600 }}>
-            {ok ? '✓' : '✗'} {res.status} · {res.ms}ms
-          </span>
-          <button
-            style={{
-              fontSize: 11, padding: '6px 12px', borderRadius: 7, cursor: 'pointer',
-              border: copied===k ? '0.5px solid #22c55e44' : '0.5px solid #ffffff44',
-              background: copied===k ? '#22c55e18' : '#ffffff18',
-              color: copied===k ? '#22c55e' : 'rgba(255,255,255,.6)',
-              fontFamily: 'DM Sans, sans-serif', flexShrink: 0, marginLeft: 'auto',
-            }}
-            onClick={() => copy(k)}>
-            {copied === k ? '✓ Copied' : '📋 Copy'}
-          </button>
-        </div>
-        <pre style={s.pre(ok)}>
-          {preview.slice(0, 1200)}{preview.length > 1200 ? '\n\n… truncated — hit Copy for full response' : ''}
-        </pre>
-      </div>
-    );
-  };
+  const dot   = allLive ? '#22c55e' : allMock ? '#f59e0b' : '#60a5fa';
+  const label = allLive ? 'live'    : allMock ? 'demo'    : 'partial';
 
   return (
-    <div style={s.panel}>
-      {/* ── Status bar ── */}
-      <div style={s.bar} onClick={() => setOpen(o => !o)}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: dot, boxShadow: `0 0 8px ${dot}` }} />
-        <span style={{ fontSize: 11, color: dot, fontWeight: 700, letterSpacing: '.05em' }}>{label}</span>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)', flex: 1 }}>
-          {allMock ? ' Backend not reached — open to diagnose' : ` ${BASE}`}
-        </span>
-        {!open && activitiesSource === 'mock' && (
-          <span style={{ fontSize: 10, background: '#f59e0b22', color: '#f59e0b', border: '0.5px solid #f59e0b44', borderRadius: 4, padding: '2px 7px' }}>
-            showing mock data
-          </span>
-        )}
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,.3)', marginLeft: 4 }}>{open ? '▼' : '▲'}</span>
-      </div>
-
-      {open && (
-        <div style={s.body}>
-          {/* ── Tabs ── */}
-          <div style={s.tabs}>
-            {[['status','📊 Status'],['inspect','🔍 Inspect'],['pipeline','🚀 Pipeline'],['env','⚙ Env']].map(([id, lbl]) => (
-              <button key={id} style={s.tab(tab===id)} onClick={() => setTab(id)}>{lbl}</button>
-            ))}
+    <div
+      onClick={() => setExpanded(e => !e)}
+      style={{ position:'fixed', bottom:10, left:10, zIndex:90, cursor:'pointer', fontFamily:'DM Sans, sans-serif', userSelect:'none' }}
+    >
+      {!expanded && (
+        <div style={{ display:'flex', alignItems:'center', gap:5, background:'rgba(0,0,0,.7)', border:`0.5px solid ${dot}44`, borderRadius:99, padding:'4px 9px', backdropFilter:'blur(6px)' }}>
+          <div style={{ width:6, height:6, borderRadius:'50%', background:dot, boxShadow:allLive?`0 0 6px ${dot}`:'none' }} />
+          <span style={{ fontSize:10, color:'rgba(255,255,255,.5)', letterSpacing:'.06em', textTransform:'uppercase' }}>{label}</span>
+        </div>
+      )}
+      {expanded && (
+        <div style={{ background:'rgba(15,13,11,.95)', border:'0.5px solid rgba(255,255,255,.12)', borderRadius:10, padding:'10px 13px', minWidth:190, backdropFilter:'blur(10px)' }}>
+          <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(255,255,255,.3)', marginBottom:8 }}>Data sources</div>
+          {[{label:'Activities', source:activitiesSource},{label:'Weather', source:weatherSource}].map(({label,source}) => {
+            const c = source==='live'?'#22c55e':source==='mock'?'#f59e0b':'#94a3b8';
+            const msg = source==='live'?'Live from backend':source==='mock'?'Demo — backend offline':source;
+            return (
+              <div key={label} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:5 }}>
+                <div style={{ width:6, height:6, borderRadius:'50%', background:c, flexShrink:0 }} />
+                <span style={{ fontSize:11, color:'rgba(255,255,255,.5)', width:72 }}>{label}</span>
+                <span style={{ fontSize:11, color:c }}>{msg}</span>
+              </div>
+            );
+          })}
+          <div style={{ fontSize:9, color:'rgba(255,255,255,.2)', marginTop:8, borderTop:'0.5px solid rgba(255,255,255,.07)', paddingTop:7 }}>
+            Tap to collapse · {import.meta.env.VITE_API_URL||'localhost:3001'}
           </div>
-
-          {/* ── Status tab ── */}
-          {tab === 'status' && (
-            <div style={s.section}>
-              <div style={s.h}>Data sources</div>
-              {[{ label: 'Activities', src: activitiesSource }, { label: 'Weather', src: weatherSource }].map(({ label, src }) => {
-                const c = src==='live' ? '#22c55e' : src==='mock' ? '#f59e0b' : '#94a3b8';
-                const msg = src==='live' ? 'Live from backend ✓' : src==='mock' ? 'Mock — backend not reached' : src;
-                return (
-                  <div key={label} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                    <div style={{ width:8, height:8, borderRadius:'50%', background:c, boxShadow:`0 0 6px ${c}88`, flexShrink:0 }} />
-                    <span style={{ fontSize:13, color:'rgba(255,255,255,.4)', width:80 }}>{label}</span>
-                    <span style={{ fontSize:13, color:c, fontWeight:600 }}>{msg}</span>
-                  </div>
-                );
-              })}
-              <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(255,255,255,.03)', borderRadius:8, border:'0.5px solid rgba(255,255,255,.07)' }}>
-                <div style={{ fontSize:11, color:'rgba(255,255,255,.25)', lineHeight:1.8 }}>
-                  <div>API: <span style={{color:'rgba(255,255,255,.5)'}}>{BASE}</span></div>
-                  <div>City: <span style={{color:'rgba(255,255,255,.5)'}}>{city}</span> · Zip: <span style={{color:'rgba(255,255,255,.5)'}}>{zip}</span></div>
-                  <div>Profile: <span style={{color:'rgba(255,255,255,.5)'}}>{profileId}</span></div>
-                </div>
-              </div>
-              {allMock && (
-                <div style={{ marginTop:12, padding:'10px 12px', background:'rgba(245,158,11,.08)', borderRadius:8, border:'0.5px solid rgba(245,158,11,.2)', fontSize:12, color:'#f59e0b', lineHeight:1.6 }}>
-                  <strong>Next step:</strong> go to the Pipeline tab and click "🚀 Full pipeline" to scrape and extract real events. Then reload the page.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Inspect tab ── */}
-          {tab === 'inspect' && (
-            <div style={s.section}>
-              <div style={s.h}>Read-only API checks — fire &amp; copy responses to Claude</div>
-              {INSPECT.map(({ key, label, path }) => (
-                <div key={key} style={{ marginBottom:14, paddingBottom:14, borderBottom:'0.5px solid rgba(255,255,255,.06)' }}>
-                  <div style={s.row}>
-                    <button style={{ ...s.btn(), opacity: loading[key] ? 0.5 : 1 }}
-                      onClick={() => fire(key, path)} disabled={loading[key]}>
-                      {loading[key] ? '⏳ Loading…' : label}
-                    </button>
-                  </div>
-                  <ResultRow k={key} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Pipeline tab ── */}
-          {tab === 'pipeline' && (
-            <div style={s.section}>
-              <div style={s.h}>Pipeline actions — these write to the database</div>
-              <div style={{ marginBottom:14, padding:'10px 12px', background:'rgba(52,211,153,.06)', border:'0.5px solid rgba(52,211,153,.15)', borderRadius:8, fontSize:12, color:'rgba(52,211,153,.8)', lineHeight:1.6 }}>
-                <strong>First time setup:</strong> click "🚀 Full pipeline" below. It will scrape all 19 active sources and extract events into the DB. Takes ~60–90 seconds. Then reload the app — the badge should turn green.
-              </div>
-              {PIPELINE.map(({ key, label, desc, path, method, body, color }) => (
-                <div key={key} style={{ marginBottom:16, paddingBottom:16, borderBottom:'0.5px solid rgba(255,255,255,.06)' }}>
-                  <div style={s.row}>
-                    <button
-                      style={{ ...s.btn(color), opacity: loading[key] ? 0.6 : 1, fontSize:12, padding:'7px 14px' }}
-                      onClick={() => fire(key, path, method, body)}
-                      disabled={loading[key]}
-                    >
-                      {loading[key] ? '⏳ Running…' : label}
-                    </button>
-                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', letterSpacing:'.04em', textTransform:'uppercase' }}>{method}</span>
-                  </div>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginBottom:4 }}>{desc}</div>
-                  <ResultRow k={key} />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* ── Env tab ── */}
-          {tab === 'env' && (
-            <div style={s.section}>
-              <div style={s.h}>Environment &amp; build info</div>
-              <pre style={{ ...s.pre(true), maxHeight: 'none' }}>
-{`VITE_API_URL:      ${import.meta.env.VITE_API_URL || '(not set — defaulting to localhost:3001)'}
-VITE_SUPABASE_URL:  ${import.meta.env.VITE_SUPABASE_URL ? '✓ set' : '(not set)'}
-VITE_SUPABASE_KEY:  ${import.meta.env.VITE_SUPABASE_ANON_KEY ? '✓ set' : '(not set)'}
-VITE_UNSPLASH_KEY:  ${import.meta.env.VITE_UNSPLASH_ACCESS_KEY ? '✓ set' : '(not set)'}
-
-Screen:             ${window.innerWidth} × ${window.innerHeight}px
-Device pixel ratio: ${window.devicePixelRatio}
-User agent:         ${navigator.userAgent}`}
-              </pre>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -369,8 +87,6 @@ User agent:         ${navigator.userAgent}`}
 export default function App() {
   // ── Auth-free: no login required, all local + optional Supabase sync ──
   const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(null);
-
-  const isMobile = useIsMobile();
 
   // ── Live data hooks (fall back to mock if backend down) ──
   const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile);
@@ -390,6 +106,31 @@ export default function App() {
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
   const [transitioning, setTransitioning] = useState(false);
+
+  // Google Calendar integration -- auth-free, uses stable deviceId
+  const calendar = useCalendar(activeProfile);
+
+  // Merge real Google Calendar events into calQueue for display in sidebar
+  // Real events come back as Google Calendar event objects; normalize them
+  // to the same shape calQueue uses: { title, date, time, added: true }
+  useEffect(() => {
+    if (!calendar.events?.length) return;
+    const normalized = calendar.events.map(e => ({
+      title: e.summary || e.title || 'Event',
+      date:  e.start?.dateTime?.split('T')[0] || e.start?.date || '',
+      time:  e.start?.dateTime
+        ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : 'All day',
+      added:      true,
+      fromGoogle: true,
+      googleId:   e.id,
+    }));
+    // Keep locally-added items (fromGoogle=false), replace google ones
+    setCalQueue(prev => [
+      ...prev.filter(e => !e.fromGoogle),
+      ...normalized,
+    ]);
+  }, [calendar.events]);
 
   const ambientEnteredAt = useRef(null);
   const idleTimer        = useRef(null);
@@ -437,7 +178,7 @@ export default function App() {
     transitionTo('active');
   };
 
-  // Calendar add -- also tracks for post-event feedback
+  // Calendar add — also tracks for post-event feedback
   const onAdded = (entry) => {
     setCalQueue(q => [...q, entry]);
     setCalModal(null);
@@ -458,7 +199,7 @@ export default function App() {
     });
   };
 
-  // Feedback loop -- thumbs up/down posts to backend and updates profile prefs
+  // Feedback loop — thumbs up/down posts to backend and updates profile prefs
   const onThumbUp = async (catId, act) => {
     // Post to backend
     if (act.id) {
@@ -488,7 +229,7 @@ export default function App() {
     weather,
     activitiesSource,
     weatherSource,
-    isMobile,
+    calendar,
     onCalendar:      setCalModal,
     onWeather:       setWeatherDay,
     onSettings:      (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true),
@@ -501,7 +242,7 @@ export default function App() {
     onThumbDown,
   };
 
-  // ── Onboarding -- show on first launch ──
+  // ── Onboarding — show on first launch ──
   if (!settings.onboardingDone) {
     return (
       <OnboardingFlow
@@ -620,13 +361,8 @@ export default function App() {
       {/* ── Post-event feedback toast ── */}
       <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
 
-      {/* ── Debug panel -- always visible during active development ── */}
-      <DebugPanel
-        activitiesSource={activitiesSource}
-        weatherSource={weatherSource}
-        settings={settings}
-        activeProfile={activeProfile}
-      />
+      {/* ── Data source indicator (dev helper) ── */}
+      <DataBadge activitiesSource={activitiesSource} weatherSource={weatherSource} />
     </div>
   );
 }
