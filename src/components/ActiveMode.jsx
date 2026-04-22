@@ -200,7 +200,6 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             {act.when}{act.where ? ` · ${act.where}` : ''}{act.cost ? ` · ${act.cost}` : ''}
           </div>
         </div>
-        {act.expires && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEF3E2', color: '#92400E', flexShrink: 0 }}>⚡</span>}
           {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
         {/* Link icon -- opens event URL in new tab, stops propagation so it doesn't toggle card */}
         {act.url && (
@@ -236,7 +235,6 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             {act.tags?.map(t => (
               <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'var(--bg2)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>{t}</span>
             ))}
-            {act.expires && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: '#FEF3E2', color: '#92400E' }}>expiring soon</span>}
           </div>
           {/* Action bar */}
           <ActionBar act={act} catId={catId} onCal={onCal} onRemove={() => { sendFeedback('dismissed'); setExiting(true); setTimeout(() => onRemove(act), 200); }}
@@ -244,6 +242,41 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             onReserve={onReserve} homeAddress={homeAddress} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Simple weather pill bar ───────────────────────────────────────────────────
+function WeatherPillBar({ weather, onWeather }) {
+  const days = weather?.length > 0 ? weather : MOCK_WEATHER;
+  const pills = ['fri','sat','sun'].map(d =>
+    days.find(w => w.day?.toLowerCase().startsWith(d))
+  ).filter(Boolean);
+
+  return (
+    <div style={{
+      background: '#1C1A17', borderBottom: '0.5px solid rgba(255,255,255,.06)',
+      padding: '6px 18px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+    }}>
+      {pills.map((d, i) => {
+        const idx = days.indexOf(d);
+        return (
+          <button key={d.day} onClick={() => onWeather(idx >= 0 ? idx : i)} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.1)',
+            borderRadius: 99, padding: '5px 14px', cursor: 'pointer',
+            fontFamily: 'DM Sans, sans-serif', transition: 'background .12s',
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.12)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,.06)'}
+          >
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.5)', letterSpacing: '.06em', textTransform: 'uppercase', width: 26 }}>{d.day}</span>
+            <WeatherIcon icon={d.icon} desc={d.desc} size={16} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)' }}>{d.hi}°</span>
+            {d.precip > 20 && <span style={{ fontSize: 10, color: '#93C5FD' }}>{d.precip}%</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -455,8 +488,8 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
           onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <div style={{fontSize:8,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#C9A84C',marginBottom:5,display:'flex',alignItems:'center',gap:4}}>
-            <span>⭐</span> Don't miss
+          <div style={{fontSize:8,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#C9A84C',marginBottom:5}}>
+            ⭐ TOP PICK
           </div>
           <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,.88)',lineHeight:1.25,marginBottom:3}}>{hero.title}</div>
           <div style={{fontSize:10,color:'rgba(255,255,255,.38)',lineHeight:1.3}}>
@@ -491,18 +524,19 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
               }}>
                 <span style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,.55)',letterSpacing:'.04em',flex:1}}>{label} {date.getDate()}</span>
                 {wx && (
-                  <button
-                    onClick={() => {
-                      const allDays = weather?.length > 0 ? weather : MOCK_WEATHER;
-                      const idx = allDays.findIndex(d => d.day?.toLowerCase().startsWith(short.toLowerCase()));
-                      if (idx>=0) onWeather(idx);
-                    }}
-                    style={{display:'flex',alignItems:'center',gap:3,background:'none',border:'none',cursor:'pointer',padding:0}}
-                  >
-                    <WeatherIcon icon={wx.icon} desc={wx.desc} size={12} />
-                    <span style={{fontSize:10,color:'rgba(255,255,255,.4)',fontWeight:500}}>{wx.hi}°</span>
-                  </button>
-                )}
+                <button onClick={() => {
+                  const allDays = weather?.length > 0 ? weather : MOCK_WEATHER;
+                  const idx = allDays.findIndex(d => d.day?.toLowerCase().startsWith(short.toLowerCase()));
+                  if (idx>=0) onWeather(idx);
+                }} style={{
+                  display:'flex',alignItems:'center',gap:4,
+                  background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',
+                  borderRadius:99,padding:'3px 9px',cursor:'pointer',
+                }}>
+                  <WeatherIcon icon={wx.icon} desc={wx.desc} size={12} />
+                  <span style={{fontSize:10,color:'rgba(255,255,255,.65)',fontWeight:500}}>{wx.hi}°</span>
+                </button>
+              )}
               </div>
 
               {/* Events for this day */}
@@ -694,7 +728,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         {isDimmed&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>🌧 rain</span>}
         <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB'}} className="no-scroll">
+      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:'#F4F1EB'}}>
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
@@ -1013,7 +1047,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   }
 
   return (
-    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>
+    <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>
 
       {/* ── Header ── */}
       <div style={{background:'var(--header-bg)',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -1082,8 +1116,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         </div>
       </div>
 
-      {/* ── Spotlight + Weather combined bar ── */}
-      <SpotlightWeatherBar activities={activities} weather={weather} onCal={onCalendar} onWeather={onWeather} />
+
 
 
 
