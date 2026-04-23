@@ -35,7 +35,14 @@ function isRestaurant(act) {
   const title = (act.title || '').toLowerCase();
   // Food category + no specific event keywords = likely a restaurant listing
   if (!cats.includes('food')) return false;
-  const eventKeywords = ['festival', 'tasting', 'dinner', 'brunch', 'pop-up', 'popup', 'market', 'competition', 'contest', 'class', 'workshop'];
+  // Real events always have a start_date — restaurants don't
+  if (act.start_date) return false;
+  const eventKeywords = [
+    'festival','fest','fair','tasting','dinner','brunch','pop-up','popup',
+    'market','competition','contest','class','workshop','tour','show','concert',
+    'celebration','party','gala','night','week','weekend','event','experience',
+    'gathering','happy hour','trivia','game','championship',
+  ];
   return !eventKeywords.some(kw => title.includes(kw) || tags.includes(kw));
 }
 
@@ -1373,15 +1380,19 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
     : baseCats;
 
   const COLS_PER_PAGE = isMobile ? 1 : 4;
-  const numPages = Math.ceil(visibleCats.length/COLS_PER_PAGE);
-  const pageCats = visibleCats.slice(colPage*COLS_PER_PAGE, colPage*COLS_PER_PAGE+COLS_PER_PAGE);
+  const numPages = Math.max(1, Math.ceil(visibleCats.length/COLS_PER_PAGE));
+  // Clamp colPage when live data loads and numPages shrinks
+  const safePage = Math.min(colPage, numPages - 1);
+  const pageCats = visibleCats.slice(safePage*COLS_PER_PAGE, safePage*COLS_PER_PAGE+COLS_PER_PAGE);
+  // Keep state in sync so arrows work correctly on next press
+  useEffect(() => { if (colPage !== safePage) setColPage(safePage); }, [numPages]);
 
   // Swipe
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
   const onTS = e=>{swipeX.current=e.touches[0].clientX;swipeDir.current=null;};
   const onTM = e=>{if(swipeDir.current)return;const dx=Math.abs(e.touches[0].clientX-swipeX.current);const dy=Math.abs(e.touches[0].clientY-swipeX.current);if(dx>6||dy>6)swipeDir.current=dx>dy?'h':'v';};
-  const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&colPage<numPages-1)setColPage(p=>p+1);else if(dx>40&&colPage>0)setColPage(p=>p-1);};
+  const onTE = e=>{if(swipeDir.current!=='h')return;const dx=e.changedTouches[0].clientX-swipeX.current;if(dx<-40&&safePage<numPages-1)setColPage(p=>Math.min(p+1,numPages-1));else if(dx>40&&safePage>0)setColPage(p=>Math.max(p-1,0));};
 
   // Cross-category dedup set — mutable, passed into each CatColumn
   // First column to claim a title wins; subsequent columns skip duplicates
@@ -1524,13 +1535,13 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             {/* Page nav */}
             {numPages>1&&(
               <div style={{background:'#1C1A17',borderTop:'0.5px solid rgba(255,255,255,.06)',padding:'6px 18px',display:'flex',alignItems:'center',gap:8}}>
-                <button onClick={()=>setColPage(p=>(p-1+numPages)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.18)',color:'rgba(255,255,255,.8)',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>←</button>
+                <button onClick={()=>setColPage(p=>Math.max(0,p-1))} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.18)',color:'rgba(255,255,255,.8)',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>←</button>
                 <div style={{flex:1,display:'flex',justifyContent:'center',gap:5}}>
                   {Array.from({length:numPages}).map((_,i)=>(
-                    <div key={i} onClick={()=>setColPage(i)} style={{width:i===colPage?18:6,height:6,borderRadius:99,background:i===colPage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
+                    <div key={i} onClick={()=>setColPage(i)} style={{width:i===safePage?18:6,height:6,borderRadius:99,background:i===safePage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
                   ))}
                 </div>
-                <button onClick={()=>setColPage(p=>(p+1)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
+                <button onClick={()=>setColPage(p=>Math.min(numPages-1,p+1))} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
               </div>
             )}
           </div>

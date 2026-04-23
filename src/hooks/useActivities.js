@@ -113,39 +113,65 @@ function transformFeed(feed) {
   return grouped;
 }
 
-export function useActivities(city, profile) {
-  const [activities, setActivities] = useState(ACTIVITIES); // start with mock
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState(null);
-  const [source,     setSource]     = useState('mock');
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — show cached data instantly, refresh behind the scenes
 
-  // Extract zip from city string (e.g. "Falls Church, VA 22046" → "22046").
-  // Falls back to 22046 (Falls Church) if no zip found in the city string.
+function cacheKey(zip, profileId) { return `locale_feed_${zip}_${profileId}`; }
+
+function readCache(zip, profileId) {
+  try {
+    const raw = localStorage.getItem(cacheKey(zip, profileId));
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) return null; // expired
+    return data;
+  } catch { return null; }
+}
+
+function writeCache(zip, profileId, data) {
+  try {
+    localStorage.setItem(cacheKey(zip, profileId), JSON.stringify({ ts: Date.now(), data }));
+  } catch {} // storage full or unavailable — silently ignore
+}
+
+export function useActivities(city, profile) {
   const zip       = city?.match(/\b(\d{5})\b/)?.[1] || '22046';
   const profileId = profile?.id || 'default';
 
-  const load = useCallback(async () => {
+  // Seed state from cache immediately so UI renders real data without waiting for the API.
+  // Falls back to mock ACTIVITIES if nothing cached yet.
+  const [activities, setActivities] = useState(() => {
+    const cached = readCache(zip, profileId);
+    return cached || ACTIVITIES;
+  });
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const [source,  setSource]  = useState(() => readCache(zip, profileId) ? 'cached' : 'mock');
+
+  const load = useCallback(async (force = false) => {
     if (!city) return;
+    // If cache is fresh and this isn't a forced reload, skip the API call
+    if (!force && readCache(zip, profileId)) {
+      // Still refresh in background after a short delay so data stays current
+      setTimeout(() => load(true), 3000);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      // Pass the full profile so the backend can apply preference scoring.
-      // Without profile, prefs have no effect on final_score.
       const data = await fetchEventFeed(zip, profileId, city, { profile });
       const transformed = transformFeed(data);
       if (transformed && Object.keys(transformed).length > 0) {
-        // Only switch to live data if at least one category has actual content.
-        // An empty but valid response keeps mock data so the UI doesn't go blank.
         const hasEvents = Object.values(transformed).some(acts => acts.length > 0);
         if (hasEvents) {
           setActivities(transformed);
           setSource('live');
+          writeCache(zip, profileId, transformed);
         }
       }
     } catch (e) {
-      console.warn('[useActivities] Using mock data:', e.message);
-      setSource('mock');
+      console.warn('[useActivities] API error, using cache/mock:', e.message);
       setError(e.message);
+      if (source === 'mock') setSource('mock');
     } finally {
       setLoading(false);
     }
@@ -153,5 +179,5 @@ export function useActivities(city, profile) {
 
   useEffect(() => { load(); }, [load]);
 
-  return { activities, loading, error, source, reload: load };
+  return { activities, loading, error, source, reload: () => load(true) };
 }
