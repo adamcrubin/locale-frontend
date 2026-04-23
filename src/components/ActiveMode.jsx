@@ -34,13 +34,17 @@ const QUICK_PROMPTS = [
 ];
 
 // ── Frontend blocklist — catches anything that slipped past the backend ─────────
+// Keep in sync with BLOCKLIST in extractor.js (backend is primary; this is the safety net).
 const FRONTEND_BLOCKLIST = [
   'support group','surgery support','rotator cuff','online healing','online session',
   'virtual event','webinar','zoom meeting','online only','certification course',
   'ceu credits','continuing education','hoa meeting','homeowners association',
-  'aa meeting','na meeting','anonymous meeting','therapy session','counseling session',
-  'mental health workshop','timeshare','real estate seminar','investment seminar',
-  'civic federation','wound care','recovery meeting','shoulder surgery',
+  'aa meeting','na meeting','anonymous meeting','recovery meeting',
+  'therapy session','counseling session','mental health workshop',
+  'timeshare','real estate seminar','investment seminar','insurance seminar',
+  'civic federation','civic meeting','neighborhood meeting','town hall meeting',
+  'wound care','shoulder surgery',
+  'religious service','church service','bible study',
 ];
 
 function isFrontendBlocked(act) {
