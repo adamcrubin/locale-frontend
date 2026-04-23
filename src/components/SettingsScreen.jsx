@@ -181,9 +181,10 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
   const [ambientMins,  setAmbient]     = useState(settings.ambientTimeoutMinutes || 10);
   const [spotlightMode,setSpotlight]   = useState(settings.spotlightMode || 'strip');
   const [columnOrder,  setColumnOrder] = useState(settings.columnOrder || 'relevancy');
+  const [curatedMode,  setCuratedMode] = useState(settings.curatedMode || false);
 
   const save = () => {
-    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, ambientTimeoutMinutes:ambientMins, spotlightMode, columnOrder });
+    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, ambientTimeoutMinutes:ambientMins, spotlightMode, columnOrder, curatedMode });
     onClose();
   };
 
@@ -328,6 +329,13 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
               <input type="range" min="2" max="30" step="1" value={ambientMins} onChange={e=>setAmbient(Number(e.target.value))} style={{ width:80 }} />
               <span style={{ fontWeight:600, color:'rgba(255,255,255,.8)', minWidth:50 }}>{ambientMins} min</span>
             </div>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', borderBottom:'0.5px solid rgba(255,255,255,.07)', fontSize:12, color:'rgba(255,255,255,.65)' }}>
+            <div>
+              <div>Curated mode</div>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:1 }}>Limit to max 5 activities per category — less choice, less paralysis</div>
+            </div>
+            <Toggle checked={curatedMode} onChange={e=>setCuratedMode(e.target.checked)} />
           </div>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 0', fontSize:12, color:'rgba(255,255,255,.65)' }}>
             <div>

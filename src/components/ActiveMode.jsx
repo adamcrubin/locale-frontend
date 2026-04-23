@@ -6,10 +6,10 @@ import ThemeToggle, { useTheme } from './ThemeToggle';
 import { postFeedback, fetchPromptResponse } from '../lib/api';
 
 const QUICK_PROMPTS = [
-  { label:'Plan my Saturday' }, { label:'Date night' },
-  { label:'What can I do right now?' }, { label:'Dog-friendly' },
-  { label:'Rainy Sunday' }, { label:'Free only' },
-  { label:'With Kailee' }, { label:'Weekend away' },
+  { label:'Plan my Saturday' },       { label:'Date night' },
+  { label:'What can I do right now?' }, { label:'Free this weekend' },
+  { label:'Rainy Sunday' },            { label:'Hidden gems' },
+  { label:'Kid-friendly' },            { label:'Weekend away' },
 ];
 
 // ── Frontend blocklist — catches anything that slipped past the backend ─────────
@@ -47,6 +47,16 @@ function formatTimeStr(raw) {
   const mins = m[2] && m[2] !== '00' ? `:${m[2]}` : '';
   const period = m[3].replace(/\./g,'').toLowerCase();
   return `${h}${mins}${period}`;
+}
+
+// ── Music genre tag extraction ────────────────────────────────────────────────
+const MUSIC_GENRES = ['jazz','classical','rock','folk','blues','electronic','hip-hop','country','r&b','indie','soul','reggae','punk','metal','pop','funk','gospel','latin','afrobeat','bluegrass','acoustic','orchestra','opera','rap','ambient'];
+function formatMusicGenre(act) {
+  if (!(act.categories||[]).includes('music')) return null;
+  const tags = (act.tags||[]).map(t=>t.toLowerCase());
+  const genre = tags.find(t => MUSIC_GENRES.includes(t));
+  if (!genre) return null;
+  return genre.charAt(0).toUpperCase() + genre.slice(1);
 }
 
 // ── Smart when display ────────────────────────────────────────────────────────
@@ -350,10 +360,24 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
   return (
     <div style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, position:'relative' }}>
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
-      <ABtn icon="🎟" title="Reserve/tickets" onClick={()=>onReserve(act,catId)} dim={!act.reservable&&!['sports','music'].includes(catId)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
 
-      {/* Link */}
+      {/* Ticket link — only shown when ticket_url exists */}
+      {act.ticket_url && (
+        <a href={act.ticket_url} target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()} title="Buy tickets"
+          style={{ textDecoration:'none' }}>
+          <button style={{
+            width:28, height:28, borderRadius:8,
+            border:'0.5px solid rgba(201,168,76,.35)',
+            background:'rgba(201,168,76,.12)',
+            cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#C9A84C',
+          }}>🎟</button>
+        </a>
+      )}
+
+      {/* Info link */}
       <a href={eventUrl} target="_blank" rel="noopener noreferrer"
         onClick={e => e.stopPropagation()} title={act.url ? 'Open event page' : 'Search for this event'}
         style={{ textDecoration:'none' }}>
@@ -498,8 +522,14 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             overflow: isCompact ? 'hidden' : 'visible',
             textOverflow: isCompact ? 'ellipsis' : 'clip',
             whiteSpace: isCompact ? 'nowrap' : 'normal',
+            display:'flex', alignItems:'center', gap:4, flexWrap: isCompact ? 'nowrap' : 'wrap',
           }}>
-            {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
+            {formatMusicGenre(act) && (
+              <span style={{ fontSize:10, padding:'1px 6px', borderRadius:99, background:'rgba(139,92,246,.12)', color:'#7C3AED', border:'0.5px solid rgba(139,92,246,.25)', flexShrink:0, fontWeight:500 }}>{formatMusicGenre(act)}</span>
+            )}
+            <span style={{ overflow: isCompact ? 'hidden' : 'visible', textOverflow: isCompact ? 'ellipsis' : 'clip', whiteSpace: isCompact ? 'nowrap' : 'normal' }}>
+              {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
+            </span>
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
@@ -995,8 +1025,8 @@ function AskClaude({ settings, activeProfile, onClose }) {
 }
 
 // ── Column ────────────────────────────────────────────────────────────────────
-function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict, crossCatSeen }) {
-  const allActs = dedupeActivities(
+function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict, crossCatSeen, curatedMode }) {
+  const allActsUnsliced = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
       .filter(a => !isPastEvent(a))
@@ -1016,6 +1046,7 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
         return tod === timeFilter || tod === 'any';
       })
   );
+  const allActs = curatedMode ? allActsUnsliced.slice(0, 5) : allActsUnsliced;
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -1075,7 +1106,7 @@ function StackedColumn({ cats, activities, ...colProps }) {
 }
 
 // ── Mobile single-column layout ───────────────────────────────────────────────
-function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter }) {
+function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter, curatedMode }) {
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
@@ -1314,6 +1345,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const spotlightMode= settings?.spotlightMode|| 'strip';
   const columnOrder  = settings?.columnOrder  || 'relevancy';
+  const curatedMode  = settings?.curatedMode  || false;
 
   // Reactive mobile detection -- updates on resize
   const isMobile = useIsMobile();
@@ -1353,7 +1385,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   // First column to claim a title wins; subsequent columns skip duplicates
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode };
 
   // Calendar strip data -- sort calQueue into Fri/Sat/Sun buckets
   const now2 = new Date();
@@ -1483,33 +1515,24 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             {/* Page nav */}
             {numPages>1&&(
               <div style={{background:'#1C1A17',borderTop:'0.5px solid rgba(255,255,255,.06)',padding:'6px 18px',display:'flex',alignItems:'center',gap:8}}>
-                <button onClick={()=>setColPage(p=>Math.max(0,p-1))} disabled={colPage===0} style={{padding:'5px 14px',borderRadius:8,cursor:colPage===0?'default':'pointer',background:colPage===0?'rgba(255,255,255,.04)':'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.12)',color:colPage===0?'rgba(255,255,255,.2)':'rgba(255,255,255,.7)',fontSize:14,fontFamily:'DM Sans,sans-serif'}}>←</button>
+                <button onClick={()=>setColPage(p=>(p-1+numPages)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.18)',color:'rgba(255,255,255,.8)',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>←</button>
                 <div style={{flex:1,display:'flex',justifyContent:'center',gap:5}}>
                   {Array.from({length:numPages}).map((_,i)=>(
                     <div key={i} onClick={()=>setColPage(i)} style={{width:i===colPage?18:6,height:6,borderRadius:99,background:i===colPage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
                   ))}
                 </div>
-                <button onClick={()=>setColPage(p=>Math.min(numPages-1,p+1))} disabled={colPage===numPages-1} style={{padding:'5px 14px',borderRadius:8,cursor:colPage===numPages-1?'default':'pointer',background:colPage===numPages-1?'rgba(255,255,255,.04)':'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.3)',color:colPage===numPages-1?'rgba(255,255,255,.2)':'#C9A84C',fontSize:14,fontFamily:'DM Sans,sans-serif'}}>→</button>
+                <button onClick={()=>setColPage(p=>(p+1)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
               </div>
             )}
           </div>
       }
 
-      {/* ── Footer: category + time filter ── */}
-      <div style={{background:'var(--bg2)',borderTop:'0.5px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto',flexWrap:'wrap'}} className="no-scroll">
-        {[{id:'all',label:'All',icon:'✦'},...ALL_CATEGORIES].map(c=>(
-          <button key={c.id} onClick={()=>{setActiveCat(c.id);setColPage(0);}} style={{
-            fontSize:11,padding:'4px 11px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
-            background:activeCat===c.id?'var(--dark)':'transparent',
-            color:activeCat===c.id?'rgba(255,255,255,.85)':'var(--muted)',
-            border:activeCat===c.id?'none':'0.5px solid var(--border)',
-            fontFamily:'var(--font-body)',transition:'all .15s',flexShrink:0,
-          }}>{c.icon?`${c.icon} `:''}{c.label}</button>
-        ))}
-        <div style={{width:1,height:18,background:'var(--border)',margin:'0 4px',flexShrink:0}}/>
+      {/* ── Footer: time filter only ── */}
+      <div style={{background:'var(--bg2)',borderTop:'0.5px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto'}} className="no-scroll">
+        <span style={{fontSize:11,color:'var(--muted)',marginRight:4,flexShrink:0}}>Time:</span>
         {[{id:'all',label:'Any time'},{id:'morning',label:'🌅 Morning'},{id:'midday',label:'☀️ Midday'},{id:'night',label:'🌙 Evening'}].map(t=>(
           <button key={t.id} onClick={()=>setTimeFilter(t.id)} style={{
-            fontSize:11,padding:'4px 10px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
+            fontSize:11,padding:'4px 12px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
             background:timeFilter===t.id?'var(--dark)':'transparent',
             color:timeFilter===t.id?'rgba(255,255,255,.85)':'var(--muted)',
             border:timeFilter===t.id?'none':'0.5px solid var(--border)',

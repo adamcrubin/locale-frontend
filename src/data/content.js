@@ -1,19 +1,18 @@
 export const ALL_CATEGORIES = [
-  { id:'outdoors', label:'Outdoors',       icon:'🌿', cls:'cat-outdoors' },
-  { id:'food',     label:'Food & dining',  icon:'🍽', cls:'cat-food'     },
-  { id:'arts',     label:'Arts & culture', icon:'🎨', cls:'cat-arts'     },
-  { id:'music',    label:'Live music',     icon:'🎵', cls:'cat-music'    },
-  { id:'sports',   label:'Sports & games', icon:'⚽', cls:'cat-sports'   },
-  { id:'miss',     label:"Don't miss",     icon:'⏰', cls:'cat-miss'     },
-  { id:'away',     label:'Weekend away',   icon:'🧳', cls:'cat-away'     },
-  { id:'trips',    label:'Day trips',      icon:'🗺', cls:'cat-trips'    },
-  { id:'nerdy',    label:'Nerdy / talks',  icon:'🧠', cls:'cat-nerdy'    },
-  { id:'breweries',label:'Breweries & bars',icon:'🍺',cls:'cat-sports'   },
-  { id:'comedy',   label:'Comedy',         icon:'😂', cls:'cat-food'     },
-  { id:'markets',  label:'Markets',        icon:'🛍', cls:'cat-outdoors' },
-  { id:'wellness', label:'Fitness & wellness',icon:'🧘',cls:'cat-trips'  },
-  { id:'family',   label:'Family-friendly',icon:'👨‍👩‍👧', cls:'cat-music'   },
-  { id:'film',     label:'Film & cinema',  icon:'🎬', cls:'cat-arts'     },
+  { id:'outdoors', label:'Outdoors',           icon:'🌿', cls:'cat-outdoors' },
+  { id:'food',     label:'Food & dining',      icon:'🍽', cls:'cat-food'     },
+  { id:'arts',     label:'Arts & culture',     icon:'🎨', cls:'cat-arts'     },
+  { id:'music',    label:'Live music',         icon:'🎵', cls:'cat-music'    },
+  { id:'sports',   label:'Sports & games',     icon:'⚽', cls:'cat-sports'   },
+  { id:'nerdy',    label:'Nerdy / talks',      icon:'🧠', cls:'cat-nerdy'    },
+  { id:'breweries',label:'Breweries & bars',   icon:'🍺', cls:'cat-sports'   },
+  { id:'comedy',   label:'Comedy',             icon:'😂', cls:'cat-food'     },
+  { id:'film',     label:'Film & cinema',      icon:'🎬', cls:'cat-arts'     },
+  { id:'wellness', label:'Fitness & wellness', icon:'🧘', cls:'cat-trips'    },
+  { id:'family',   label:'Family-friendly',    icon:'👨‍👩‍👧', cls:'cat-music'   },
+  { id:'markets',  label:'Markets',            icon:'🛍', cls:'cat-outdoors' },
+  { id:'away',     label:'Weekend away',       icon:'🧳', cls:'cat-away'     },
+  { id:'trips',    label:'Day trips',          icon:'🗺', cls:'cat-trips'    },
 ];
 
 export const PREFERENCES = [
@@ -220,14 +219,14 @@ export const CALENDAR_EVENTS = [
 export const MOCK_PHOTOS = ['🐕','🌊','🌸','🏡','🍣','🎸','🌿','🦆'];
 
 export const QUICK_PROMPTS = [
-  { label:'Plan my Saturday',    prompt:'Plan a full Saturday for me in Falls Church/DC' },
-  { label:'Date night',          prompt:'Suggest a date night for Saturday, around $100 total' },
-  { label:'What can I do right now?', prompt:'What can I do right now or in the next 2 hours near Falls Church?' },
-  { label:'Dog-friendly',        prompt:'What\'s dog-friendly this weekend around NoVA and DC?' },
-  { label:'Rainy Sunday',        prompt:'It\'s raining Sunday — what are good indoor options?' },
-  { label:'Free only',           prompt:'Only show me free things to do this weekend' },
-  { label:'With Kailee',         prompt:'Suggest something Kailee would love — upscale, indoor, interesting' },
-  { label:'Weekend away',        prompt:'What\'s a good weekend away from DC, leaving Friday night?' },
+  { label:'Plan my Saturday',      prompt:'Plan a full Saturday itinerary from morning to evening in DC/NoVA' },
+  { label:'Date night',            prompt:'Suggest a date night for this weekend, mix of budgets' },
+  { label:'What can I do right now?', prompt:'What can I do right now or in the next 2 hours?' },
+  { label:'Free this weekend',     prompt:'Only show me free things to do this weekend in DC/NoVA' },
+  { label:'Rainy Sunday',          prompt:'It\'s raining Sunday — what are good indoor options?' },
+  { label:'Hidden gems',           prompt:'What are some hidden gems or underrated things to do this weekend?' },
+  { label:'Kid-friendly',          prompt:'What\'s good for families with kids this weekend in DC/NoVA?' },
+  { label:'Weekend away',          prompt:'What\'s a good weekend getaway from DC, leaving Friday night?' },
 ];
 
 export const SPONSORED_CARDS = [
@@ -258,7 +257,7 @@ export const DEFAULT_PROFILE = {
   aboutMe:"I live near Lake Barcroft in Falls Church with my partner Kailee and our English Cream Golden Retriever, Harlow. We love Middle Eastern food, live jazz, hiking, and nerdy bar events. Budget ~$50pp for dining.",
   prefs:['Dog lover','Adventurous food','Mediterranean food','Local & indie','Jazz & blues'],
   budget:2, savedItems:[],
-  categoryStates:{ outdoors:'always', food:'always', arts:'always', music:'always', sports:'sometimes', miss:'always', away:'sometimes', trips:'sometimes', nerdy:'sometimes' },
+  categoryStates:{ outdoors:'always', food:'always', arts:'always', music:'always', sports:'sometimes', away:'sometimes', trips:'sometimes', nerdy:'sometimes', breweries:'sometimes', comedy:'sometimes', film:'sometimes' },
 };
 
 export const DEFAULT_SETTINGS = {
@@ -269,13 +268,14 @@ export const DEFAULT_SETTINGS = {
   // Display modes
   spotlightMode:'strip',      // 'none' | 'strip' | 'hero' | 'overlay' | 'sidebar'
   columnOrder:'relevancy',    // 'relevancy' | 'fixed' | 'random'
+  curatedMode:false,          // when true, max 5 activities per category
   mobileLayout:true,          // auto-switch on small screens
   profiles:[ {
     id:'p1', name:'Adam', colorId:'teal',
     aboutMe:"I live near Lake Barcroft in Falls Church with my partner Kailee and our English Cream Golden Retriever, Harlow. We love Middle Eastern food, live jazz, hiking, and nerdy bar events. Budget ~$50pp for dining.",
     prefs:['Dog lover','Adventurous food','Mediterranean food','Local & indie','Jazz & blues'],
     budget:2, savedItems:[],
-    categoryStates:{ outdoors:'always', food:'always', arts:'always', music:'always', sports:'sometimes', miss:'always', away:'sometimes', trips:'sometimes', nerdy:'sometimes' },
+    categoryStates:{ outdoors:'always', food:'always', arts:'always', music:'always', sports:'sometimes', away:'sometimes', trips:'sometimes', nerdy:'sometimes', breweries:'sometimes', comedy:'sometimes', film:'sometimes' },
   } ],
   activeProfileId:'p1',
   gcalConnected:false,
@@ -344,7 +344,6 @@ export const AMBIENT_THEMES = {
   arts:      { from:'#15102A', via:'#0C0D2C', to:'#120A1A', accent:'rgba(90,40,180,0.12)'  },
   music:     { from:'#15102A', via:'#0D0A20', to:'#1A0A18', accent:'rgba(140,20,100,0.15)' },
   sports:    { from:'#0A1525', via:'#0C1830', to:'#081020', accent:'rgba(20,80,180,0.12)'  },
-  miss:      { from:'#2A1A08', via:'#1C1008', to:'#1A1208', accent:'rgba(180,120,20,0.14)' },
   away:      { from:'#15102A', via:'#1A0A28', to:'#200A1A', accent:'rgba(120,40,200,0.12)' },
   trips:     { from:'#0A2015', via:'#081A10', to:'#0A1A14', accent:'rgba(15,100,80,0.14)'  },
   nerdy:     { from:'#0A1030', via:'#080C28', to:'#0A0820', accent:'rgba(40,60,200,0.12)'  },
