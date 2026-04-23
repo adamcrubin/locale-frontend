@@ -1360,7 +1360,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const sometimesCats= ALL_CATEGORIES.filter(c=>catStates[c.id]==='sometimes');
   const defaultCats  = ALL_CATEGORIES.slice(0,9);
   let baseCats = activeCat==='all'
-    ? (alwaysCats.length>0?[...alwaysCats,...sometimesCats.slice(0,2)]:defaultCats)
+    ? (alwaysCats.length>0?[...alwaysCats,...sometimesCats.slice(0,4)]:defaultCats)
     : ALL_CATEGORIES.filter(c=>c.id===activeCat);
 
   // Apply column ordering

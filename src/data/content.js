@@ -4,6 +4,8 @@ export const ALL_CATEGORIES = [
   { id:'arts',     label:'Arts & culture',     icon:'🎨', cls:'cat-arts'     },
   { id:'music',    label:'Live music',         icon:'🎵', cls:'cat-music'    },
   { id:'sports',   label:'Sports & games',     icon:'⚽', cls:'cat-sports'   },
+  { id:'away',     label:'Weekend away',       icon:'🧳', cls:'cat-away'     },
+  { id:'trips',    label:'Day trips',          icon:'🗺', cls:'cat-trips'    },
   { id:'nerdy',    label:'Nerdy / talks',      icon:'🧠', cls:'cat-nerdy'    },
   { id:'breweries',label:'Breweries & bars',   icon:'🍺', cls:'cat-sports'   },
   { id:'comedy',   label:'Comedy',             icon:'😂', cls:'cat-food'     },
@@ -11,8 +13,6 @@ export const ALL_CATEGORIES = [
   { id:'wellness', label:'Fitness & wellness', icon:'🧘', cls:'cat-trips'    },
   { id:'family',   label:'Family-friendly',    icon:'👨‍👩‍👧', cls:'cat-music'   },
   { id:'markets',  label:'Markets',            icon:'🛍', cls:'cat-outdoors' },
-  { id:'away',     label:'Weekend away',       icon:'🧳', cls:'cat-away'     },
-  { id:'trips',    label:'Day trips',          icon:'🗺', cls:'cat-trips'    },
 ];
 
 export const PREFERENCES = [
