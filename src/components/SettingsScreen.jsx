@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ALL_CATEGORIES, PREFERENCES, BUDGET_LEVELS, PROFILE_COLORS, DEFAULT_PROFILE } from '../data/content';
 
 function Section({ title, desc, children }) {
@@ -178,13 +178,26 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
   const [interval,     setIntervalV]   = useState(settings.intervalMinutes);
   const [testMode,     setTestMode]    = useState(settings.testMode || false);
   const [gcal,         setGcal]        = useState(settings.gcalConnected);
+  const [gcalEmail,    setGcalEmail]   = useState(settings.gcalEmail || null);
   const [ambientMins,  setAmbient]     = useState(settings.ambientTimeoutMinutes || 10);
   const [spotlightMode,setSpotlight]   = useState(settings.spotlightMode || 'strip');
   const [columnOrder,  setColumnOrder] = useState(settings.columnOrder || 'relevancy');
   const [curatedMode,  setCuratedMode] = useState(settings.curatedMode || false);
 
+  // Listen for the OAuth popup completing — fires postMessage({ type:'gcal_connected', email })
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === 'gcal_connected') {
+        setGcal(true);
+        setGcalEmail(e.data.email || null);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   const save = () => {
-    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, ambientTimeoutMinutes:ambientMins, spotlightMode, columnOrder, curatedMode });
+    onSave({ city, homeAddress, intervalMinutes:interval, testMode, gcalConnected:gcal, gcalEmail, ambientTimeoutMinutes:ambientMins, spotlightMode, columnOrder, curatedMode });
     onClose();
   };
 
@@ -227,23 +240,25 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
         <Section title="Google Calendar" desc="Connect to add activities directly to your calendar with one tap">
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <span style={{ fontSize:11, padding:'3px 9px', borderRadius:99, background: gcal ? 'rgba(26,99,50,.3)' : 'rgba(159,18,57,.2)', color: gcal ? '#6EE7A0' : '#FDA4AF', border: gcal ? '0.5px solid rgba(110,231,160,.25)' : '0.5px solid rgba(253,164,175,.25)' }}>
-              {gcal ? '✓ Connected' : 'Not connected'}
+              {gcal ? `✓ Connected${gcalEmail ? ` · ${gcalEmail}` : ''}` : 'Not connected'}
             </span>
             {!gcal && (
               <button onClick={() => {
                 const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-                window.open(`${backendUrl}/auth/google?userId=${user?.id||'anonymous'}&profileId=${activeProfile?.id||'default'}`, '_blank', 'width=600,height=700');
+                // Use profileId as a stable userId so tokens persist in Supabase
+                const stableId = activeProfile?.id || 'default';
+                window.open(`${backendUrl}/auth/google?userId=${stableId}&profileId=${stableId}`, '_blank', 'width=600,height=700,popup=1');
               }} style={{ fontSize:11, padding:'4px 11px', borderRadius:8, cursor:'pointer', background:'rgba(66,133,244,.2)', border:'0.5px solid rgba(66,133,244,.3)', color:'#93BBFD', fontFamily:'DM Sans, sans-serif' }}>
                 Connect Google Calendar
               </button>
             )}
             {gcal && (
-              <button onClick={() => setGcal(false)} style={{ fontSize:11, padding:'4px 11px', borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.4)', fontFamily:'DM Sans, sans-serif' }}>
+              <button onClick={() => { setGcal(false); setGcalEmail(null); }} style={{ fontSize:11, padding:'4px 11px', borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.4)', fontFamily:'DM Sans, sans-serif' }}>
                 Disconnect
               </button>
             )}
           </div>
-          <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:5 }}>Events you add will appear in your Google Calendar. Shared across Adam and Kailee.</div>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:5 }}>Events you add will appear in your Google Calendar.</div>
         </Section>
 
         <Section title="Spotlight" desc="How to surface the top event of the weekend">
