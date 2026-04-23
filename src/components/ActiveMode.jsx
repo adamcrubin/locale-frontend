@@ -71,17 +71,21 @@ function formatWhen(act) {
   // Also try start_date for day detection
   if (!day && act.start_date) {
     const d = new Date(act.start_date + 'T12:00:00');
-    const dow = d.getDay();
-    if (dow === 5) day = 'Fri';
-    else if (dow === 6) day = 'Sat';
-    else if (dow === 0) day = 'Sun';
+    if (!isNaN(d.getTime())) {
+      const dow = d.getDay();
+      if (dow === 5) day = 'Fri';
+      else if (dow === 6) day = 'Sat';
+      else if (dow === 0) day = 'Sun';
+    }
   }
 
   // Build short date in parens like "(4/26)"
   let dateShort = '';
   if (act.start_date) {
     const d = new Date(act.start_date + 'T12:00:00');
-    dateShort = `(${d.getMonth()+1}/${d.getDate()})`;
+    if (!isNaN(d.getTime())) {
+      dateShort = `(${d.getMonth()+1}/${d.getDate()})`;
+    }
   }
 
   // Build time range
