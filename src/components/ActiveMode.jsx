@@ -1,10 +1,30 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, Component } from 'react';
 import { ALL_CATEGORIES, ACTIVITIES as MOCK_ACTIVITIES, WEATHER as MOCK_WEATHER, CALENDAR_EVENTS, PROFILE_COLORS } from '../data/content';
 import AIPromptModal from './AIPromptModal';
 import WeatherIcon from './WeatherIcon';
 import ThemeToggle, { useTheme } from './ThemeToggle';
 import { postFeedback, fetchPromptResponse } from '../lib/api';
 import { usePipelineStatus } from '../hooks/usePipelineStatus';
+
+// ── Error boundary — catches column render crashes so the whole app doesn't go blank ──
+class ColumnErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) { console.error('[ColumnErrorBoundary]', e, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:12, color:'var(--muted)', fontFamily:'var(--font-body)', padding:32 }}>
+          <div style={{ fontSize:32 }}>⚠️</div>
+          <div style={{ fontSize:14 }}>Something went wrong rendering the feed.</div>
+          <button onClick={() => this.setState({ error: null })} style={{ fontSize:12, padding:'6px 16px', borderRadius:8, cursor:'pointer', background:'var(--accent-bg)', border:'0.5px solid var(--accent-border)', color:'var(--accent)', fontFamily:'var(--font-body)' }}>Try again</button>
+          <details style={{ fontSize:10, color:'var(--muted)', maxWidth:400 }}><summary>Details</summary>{this.state.error?.message}</details>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const QUICK_PROMPTS = [
   { label:'Plan my Saturday' },       { label:'Date night' },
@@ -1097,7 +1117,9 @@ function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumb
 }
 
 // ── Stacked column: two low-count categories sharing one column slot ──────────
-function StackedColumn({ cats, activities, ...colProps }) {
+function StackedColumn({ cats, ...colProps }) {
+  // NOTE: do NOT destructure `activities` here — it must stay in colProps so CatColumn receives it.
+  // Stripping it caused CatColumn to crash (activities[cat.id] throws on undefined) → blank screen.
   return (
     <div style={{ display:'flex', flexDirection:'column', borderRight:'0.5px solid var(--border)', minWidth:0, minHeight:0, overflow:'hidden' }}>
       {cats.map((cat, i) => (
@@ -1486,6 +1508,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
 
       {/* ── Main content ── */}
+      <ColumnErrorBoundary>
       {isMobile
         ? <MobileLayout visibleCats={visibleCats} {...colProps} />
         : <div style={{display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
@@ -1546,6 +1569,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             )}
           </div>
       }
+      </ColumnErrorBoundary>
 
       {/* ── Footer: time filter only ── */}
       <div style={{background:'var(--bg2)',borderTop:'0.5px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto'}} className="no-scroll">
