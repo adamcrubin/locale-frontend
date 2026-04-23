@@ -69,7 +69,7 @@ function transformFeed(feed) {
       title:      e.title,
       when:       e.when_display || e.when_pattern || 'Check schedule',
       where:      e.venue ? `${e.venue}${e.neighborhood ? ', ' + e.neighborhood : ''}` : e.neighborhood,
-      cost:       e.cost_display || e.cost_range || 'See details',
+      cost:       e.cost_display || e.cost_range || null,
       why:        e.description || '',
       tags:       e.tags || [],
       expires:    false,       // evergreens never expire
@@ -91,7 +91,7 @@ function transformFeed(feed) {
         title:      rec.title,
         when:       rec.when_pattern || 'Check schedule',
         where:      rec.venue ? `${rec.venue}${rec.neighborhood ? ', ' + rec.neighborhood : ''}` : rec.neighborhood,
-        cost:       rec.cost_range || 'See details',
+        cost:       rec.cost_range || null,
         why:        rec.description || '',
         tags:       rec.tags || [],
         expires:    false,
