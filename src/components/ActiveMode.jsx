@@ -4,6 +4,7 @@ import AIPromptModal from './AIPromptModal';
 import WeatherIcon from './WeatherIcon';
 import ThemeToggle, { useTheme } from './ThemeToggle';
 import { postFeedback, fetchPromptResponse } from '../lib/api';
+import { usePipelineStatus } from '../hooks/usePipelineStatus';
 
 const QUICK_PROMPTS = [
   { label:'Plan my Saturday' },       { label:'Date night' },
@@ -1337,6 +1338,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const [overlayShown, setOverlayShown] = useState(false);
 
   const { themeId, setTheme, currentTheme } = useTheme();
+  const { active: pipelineActive, label: pipelineLabel } = usePipelineStatus();
 
   const profileColor  = PROFILE_COLORS.find(c=>c.id===activeProfile?.colorId)||PROFILE_COLORS[0];
   const { boost, dim } = getWeatherBoost(weather);
@@ -1431,6 +1433,13 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             {!isMobile && <span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>}
             <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
           </button>
+          {/* Pipeline live indicator */}
+          {pipelineActive && (
+            <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:99,background:'rgba(201,168,76,.12)',border:'0.5px solid rgba(201,168,76,.25)'}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:'#C9A84C',display:'inline-block',animation:'pulse 1.2s ease-in-out infinite'}}/>
+              <span style={{fontSize:10,color:'#C9A84C',fontWeight:500,whiteSpace:'nowrap'}}>{pipelineLabel}</span>
+            </div>
+          )}
           {/* Settings -- always shown */}
           <button onClick={() => onSettings()} style={{fontSize:isMobile?14:11,padding:isMobile?'4px 7px':'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>⚙</button>
           {/* Ambient -- desktop only */}
