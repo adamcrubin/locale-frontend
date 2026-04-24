@@ -15,6 +15,7 @@ import PostEventFeedback    from './components/PostEventFeedback';
 import LoginPromptModal     from './components/LoginPromptModal';
 import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
 import FriendRequestsToast from './components/FriendRequestsToast';
+import StaticPage from './components/StaticPage';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -166,6 +167,8 @@ export default function App() {
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [showSources,   setShowSources]   = useState(false);
+  // Which About/Terms/Privacy/etc. static page is open (null = none)
+  const [staticPageId,  setStaticPageId]  = useState(null);
   const [showPicker,    setShowPicker]    = useState(false);
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
@@ -346,12 +349,16 @@ export default function App() {
   const showWelcome = !user && !demoMode;
   if (showWelcome) {
     return (
-      <WelcomeScreen
-        onGoogleSignIn={signInWithGoogle}
-        onDemo={() => { setDemoMode(true); markVisited(); }}
-        loading={authLoading}
-        error={authError || (!authEnabled ? 'Auth not configured — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify environment variables, then redeploy.' : null)}
-      />
+      <>
+        <WelcomeScreen
+          onGoogleSignIn={signInWithGoogle}
+          onDemo={() => { setDemoMode(true); markVisited(); }}
+          loading={authLoading}
+          error={authError || (!authEnabled ? 'Auth not configured — add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify environment variables, then redeploy.' : null)}
+          onShowPage={setStaticPageId}
+        />
+        {staticPageId && <StaticPage pageId={staticPageId} onClose={() => setStaticPageId(null)} />}
+      </>
     );
   }
 
@@ -494,6 +501,10 @@ export default function App() {
         <SourcesScreen user={user} settings={settings} onClose={() => setShowSources(false)} />
       )}
 
+      {staticPageId && (
+        <StaticPage pageId={staticPageId} onClose={() => setStaticPageId(null)} />
+      )}
+
       {/* Friend-request toast — auto-hides after first dismiss per session */}
       {user && screen === 'active' && !settingsOpen && (
         <FriendRequestsToast user={user} onOpenSettings={() => setSettingsOpen(true)} />
@@ -511,6 +522,7 @@ export default function App() {
           user={user}
           onSignOut={signOut}
           onShowSources={() => setShowSources(true)}
+          onShowPage={setStaticPageId}
           calendar={calendar}
         />
       )}

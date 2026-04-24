@@ -16,7 +16,39 @@ const SELLING_POINTS = [
   { icon: '🖼️', title: 'Ambient display',  desc: 'Designed for iPad wall-mount — always-on weekend planner' },
 ];
 
-export default function WelcomeScreen({ onGoogleSignIn, onDemo, loading, error }) {
+// Quiet text-link footer with the site-map pages. Shown on both mobile +
+// desktop variants so unsigned-in visitors can read ToS / Privacy / etc.
+function InfoFooter({ onShowPage }) {
+  if (!onShowPage) return null;
+  const links = [
+    ['About',     'about'],
+    ['Business',  'business'],
+    ['Advertise', 'advertise'],
+    ['Terms',     'terms'],
+    ['Privacy',   'privacy'],
+    ['Trust',     'trust'],
+    ['Support',   'support'],
+  ];
+  return (
+    <div style={{
+      fontSize: 11, color: 'rgba(255,255,255,.3)',
+      display: 'flex', flexWrap: 'wrap', gap: '4px 10px',
+      justifyContent: 'center', lineHeight: 1.6,
+    }}>
+      {links.map(([label, id], i) => (
+        <span key={id} style={{ display:'flex', alignItems:'center', gap:'4px 10px' }}>
+          <button onClick={() => onShowPage(id)} style={{
+            background:'none', border:'none', padding:0, cursor:'pointer',
+            color:'rgba(255,255,255,.45)', fontSize:11, fontFamily:'DM Sans, sans-serif',
+          }}>{label}</button>
+          {i < links.length - 1 && <span style={{ color:'rgba(255,255,255,.2)' }}>·</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export default function WelcomeScreen({ onGoogleSignIn, onDemo, loading, error, onShowPage }) {
   const [rememberMe, setRememberMe] = useState(true);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
@@ -48,6 +80,9 @@ export default function WelcomeScreen({ onGoogleSignIn, onDemo, loading, error }
                 <span>{icon}</span><span>{title}</span>
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: 24, paddingTop: 16, borderTop: '0.5px solid rgba(255,255,255,.06)' }}>
+            <InfoFooter onShowPage={onShowPage} />
           </div>
         </div>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -117,6 +152,11 @@ export default function WelcomeScreen({ onGoogleSignIn, onDemo, loading, error }
         {/* Bottom note */}
         <div style={{ marginTop: 48, fontSize: 11, color: 'rgba(255,255,255,.18)' }}>
           Free to use · Falls Church, VA &amp; DC Metro · Updated weekly
+        </div>
+
+        {/* Site-map footer — small text links to static pages */}
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '0.5px solid rgba(255,255,255,.05)' }}>
+          <InfoFooter onShowPage={onShowPage} />
         </div>
       </div>
 
