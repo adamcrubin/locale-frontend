@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { WEATHER as MOCK_WEATHER } from '../data/content';
+import { useIsMobile } from './ActiveMode/useIsMobile';
 
 // Maps NWS description keywords to a colored symbol — no CSS filter tricks.
 // Each returns a styled span with an explicit color that reads on dark backgrounds.
@@ -50,6 +51,7 @@ function WeatherIcon({ icon, desc = '', size = 17 }) {
 export default function WeatherScreen({ initialDay, city, weather, onClose }) {
   const [idx, setIdx] = useState(initialDay);
   const hourlyRef = useRef(null);
+  const isMobile = useIsMobile();
   const WEATHER = (weather && weather.length > 0) ? weather : MOCK_WEATHER;
   const d = WEATHER[idx] || WEATHER[0];
 
@@ -66,38 +68,85 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
   }, [idx]);
 
   return (
-    <div className="fade-enter" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding:'32px 20px' }} onClick={onClose}>
-      <div className="scale-enter" onClick={e=>e.stopPropagation()} style={{ background:'#1C1A17', borderRadius:16, border:'0.5px solid rgba(255,255,255,.1)', width:'100%', maxWidth:640, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+    <div className="fade-enter" style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:60,
+      display:'flex',
+      alignItems: isMobile ? 'stretch' : 'center',
+      justifyContent:'center',
+      padding: isMobile ? '0' : '32px 20px',
+    }} onClick={onClose}>
+      <div className="scale-enter" onClick={e=>e.stopPropagation()} style={{
+        background:'#1C1A17',
+        borderRadius: isMobile ? '16px 16px 0 0' : 16,
+        border: isMobile ? 'none' : '0.5px solid rgba(255,255,255,.1)',
+        borderTop: isMobile ? '0.5px solid rgba(255,255,255,.1)' : undefined,
+        width:'100%', maxWidth: isMobile ? '100%' : 640,
+        maxHeight: isMobile ? '100%' : '85vh',
+        marginTop: isMobile ? 'auto' : 0,  // slide up from bottom on mobile
+        display:'flex', flexDirection:'column', overflow:'hidden',
+      }}>
 
         {/* Header */}
-        <div style={{ padding:'12px 18px', borderBottom:'0.5px solid rgba(255,255,255,.08)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
-          <div>
-            <div className="serif" style={{ fontSize:16, color:'rgba(255,255,255,.9)', fontWeight:300 }}>{d.full} — {city}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', marginTop:1 }}>NWS</div>
+        <div style={{ padding: isMobile ? '10px 14px' : '12px 18px', borderBottom:'0.5px solid rgba(255,255,255,.08)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0, gap:10 }}>
+          <div style={{ minWidth:0 }}>
+            <div className="serif" style={{ fontSize: isMobile ? 14 : 16, color:'rgba(255,255,255,.9)', fontWeight:300, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.full} — {city}</div>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:1 }}>NWS</div>
           </div>
-          <button onClick={onClose} style={{ background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.1)', borderRadius:8, padding:'5px 12px', fontSize:12, cursor:'pointer', fontFamily:'DM Sans, sans-serif', color:'rgba(255,255,255,.55)' }}>Close</button>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.1)', borderRadius:8, padding:'5px 12px', fontSize:12, cursor:'pointer', fontFamily:'DM Sans, sans-serif', color:'rgba(255,255,255,.55)', flexShrink:0, minHeight:32 }}>Close</button>
         </div>
 
-        {/* Stats row */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', borderBottom:'0.5px solid rgba(255,255,255,.08)', flexShrink:0 }}>
-          {[
-            { l:'High / Low', v:`${d.hi}° / ${d.lo}°` },
-            { l:'Feels like',  v: d.feel != null ? `${d.feel}°` : null },
-            { l:'Wind',        v: d.wind || '—' },
-            { l:'Precip',      v:`${d.precip ?? 0}%` },
-          ].filter(s => s.v !== null).map((s,i,arr)=>(
-            <div key={i} style={{ padding:'9px 8px', textAlign:'center', borderRight:i<arr.length-1?'0.5px solid rgba(255,255,255,.08)':'none' }}>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:3 }}>{s.l}</div>
-              <div style={{ fontSize:14, fontWeight:600, color:'rgba(255,255,255,.85)' }}>{s.v}</div>
-            </div>
-          ))}
+        {/* Stats row — 4 cols on desktop, 2x2 on mobile so labels don't cram */}
+        <div style={{
+          display:'grid',
+          gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)',
+          borderBottom:'0.5px solid rgba(255,255,255,.08)', flexShrink:0,
+        }}>
+          {(() => {
+            const stats = [
+              { l:'High / Low', v:`${d.hi}° / ${d.lo}°` },
+              { l:'Feels like',  v: d.feel != null ? `${d.feel}°` : null },
+              { l:'Wind',        v: d.wind || '—' },
+              { l:'Precip',      v:`${d.precip ?? 0}%` },
+            ].filter(s => s.v !== null);
+            const perRow = isMobile ? 2 : stats.length;
+            return stats.map((s,i)=>{
+              const isLastInRow = (i + 1) % perRow === 0;
+              const isLastRow = i >= Math.floor((stats.length - 1) / perRow) * perRow;
+              return (
+                <div key={i} style={{
+                  padding:'9px 8px', textAlign:'center',
+                  borderRight: isLastInRow ? 'none' : '0.5px solid rgba(255,255,255,.08)',
+                  borderBottom: (isMobile && !isLastRow) ? '0.5px solid rgba(255,255,255,.08)' : 'none',
+                }}>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:3 }}>{s.l}</div>
+                  <div style={{ fontSize:14, fontWeight:600, color:'rgba(255,255,255,.85)' }}>{s.v}</div>
+                </div>
+              );
+            });
+          })()}
         </div>
 
-        {/* Split panel: 7-day LEFT, hourly RIGHT */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', flex:1, overflow:'hidden', minHeight:0 }}>
+        {/* Split panel: side-by-side on desktop, stacked on mobile.
+            Mobile uses a single scroll region for the whole body so the user
+            flicks through 7-day → hourly in one motion instead of managing
+            two nested scroll containers. */}
+        <div style={{
+          display:'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gridTemplateRows:    isMobile ? 'auto auto' : '1fr',
+          flex:1,
+          overflow: isMobile ? 'auto' : 'hidden',
+          minHeight:0,
+        }} className="no-scroll">
 
-          {/* Left: 7-day forecast */}
-          <div style={{ padding:'12px 16px', borderRight:'0.5px solid rgba(255,255,255,.08)', overflowY:'auto' }} className="no-scroll">
+          {/* 7-day forecast */}
+          <div style={{
+            padding:'10px 14px',
+            borderRight: isMobile ? 'none' : '0.5px solid rgba(255,255,255,.08)',
+            borderBottom: isMobile ? '0.5px solid rgba(255,255,255,.08)' : 'none',
+            overflowY: isMobile ? 'visible' : 'auto',
+            maxHeight: isMobile ? 'none' : undefined,
+          }} className="no-scroll">
             <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
               7-day forecast
             </div>
@@ -119,9 +168,13 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
             ))}
           </div>
 
-          {/* Right: hourly for selected day — fixed 12AM–10PM even-hour grid */}
-          <div ref={hourlyRef} style={{ padding:'0 16px 12px', overflowY:'auto', position:'relative' }} className="no-scroll">
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', padding:'12px 0 10px', position:'sticky', top:0, background:'#1C1A17', zIndex:1 }}>
+          {/* Hourly for selected day — fixed 12AM–10PM even-hour grid */}
+          <div ref={hourlyRef} style={{
+            padding: isMobile ? '0 14px 14px' : '0 16px 12px',
+            overflowY: isMobile ? 'visible' : 'auto',
+            position:'relative',
+          }} className="no-scroll">
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', padding:'12px 0 10px', position: isMobile ? 'static' : 'sticky', top:0, background:'#1C1A17', zIndex:1 }}>
               Hourly — {d.day?.toLowerCase()}
             </div>
             {(() => {
