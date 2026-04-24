@@ -76,11 +76,6 @@ export default function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbU
             <span style={{ overflow: isCompact ? 'hidden' : 'visible', textOverflow: isCompact ? 'ellipsis' : 'clip', whiteSpace: isCompact ? 'nowrap' : 'normal' }}>
               {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
             </span>
-            {(act.base_score != null || act.final_score != null) && (
-              <span title="base · user" style={{ fontSize:9, padding:'1px 5px', borderRadius:99, background:'rgba(0,0,0,.05)', color:'#6B6560', border:'0.5px solid rgba(0,0,0,.08)', flexShrink:0, fontFamily:'monospace' }}>
-                b {act.base_score != null ? Number(act.base_score).toFixed(2) : '–'} · u {act.final_score != null ? Number(act.final_score).toFixed(2) : '–'}
-              </span>
-            )}
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
