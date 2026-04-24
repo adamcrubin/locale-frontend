@@ -251,9 +251,12 @@ export default function App() {
   // Keep source categories intact — curated is purely a virtual aggregator.
   const curatedActivities = (() => {
     const seen = new Set();
+    const perCat = {};
+    const MAX_PER_CAT = 2;
+    const MAX_TOTAL = 10;
     const flat = Object.entries(activities || {})
       .filter(([k]) => k !== 'curated')
-      .flatMap(([, arr]) => Array.isArray(arr) ? arr : [])
+      .flatMap(([catId, arr]) => Array.isArray(arr) ? arr.map(a => ({ ...a, _sourceCat: catId })) : [])
       .filter(a => a && a.title)
       .sort((a, b) => ((b.final_score || b.base_score || 0) + (b.expires ? 0.2 : 0))
                     - ((a.final_score || a.base_score || 0) + (a.expires ? 0.2 : 0)));
@@ -261,9 +264,12 @@ export default function App() {
     for (const a of flat) {
       const k = (a.title || '').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
       if (seen.has(k)) continue;
+      const cat = a._sourceCat;
+      if ((perCat[cat] || 0) >= MAX_PER_CAT) continue;
       seen.add(k);
+      perCat[cat] = (perCat[cat] || 0) + 1;
       out.push(a);
-      if (out.length >= 10) break;
+      if (out.length >= MAX_TOTAL) break;
     }
     return out;
   })();

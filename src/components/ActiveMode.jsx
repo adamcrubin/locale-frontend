@@ -533,6 +533,11 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
             <span style={{ overflow: isCompact ? 'hidden' : 'visible', textOverflow: isCompact ? 'ellipsis' : 'clip', whiteSpace: isCompact ? 'nowrap' : 'normal' }}>
               {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
             </span>
+            {(act.base_score != null || act.final_score != null) && (
+              <span title="base · user" style={{ fontSize:9, padding:'1px 5px', borderRadius:99, background:'rgba(0,0,0,.05)', color:'#6B6560', border:'0.5px solid rgba(0,0,0,.08)', flexShrink:0, fontFamily:'monospace' }}>
+                b {act.base_score != null ? Number(act.base_score).toFixed(2) : '–'} · u {act.final_score != null ? Number(act.final_score).toFixed(2) : '–'}
+              </span>
+            )}
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
@@ -1116,7 +1121,7 @@ function StackedColumn({ cats, ...colProps }) {
 }
 
 // ── Mobile single-column layout ───────────────────────────────────────────────
-function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter, curatedMode }) {
+function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter, curatedMode, weather }) {
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
@@ -1137,8 +1142,16 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   const catIdx = visibleCats.findIndex(c => c.id === activeCat);
   const cat    = visibleCats[catIdx] || visibleCats[0];
 
-  const goNext = () => { if (catIdx < visibleCats.length - 1) setActiveCat(visibleCats[catIdx + 1].id); };
-  const goPrev = () => { if (catIdx > 0) setActiveCat(visibleCats[catIdx - 1].id); };
+  const goNext = () => {
+    if (!visibleCats.length) return;
+    const next = (catIdx + 1) % visibleCats.length;
+    setActiveCat(visibleCats[next].id);
+  };
+  const goPrev = () => {
+    if (!visibleCats.length) return;
+    const prev = (catIdx - 1 + visibleCats.length) % visibleCats.length;
+    setActiveCat(visibleCats[prev].id);
+  };
 
   const onTS = e => { swipeX.current = e.touches[0].clientX; swipeDir.current = null; };
   const onTM = e => {
@@ -1156,6 +1169,19 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   };
 
   if (!cat) return null;
+
+  const weekendDays = getWeekendWeather(weather);
+  const weekendWithDate = (() => {
+    const now = new Date();
+    const day = now.getDay();
+    const daysToFri = (5 - day + 7) % 7;
+    const fri = new Date(now); fri.setDate(now.getDate() + (day === 6 ? -1 : day === 0 ? -2 : daysToFri));
+    const sat = new Date(fri); sat.setDate(fri.getDate() + 1);
+    const sun = new Date(fri); sun.setDate(fri.getDate() + 2);
+    const dates = [fri, sat, sun];
+    const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
+    return weekendDays.slice(0, 3).map((w, i) => ({ ...w, dateStr: dates[i] ? fmt(dates[i]) : '' }));
+  })();
 
   const allActs = dedupeActivities(
     (activities[cat.id]?.length > 0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id] || [])
@@ -1175,15 +1201,38 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   return (
     <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1, background: 'var(--bg)', maxWidth: '100vw' }}>
 
+      {/* ── Weekend weather row ── */}
+      <div style={{
+        display:'flex', gap:6, padding:'6px 10px', flexShrink:0,
+        background:'rgba(0,0,0,.04)', borderBottom:'0.5px solid rgba(0,0,0,.06)',
+        overflowX:'auto',
+      }} className="no-scroll">
+        {weekendWithDate.map((d, i) => (
+          <div key={i} style={{
+            flex:'1 1 0', minWidth:0,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+            padding:'4px 8px', borderRadius:99,
+            background:'rgba(255,255,255,.7)', border:'0.5px solid rgba(0,0,0,.06)',
+            fontFamily:'DM Sans, sans-serif',
+          }}>
+            <span style={{ fontSize:11, fontWeight:700, color:'#3A3530' }}>{d.day}</span>
+            <span style={{ fontSize:10, color:'#6B6560' }}>({d.dateStr})</span>
+            <WeatherIcon icon={d.icon} desc={d.desc} size={14} />
+            <span style={{ fontSize:11, fontWeight:600, color:'#3A3530' }}>{d.hi}°<span style={{ color:'#B8B3AA' }}>/{d.lo}°</span></span>
+            {d.precip > 20 && <span style={{ fontSize:10, color:'#2563EB' }}>{d.precip}%</span>}
+          </div>
+        ))}
+      </div>
+
       {/* ── Category header with L/R arrows ── */}
       <div className={cat.cls} style={{
         padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
         minWidth: 0,
       }}>
-        <button onClick={goPrev} disabled={catIdx === 0} style={{
-          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: catIdx === 0 ? 'default' : 'pointer',
-          background: catIdx === 0 ? 'transparent' : 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
-          color: catIdx === 0 ? 'rgba(0,0,0,.2)' : 'currentColor', fontFamily: 'DM Sans, sans-serif',
+        <button onClick={goPrev} style={{
+          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
+          color: 'currentColor', fontFamily: 'DM Sans, sans-serif',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>←</button>
 
@@ -1197,10 +1246,10 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
           </div>
         </div>
 
-        <button onClick={goNext} disabled={catIdx === visibleCats.length - 1} style={{
-          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: catIdx === visibleCats.length - 1 ? 'default' : 'pointer',
-          background: catIdx === visibleCats.length - 1 ? 'transparent' : 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
-          color: catIdx === visibleCats.length - 1 ? 'rgba(0,0,0,.2)' : 'currentColor', fontFamily: 'DM Sans, sans-serif',
+        <button onClick={goNext} style={{
+          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
+          color: 'currentColor', fontFamily: 'DM Sans, sans-serif',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>→</button>
       </div>
@@ -1384,7 +1433,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   // First column to claim a title wins; subsequent columns skip duplicates
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather };
 
   // Calendar strip data -- sort calQueue into Fri/Sat/Sun buckets
   const now2 = new Date();
