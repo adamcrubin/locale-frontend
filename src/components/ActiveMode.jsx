@@ -30,6 +30,7 @@ const QUICK_PROMPTS = [
   { label:'A Fun-Filled Saturday', canned: true },
   { label:'Something New', canned: true },
   { label:'Weekend Away Itinerary', canned: true },
+  { label:'✏️ Ask Anything', canned: true },
 ];
 
 // ── Frontend blocklist — catches anything that slipped past the backend ─────────
@@ -88,6 +89,41 @@ function formatMusicGenre(act) {
   const genre = tags.find(t => MUSIC_GENRES.includes(t));
   if (!genre) return null;
   return genre.charAt(0).toUpperCase() + genre.slice(1);
+}
+
+// ── Sports emoji tag ──────────────────────────────────────────────────────────
+const SPORT_EMOJI = {
+  basketball:'🏀', nba:'🏀', wnba:'🏀',
+  football:'🏈', nfl:'🏈',
+  baseball:'⚾', mlb:'⚾',
+  hockey:'🏒', nhl:'🏒',
+  soccer:'⚽', mls:'⚽', futbol:'⚽',
+  tennis:'🎾',
+  golf:'⛳', pga:'⛳',
+  boxing:'🥊', mma:'🥊', ufc:'🥊',
+  volleyball:'🏐',
+  running:'🏃', marathon:'🏃', '5k':'🏃', '10k':'🏃',
+  cycling:'🚴', bike:'🚴',
+  swim:'🏊', swimming:'🏊',
+  rugby:'🏉',
+  lacrosse:'🥍',
+  hiking:'🥾',
+  skate:'⛸', skating:'⛸',
+  ski:'🎿', skiing:'🎿',
+};
+function formatSportsEmoji(act) {
+  if (!(act.categories||[]).includes('sports')) return null;
+  const hay = [
+    ...(act.tags||[]),
+    act.title || '',
+    act.description || '',
+    act.subcategory || '',
+  ].join(' ').toLowerCase();
+  for (const key of Object.keys(SPORT_EMOJI)) {
+    const re = new RegExp(`\\b${key}\\b`);
+    if (re.test(hay)) return { emoji: SPORT_EMOJI[key], label: key.charAt(0).toUpperCase() + key.slice(1) };
+  }
+  return null;
 }
 
 // ── Smart when display ────────────────────────────────────────────────────────
@@ -336,7 +372,25 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
       : `https://www.google.com/maps/search/?api=1&query=${dest}`, '_blank');
   };
 
-  const eventUrl  = act.url || `https://www.google.com/search?q=${encodeURIComponent((act.title||'') + ' ' + (act.venue || act.where || 'DC'))}`;
+  // Event URL: prefer direct link; fallback to "I'm Feeling Lucky" Google search
+  // which redirects to the top organic result (skips SEM ads + search results page).
+  const searchQ = `${(act.title||'')} ${(act.venue || act.where || 'DC')} tickets -pinterest -facebook`;
+  const eventUrl = act.url || `https://www.google.com/search?btnI=1&q=${encodeURIComponent(searchQ)}`;
+
+  // Ticket URL: only show button if URL is event-specific (has a path beyond the bare domain)
+  const hasSpecificTicketUrl = (() => {
+    if (!act.ticket_url) return false;
+    try {
+      const u = new URL(act.ticket_url);
+      // reject bare domain (/, or / + short path like /events, /home, /concerts)
+      const path = u.pathname.replace(/\/$/, '');
+      if (!path || path.length < 8) return false;
+      // reject aggregator homepages
+      const bareDomains = ['ticketmaster.com','livenation.com','stubhub.com','seatgeek.com','axs.com','eventbrite.com','resy.com','opentable.com'];
+      if (bareDomains.includes(u.hostname.replace(/^www\./,'')) && !/\d/.test(path)) return false;
+      return true;
+    } catch { return false; }
+  })();
   const shareText = `${act.title}${act.when ? ' — ' + act.when : ''}${act.where ? ' at ' + act.where : ''}`;
 
   const handleShare = async (e) => {
@@ -393,8 +447,8 @@ function ActionBar({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDow
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
 
-      {/* Ticket link — only shown when ticket_url exists */}
-      {act.ticket_url && (
+      {/* Ticket link — only when we have a specific event URL (not just the aggregator homepage) */}
+      {hasSpecificTicketUrl && (
         <a href={act.ticket_url} target="_blank" rel="noopener noreferrer"
           onClick={e => e.stopPropagation()} title="Buy tickets"
           style={{ textDecoration:'none' }}>
@@ -557,6 +611,9 @@ function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown,
           }}>
             {formatMusicGenre(act) && (
               <span style={{ fontSize:10, padding:'1px 6px', borderRadius:99, background:'rgba(139,92,246,.12)', color:'#7C3AED', border:'0.5px solid rgba(139,92,246,.25)', flexShrink:0, fontWeight:500 }}>{formatMusicGenre(act)}</span>
+            )}
+            {formatSportsEmoji(act) && (
+              <span style={{ fontSize:10, padding:'1px 6px', borderRadius:99, background:'rgba(34,197,94,.12)', color:'#16A34A', border:'0.5px solid rgba(34,197,94,.25)', flexShrink:0, fontWeight:500 }}>{formatSportsEmoji(act).emoji} {formatSportsEmoji(act).label}</span>
             )}
             <span style={{ overflow: isCompact ? 'hidden' : 'visible', textOverflow: isCompact ? 'ellipsis' : 'clip', whiteSpace: isCompact ? 'nowrap' : 'normal' }}>
               {[formatWhen(act), formatVenue(act), formatCost(act)].filter(Boolean).join(' · ')}
@@ -1185,14 +1242,17 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
 
   if (!cat) return null;
 
-  const allActs = (activities[cat.id]?.length > 0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id] || [])
-    .filter(a => !removed[`${cat.id}::${a.title}`])
-    .filter(a => !isPastEvent(a))
-    .filter(a => {
-      if (!timeFilter || timeFilter === 'all') return true;
-      const tod = getTimeOfDay(a);
-      return tod === timeFilter || tod === 'any';
-    });
+  const allActs = dedupeActivities(
+    (activities[cat.id]?.length > 0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id] || [])
+      .filter(a => !removed[`${cat.id}::${a.title}`])
+      .filter(a => !isPastEvent(a))
+      .filter(a => !isFrontendBlocked(a))
+      .filter(a => {
+        if (!timeFilter || timeFilter === 'all') return true;
+        const tod = getTimeOfDay(a);
+        return tod === timeFilter || tod === 'any';
+      })
+  );
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -1486,11 +1546,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
               onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';e.currentTarget.style.color='rgba(255,255,255,.7)';}}
             >{p.label}</button>
           ))}
-          <button onClick={()=>setShowAsk(true)} style={{
-            fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
-            background:'rgba(201,168,76,.1)',border:'0.5px solid rgba(201,168,76,.2)',
-            color:'rgba(201,168,76,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,flexShrink:0,
-          }}>✏️ Ask Anything</button>
         </div>
       </div>}
 

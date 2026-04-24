@@ -247,8 +247,30 @@ export default function App() {
     updateProfile(activeProfile.id, { dislikedTags });
   };
 
+  // Curated "category" = top 10 events across all real categories, sorted by score.
+  // Keep source categories intact — curated is purely a virtual aggregator.
+  const curatedActivities = (() => {
+    const seen = new Set();
+    const flat = Object.entries(activities || {})
+      .filter(([k]) => k !== 'curated')
+      .flatMap(([, arr]) => Array.isArray(arr) ? arr : [])
+      .filter(a => a && a.title)
+      .sort((a, b) => ((b.final_score || b.base_score || 0) + (b.expires ? 0.2 : 0))
+                    - ((a.final_score || a.base_score || 0) + (a.expires ? 0.2 : 0)));
+    const out = [];
+    for (const a of flat) {
+      const k = (a.title || '').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(a);
+      if (out.length >= 10) break;
+    }
+    return out;
+  })();
+  const activitiesWithCurated = { curated: curatedActivities, ...(activities || {}) };
+
   const commonProps = {
-    settings, activeProfile, calQueue, activities, weather,
+    settings, activeProfile, calQueue, activities: activitiesWithCurated, weather,
     activitiesSource, weatherSource, calendar,
     onCalendar:      setCalModal,
     onWeather:       setWeatherDay,
@@ -328,14 +350,14 @@ export default function App() {
       {screen === 'active'  && <ActiveMode  {...commonProps} />}
       {screen === 'weekday' && <WeekdayMode {...commonProps} activities={weekdayActivities} />}
 
-      {/* ── Top bar: time filter + weekend/weekday toggle (desktop only) ── */}
+      {/* ── Top bar: weekend/weekday toggle (desktop only, centered) ── */}
       {(screen === 'active' || screen === 'weekday') && !isMobileInit && (
         <div style={{
           position:'fixed', top:9, left:'50%', transform:'translateX(-50%)',
           zIndex:30, display:'flex', alignItems:'center', gap:6,
         }}>
-          {/* Time filter — only on Weekend */}
-          {screen === 'active' && (
+          {/* Weekend / Weeknight toggle lives here; time filter moved to the left */}
+          {false && screen === 'active' && (
             <div style={{
               display:'flex', background:'rgba(255,255,255,.06)',
               border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
@@ -375,6 +397,25 @@ export default function App() {
               }}
             >Weeknight</button>
           </div>
+        </div>
+      )}
+
+      {/* ── Time filter — positioned near the left side of the top bar (desktop, Weekend only) ── */}
+      {screen === 'active' && !isMobileInit && (
+        <div style={{
+          position:'fixed', top:9, left:320, zIndex:30,
+          display:'flex', background:'rgba(255,255,255,.06)',
+          border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+        }}>
+          {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
+            <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
+              padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
+              fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
+              background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
+              color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
+              fontWeight: timeFilter===t.id ? 600 : 400,
+            }}>{t.label}</button>
+          ))}
         </div>
       )}
 

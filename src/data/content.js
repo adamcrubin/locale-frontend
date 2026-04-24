@@ -1,4 +1,5 @@
 export const ALL_CATEGORIES = [
+  { id:'curated',  label:'Curated',            icon:'⭐', cls:'cat-arts'     },
   { id:'outdoors', label:'Outdoors',           icon:'🌿', cls:'cat-outdoors' },
   { id:'food',     label:'Food & dining',      icon:'🍽', cls:'cat-food'     },
   { id:'arts',     label:'Arts & culture',     icon:'🎨', cls:'cat-arts'     },
