@@ -28,13 +28,12 @@ export async function fetchWeather(city) {
 // Also now sends a trimmed profile JSON so the backend scoring engine can apply
 // preference matching. Without this, profile.prefs had no effect on final_score.
 export async function fetchEventFeed(zip, profileId, city, options = {}) {
-  const { category, weekday = false, limit = 100, offset = 0, profile = null } = options;
+  const { category, weekday = false, limit = 100, offset = 0, profile = null, userLat = null, userLng = null } = options;
   const params = new URLSearchParams({ zip, profileId, city, limit, offset });
   if (category) params.set('category', category);
-  // weekday=true tells the backend to filter to Mon–Thu events only
   if (weekday) params.set('weekday', 'true');
-  // Send a trimmed profile object for server-side preference scoring.
-  // We only send the fields the scoring engine uses to keep the URL short.
+  if (userLat != null) params.set('userLat', userLat);
+  if (userLng != null) params.set('userLng', userLng);
   if (profile) {
     params.set('profile', encodeURIComponent(JSON.stringify({
       id:      profile.id,
@@ -47,14 +46,14 @@ export async function fetchEventFeed(zip, profileId, city, options = {}) {
   return data.data;
 }
 
-export async function postFeedback(profileId, itemId, itemType, feedback, zipCode = '22046') {
+export async function postFeedback(profileId, itemId, itemType, feedback, zipCode = 'dc-metro') {
   return apiFetch('/events/feedback', {
     method: 'POST',
     body: JSON.stringify({ profileId, itemId, itemType, feedback, zipCode }),
   });
 }
 
-export async function markShown(profileId, eventIds, recIds, zipCode = '22046') {
+export async function markShown(profileId, eventIds, recIds, zipCode = 'dc-metro') {
   return apiFetch('/events/shown', {
     method: 'POST',
     body: JSON.stringify({ profileId, eventIds, recIds, zipCode }),

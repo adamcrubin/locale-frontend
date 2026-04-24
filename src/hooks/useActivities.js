@@ -133,9 +133,12 @@ function writeCache(zip, profileId, data) {
   } catch {} // storage full or unavailable — silently ignore
 }
 
-export function useActivities(city, profile) {
-  const zip       = city?.match(/\b(\d{5})\b/)?.[1] || '22046';
+export function useActivities(city, profile, locationOverride = null) {
+  // All event queries use the metro-wide zip — specific location used only for distance scoring
+  const zip       = 'dc-metro';
   const profileId = profile?.id || 'default';
+  const userLat   = locationOverride?.lat ?? null;
+  const userLng   = locationOverride?.lng ?? null;
 
   // Seed state from cache immediately so UI renders real data without waiting for the API.
   // Falls back to mock ACTIVITIES if nothing cached yet.
@@ -158,7 +161,7 @@ export function useActivities(city, profile) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchEventFeed(zip, profileId, city, { profile });
+      const data = await fetchEventFeed(zip, profileId, city, { profile, userLat, userLng });
       const transformed = transformFeed(data);
       if (transformed && Object.keys(transformed).length > 0) {
         const hasEvents = Object.values(transformed).some(acts => acts.length > 0);

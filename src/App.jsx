@@ -138,7 +138,8 @@ export default function App() {
   }, [user, demoMode]);
 
   // ── Live data hooks ───────────────────────────────────────────────────────
-  const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile);
+  const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
+  const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride);
   const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
   const { weather,            source: weatherSource    } = useWeather(settings.city);
   const { photos }                                       = usePhotos(settings.city);

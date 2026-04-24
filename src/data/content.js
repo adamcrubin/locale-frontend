@@ -263,6 +263,9 @@ export const DEFAULT_PROFILE = {
 
 export const DEFAULT_SETTINGS = {
   city:'Falls Church, VA',
+  neighborhood: null,
+  neighborhoodLat: null,
+  neighborhoodLng: null,
   intervalMinutes:3,
   testMode:false,
   ambientTimeoutMinutes:10,
