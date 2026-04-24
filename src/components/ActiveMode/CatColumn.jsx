@@ -80,7 +80,7 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
-          : allActs.map(a=>{
+          : allActs.map((a, idx)=>{
               // Compute title prefix:
               // - Curated or Other column: emoji of the source category the event came from
               // - Music / sports / shopping columns: sub-type hint (venue size,
@@ -88,6 +88,9 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
               // - Everything else: no prefix
               const catPrefix = (isCurated || isOther) ? sourceCatIcon(a) : titlePrefixForCategory(a, cat.id);
               const prefixedTitle = catPrefix ? `${catPrefix} ${a.title}` : a.title;
+              // First card in the Curated column = Spotlight (highest base_score).
+              // Renders with violet styling and starts expanded.
+              const isSpotlightCard = isCurated && idx === 0;
               return (
               <ActCard key={a.title}
                 act={{
@@ -96,7 +99,8 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                   title: prefixedTitle,
                 }}
                 catId={cat.id}
-                cardBg={isCurated ? curatedCardBg : undefined}
+                isSpotlight={isSpotlightCard}
+                cardBg={isCurated && !isSpotlightCard ? curatedCardBg : undefined}
                 onCal={onCal}
                 onRemove={()=>onRemove(cat.id,a)}
                 onHeart={()=>onHeart(cat.id,a)}

@@ -64,6 +64,7 @@ function transformFeed(feed) {
       reservation_url:       e.reservation_url       || null,
       reservation_platform:  e.reservation_platform  || null,
       reservation_is_search: !!e.reservation_is_search,
+      is_sponsored: !!e.is_sponsored,
     }));
 
     // Map always-available evergreen venues from the `evergreen_events` table.
@@ -115,6 +116,24 @@ function transformFeed(feed) {
     // then evergreens (also pre-sorted), then pinned_rec last.
     grouped[cat] = [...events, ...evergreens];
   }
+
+  // Build the synthetic Curated bucket — top base_score events across all
+  // categories, deduped by id, top 8. The first item becomes the Spotlight
+  // card (rendered expanded with violet styling in CatColumn).
+  // Sponsored events skipped here — they get the dedicated sidebar slot.
+  const seenIds = new Set();
+  const pool = [];
+  for (const list of Object.values(grouped)) {
+    for (const e of list) {
+      if (e.is_sponsored) continue;
+      if (!e.id || seenIds.has(e.id)) continue;
+      seenIds.add(e.id);
+      pool.push(e);
+    }
+  }
+  pool.sort((a, b) => (b.base_score || 0) - (a.base_score || 0));
+  grouped.curated = pool.slice(0, 8);
+
   return grouped;
 }
 

@@ -2,9 +2,14 @@ import WeatherIcon from '../WeatherIcon';
 import { WEATHER as MOCK_WEATHER } from '../../data/content';
 
 export default function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calendar, onEditCal }) {
-  const hero = Object.values(activities).flat()
-    .filter(a => a?.title)
-    .sort((a,b) => ((b.final_score||b.base_score||0)+(b.expires?0.3:0)) - ((a.final_score||a.base_score||0)+(a.expires?0.3:0)))[0];
+  // Sidebar's headline card is now a sponsored event — falls back to the
+  // top-scored regular event when no sponsor exists for this weekend.
+  const allEvents = Object.values(activities).flat().filter(a => a?.title);
+  const sponsoredCandidates = allEvents.filter(a => a.is_sponsored);
+  const hero = sponsoredCandidates.length > 0
+    ? sponsoredCandidates.sort((a,b) => (b.final_score||b.base_score||0) - (a.final_score||a.base_score||0))[0]
+    : allEvents.sort((a,b) => ((b.final_score||b.base_score||0)+(b.expires?0.3:0)) - ((a.final_score||a.base_score||0)+(a.expires?0.3:0)))[0];
+  const isSponsoredHero = !!hero?.is_sponsored;
 
   const now = new Date();
   const dow = now.getDay();
@@ -46,16 +51,19 @@ export default function WeekendSidebar({ activities, calQueue, weather, onCal, o
           style={{
             padding: '11px 14px', borderBottom: '0.5px solid rgba(255,255,255,.07)',
             cursor: 'pointer', flexShrink: 0, transition: 'background .12s',
+            background: isSponsoredHero ? 'rgba(201,168,76,.10)' : 'transparent',
           }}
-          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          onMouseEnter={e => e.currentTarget.style.background = isSponsoredHero ? 'rgba(201,168,76,.15)' : 'rgba(255,255,255,.04)'}
+          onMouseLeave={e => e.currentTarget.style.background = isSponsoredHero ? 'rgba(201,168,76,.10)' : 'transparent'}
         >
-          <div style={{fontSize:8,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#C9A84C',marginBottom:5}}>⭐ TOP PICK</div>
+          <div style={{fontSize:8,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:'#C9A84C',marginBottom:5}}>
+            {isSponsoredHero ? '⚡ SPONSORED' : '⭐ TOP PICK'}
+          </div>
           <div style={{fontSize:12,fontWeight:600,color:'rgba(255,255,255,.88)',lineHeight:1.25,marginBottom:3}}>{hero.title}</div>
           <div style={{fontSize:10,color:'rgba(255,255,255,.38)',lineHeight:1.3}}>
             {hero.when}{hero.cost ? ` · ${hero.cost}` : ''}
           </div>
-          {hero.expires && <div style={{fontSize:9,color:'#C9A84C',marginTop:4}}>⚡ Last chance</div>}
+          {hero.expires && !isSponsoredHero && <div style={{fontSize:9,color:'#C9A84C',marginTop:4}}>⚡ Last chance</div>}
           {hero.why && <div style={{fontSize:10,color:'rgba(255,255,255,.28)',fontStyle:'italic',lineHeight:1.4,marginTop:4}}>{hero.why?.slice(0,80)}{hero.why?.length>80?'...':''}</div>}
         </div>
       )}

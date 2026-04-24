@@ -23,8 +23,9 @@ function formatInterestedLine(friends) {
   return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length > 3 ? 's' : ''} are interested in this event`;
 }
 
-export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
-  const [expanded,      setExpanded]      = useState(false);
+export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
+  // Spotlight cards land expanded by default; user can collapse them.
+  const [expanded,      setExpanded]      = useState(isSpotlight);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
   // Image rendering is intentionally disabled for now — og:image often
@@ -33,6 +34,7 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
   // re-enable once we have a filter for "is this actually an event photo".
 
   const isRec      = act.content_type === 'recommendation';
+  const isSponsored = !!act.is_sponsored;
   const isExpanded = expanded;
   const isCompact  = !isExpanded;
 
@@ -46,21 +48,42 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
 
   const toggle = () => setExpanded(e => !e);
 
-  // Default card bg: recommendations get a warm off-white; everything else is pure white.
-  // The Curated column passes an explicit `cardBg` (honey-gold tint) so its cards stand out.
-  const baseBg = cardBg ?? (isRec ? '#F9F7F4' : '#FFFFFF');
+  // Card background priority: spotlight (violet) > sponsored (amber) >
+  // explicit prop (curated column tint) > recommendation off-white > white.
+  const baseBg =
+    isSpotlight ? 'rgba(139,92,246,.10)' :
+    isSponsored ? 'rgba(201,168,76,.16)' :
+    cardBg ?? (isRec ? '#F9F7F4' : '#FFFFFF');
+  const cardBorder =
+    isSpotlight ? '1px solid rgba(139,92,246,.45)' :
+    isSponsored ? '1px solid rgba(201,168,76,.5)'  :
+    cardBg      ? '1px solid rgba(201,168,76,.25)' :
+                  '1px solid rgba(0,0,0,0.10)';
 
   return (
     <div style={{
       background:   baseBg,
-      border:       cardBg ? '1px solid rgba(201,168,76,.25)' : '1px solid rgba(0,0,0,0.10)',
+      border:       cardBorder,
       borderRadius: 8,
       minHeight:    44,
       flexShrink:   0,
-      boxShadow:    '0 1px 3px rgba(0,0,0,0.06)',
+      boxShadow:    isSpotlight ? '0 4px 14px rgba(139,92,246,.18)' : '0 1px 3px rgba(0,0,0,0.06)',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
       transition:   'box-shadow .15s',
+      position:     'relative',
     }}>
+      {(isSpotlight || isSponsored) && (
+        <div style={{
+          position: 'absolute', top: -8, left: 10,
+          padding: '2px 8px', borderRadius: 99,
+          fontSize: 9, fontWeight: 700, letterSpacing: '.10em', textTransform: 'uppercase',
+          background: isSpotlight ? '#8B5CF6' : '#C9A84C',
+          color: 'white',
+          boxShadow: '0 1px 4px rgba(0,0,0,.18)',
+        }}>
+          {isSpotlight ? '✨ Spotlight' : '⚡ Sponsored'}
+        </div>
+      )}
       {thumbFeedback && (
         <div style={{
           padding: '9px 12px',
