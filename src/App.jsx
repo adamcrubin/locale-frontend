@@ -152,12 +152,13 @@ export default function App() {
 
   useEffect(() => {
     if (!calendar.events?.length) return;
+    // Backend already normalizes events to { title, date, time } via getUpcomingEvents()
     const normalized = calendar.events.map(e => ({
-      title: e.summary || e.title || 'Event',
-      date:  e.start?.dateTime?.split('T')[0] || e.start?.date || '',
-      time:  e.start?.dateTime
+      title: e.title || e.summary || 'Event',
+      date:  e.date  || e.start?.dateTime?.split('T')[0] || e.start?.date || '',
+      time:  e.time  || (e.start?.dateTime
         ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-        : 'All day',
+        : null),
       added: true, fromGoogle: true, googleId: e.id,
     }));
     setCalQueue(prev => [...prev.filter(e => !e.fromGoogle), ...normalized]);

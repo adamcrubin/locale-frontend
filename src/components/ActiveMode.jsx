@@ -926,12 +926,6 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
             </div>
           </div>
         )}
-        {calConnected && calendar?.email && (
-          <div style={{margin:'8px 8px 4px',padding:'6px 10px',borderRadius:6,background:'rgba(34,197,94,.08)',border:'0.5px solid rgba(34,197,94,.2)'}}>
-            <div style={{fontSize:9,color:'#22c55e',fontWeight:600}}>✓ Google Calendar connected</div>
-            <div style={{fontSize:8,color:'rgba(255,255,255,.25)',marginTop:2}}>{calendar.email}</div>
-          </div>
-        )}
       </div>
     </div>
   );

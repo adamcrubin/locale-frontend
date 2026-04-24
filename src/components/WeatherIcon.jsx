@@ -7,7 +7,7 @@ const d = (desc || '').toLowerCase();
 const i = (icon || '');
 
 if (d.includes('thunder') || d.includes('storm') || i.includes('⛈') || i.includes('🌩'))
-return <span style={{ fontSize: size, color: '#818CF8' }}>⛈</span>;
+return <span style={{ fontSize: size, color: '#818CF8' }}>🌩️</span>;
 if (d.includes('snow') || d.includes('ice') || d.includes('blizzard') || i.includes('❄') || i.includes('🌨'))
 return <span style={{ fontSize: size, color: '#BAE6FD' }}>❄️</span>;
 if (d.includes('frost'))

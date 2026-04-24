@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { WEATHER as MOCK_WEATHER } from '../data/content';
 
 // Maps NWS description keywords to a colored symbol — no CSS filter tricks.
@@ -9,7 +9,7 @@ function WeatherIcon({ icon, desc = '', size = 17 }) {
 
   // Thunderstorm
   if (d.includes('thunder') || d.includes('storm') || i.includes('⛈') || i.includes('🌩'))
-    return <span style={{ fontSize: size, color: '#818CF8' }}>⛈</span>;
+    return <span style={{ fontSize: size, color: '#818CF8' }}>🌩️</span>;
   // Snow / ice
   if (d.includes('snow') || d.includes('ice') || d.includes('blizzard') || i.includes('❄') || i.includes('🌨'))
     return <span style={{ fontSize: size, color: '#BAE6FD' }}>❄️</span>;
@@ -49,8 +49,21 @@ function WeatherIcon({ icon, desc = '', size = 17 }) {
 
 export default function WeatherScreen({ initialDay, city, weather, onClose }) {
   const [idx, setIdx] = useState(initialDay);
+  const hourlyRef = useRef(null);
   const WEATHER = (weather && weather.length > 0) ? weather : MOCK_WEATHER;
   const d = WEATHER[idx] || WEATHER[0];
+
+  // Scroll hourly panel to 7am whenever the selected day changes
+  useEffect(() => {
+    const el = hourlyRef.current;
+    if (!el || !d.hours?.length) return;
+    const target = d.hours.findIndex(h => {
+      const t = (h.t || '').toLowerCase().replace(/\s/g, '');
+      return t === '7am';
+    });
+    if (target > 0) el.scrollTop = target * 33;
+    else el.scrollTop = 0;
+  }, [idx]);
 
   return (
     <div className="fade-enter" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', zIndex:60, display:'flex', alignItems:'center', justifyContent:'center', padding:'32px 20px' }} onClick={onClose}>
@@ -65,7 +78,7 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
           <button onClick={onClose} style={{ background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.1)', borderRadius:8, padding:'5px 12px', fontSize:12, cursor:'pointer', fontFamily:'DM Sans, sans-serif', color:'rgba(255,255,255,.55)' }}>Close</button>
         </div>
 
-        {/* Stats row — skip null fields gracefully */}
+        {/* Stats row */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', borderBottom:'0.5px solid rgba(255,255,255,.08)', flexShrink:0 }}>
           {[
             { l:'High / Low', v:`${d.hi}° / ${d.lo}°` },
@@ -80,29 +93,11 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
           ))}
         </div>
 
-        {/* Split panel: hourly left, 7-day right */}
+        {/* Split panel: 7-day LEFT, hourly RIGHT */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', flex:1, overflow:'hidden', minHeight:0 }}>
 
-          {/* Left: hourly for selected day */}
+          {/* Left: 7-day forecast */}
           <div style={{ padding:'12px 16px', borderRight:'0.5px solid rgba(255,255,255,.08)', overflowY:'auto' }} className="no-scroll">
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
-              Hourly — {d.day?.toLowerCase()}
-            </div>
-            {d.hours && d.hours.length > 0 ? d.hours.map((h,i)=>(
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:i<d.hours.length-1?'0.5px solid rgba(255,255,255,.06)':'none', fontSize:12 }}>
-                <span style={{ width:36, color:'rgba(255,255,255,.35)', flexShrink:0 }}>{h.t}</span>
-                <span style={{ width:22, textAlign:'center', flexShrink:0 }}><WeatherIcon icon={h.icon} desc={h.desc} size={14} /></span>
-                <span style={{ flex:1, color:'rgba(255,255,255,.42)', fontSize:11 }}>{h.desc}</span>
-                <span style={{ fontWeight:600, color:'rgba(255,255,255,.8)', width:28, textAlign:'right' }}>{h.temp}°</span>
-                <span style={{ fontSize:10, color:'#60A5FA', width:26, textAlign:'right' }}>{h.p ? `${h.p}%` : ''}</span>
-              </div>
-            )) : (
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontStyle:'italic', paddingTop:8 }}>No hourly data for this day</div>
-            )}
-          </div>
-
-          {/* Right: 7-day forecast */}
-          <div style={{ padding:'12px 16px', overflowY:'auto' }} className="no-scroll">
             <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
               7-day forecast
             </div>
@@ -122,6 +117,24 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
                 <span style={{ fontSize:11, color: i===idx?'rgba(255,255,255,.8)':'rgba(255,255,255,.45)', width:54, textAlign:'right' }}>{dd.hi}°/{dd.lo}°</span>
               </div>
             ))}
+          </div>
+
+          {/* Right: hourly for selected day — scrollable, starts at 7am */}
+          <div ref={hourlyRef} style={{ padding:'12px 16px', overflowY:'auto' }} className="no-scroll">
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
+              Hourly — {d.day?.toLowerCase()}
+            </div>
+            {d.hours && d.hours.length > 0 ? d.hours.map((h,i)=>(
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:i<d.hours.length-1?'0.5px solid rgba(255,255,255,.06)':'none', fontSize:12 }}>
+                <span style={{ width:40, color:'rgba(255,255,255,.35)', flexShrink:0, fontSize:11 }}>{h.t}</span>
+                <span style={{ width:22, textAlign:'center', flexShrink:0 }}><WeatherIcon icon={h.icon} desc={h.desc} size={14} /></span>
+                <span style={{ flex:1, color:'rgba(255,255,255,.42)', fontSize:11 }}>{h.desc}</span>
+                <span style={{ fontWeight:600, color:'rgba(255,255,255,.8)', width:28, textAlign:'right' }}>{h.temp}°</span>
+                <span style={{ fontSize:10, color:'#60A5FA', width:26, textAlign:'right' }}>{h.p ? `${h.p}%` : ''}</span>
+              </div>
+            )) : (
+              <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontStyle:'italic', paddingTop:8 }}>No hourly data for this day</div>
+            )}
           </div>
         </div>
       </div>

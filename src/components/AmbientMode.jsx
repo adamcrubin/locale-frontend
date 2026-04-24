@@ -167,34 +167,106 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.4) 28%, transparent 55%)
       `}} />
 
-      {/* ── Weather — top left ── */}
-      <div style={{ position:'absolute', top:28, left:30, zIndex:3 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:4 }}>
-          <WeatherIcon icon={today.icon} desc={today.desc} size={36} />
-          <span style={{
-            fontFamily:'Cormorant Garamond, serif', fontSize:64, fontWeight:300,
-            color:'#fff', lineHeight:1, textShadow:'0 2px 20px rgba(0,0,0,.5)',
-          }}>{today.current ?? today.feel ?? today.hi}°</span>
-          <span style={{ fontSize:18, color:'rgba(255,255,255,.5)', alignSelf:'flex-end', paddingBottom:10 }}>F</span>
-        </div>
-        <div style={{ fontSize:16, color:'rgba(255,255,255,.75)', letterSpacing:'.04em', marginBottom:3 }}>{today.desc}</div>
-        <div style={{ fontSize:13, color:'rgba(255,255,255,.45)' }}>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}% · {today.wind}</div>
-      </div>
+      {/* ── 7-day weather + calendar grid — top banner ── */}
+      {(() => {
+        const now = new Date();
+        const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const dates = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(now); d.setDate(now.getDate() + i); return d;
+        });
+        const eventsByDate = {};
+        for (const e of (calQueue || [])) {
+          if (e.date) { if (!eventsByDate[e.date]) eventsByDate[e.date] = []; eventsByDate[e.date].push(e); }
+        }
+        return (
+          <div onClick={e => e.stopPropagation()} style={{
+            position:'absolute', top:0, left:0, right:0, zIndex:4,
+            padding:'10px 20px 8px',
+            background:'rgba(0,0,0,.52)',
+            backdropFilter:'blur(14px)',
+            WebkitBackdropFilter:'blur(14px)',
+            borderBottom:'0.5px solid rgba(255,255,255,.08)',
+            display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6,
+          }}>
+            {dates.map((d, i) => {
+              const w    = liveWeather[i] || {};
+              const key  = toKey(d);
+              const evts = eventsByDate[key] || [];
+              const isToday = i === 0;
+              const dayLabel = isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+              const dateLabel = `${d.getMonth()+1}/${d.getDate()}`;
+              return (
+                <div key={i} style={{ display:'flex', flexDirection:'column', gap:3, minWidth:0 }}>
+                  {/* Row 1: day + date */}
+                  <div style={{ fontSize:9, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
+                    {dayLabel} <span style={{ fontWeight:400, opacity:.7 }}>{dateLabel}</span>
+                  </div>
+                  {/* Row 2: weather pill */}
+                  <div onClick={() => onWeather(i)} style={{
+                    display:'inline-flex', alignItems:'center', gap:4,
+                    background:'rgba(255,255,255,.09)', border:'0.5px solid rgba(255,255,255,.12)',
+                    borderRadius:99, padding:'3px 8px', cursor:'pointer',
+                    transition:'background .12s', width:'fit-content',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.18)'}
+                    onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.09)'}
+                  >
+                    <WeatherIcon icon={w.icon} desc={w.desc} size={11} />
+                    <span style={{ fontSize:10, color:'rgba(255,255,255,.8)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
+                    {w.precip > 20 && <span style={{ fontSize:9, color:'#93C5FD' }}>{w.precip}%</span>}
+                  </div>
+                  {/* Row 3: calendar events */}
+                  {evts.slice(0, 2).map((e, j) => (
+                    <div key={j} style={{ fontSize:9, color:'rgba(255,255,255,.6)', lineHeight:1.25, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {e.time ? <span style={{ color:'rgba(255,255,255,.35)', marginRight:3 }}>{e.time}</span> : null}
+                      {e.title || e.name}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── Location — top right ── */}
-      <div style={{ position:'absolute', top:32, right:28, zIndex:3, textAlign:'right' }}>
+      <div style={{ position:'absolute', top:108, right:28, zIndex:3, textAlign:'right' }}>
         <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', letterSpacing:'.12em', textTransform:'uppercase', fontWeight:500 }}>{city}</div>
       </div>
 
-      {/* ── Clock — centered ── */}
+      {/* ── Today's weather — top left (glass backdrop) ── */}
+      <div style={{ position:'absolute', top:110, left:30, zIndex:3 }}>
+        <div style={{
+          display:'inline-flex', alignItems:'center', gap:10,
+          background:'rgba(0,0,0,.42)', backdropFilter:'blur(12px)',
+          WebkitBackdropFilter:'blur(12px)',
+          borderRadius:14, padding:'10px 16px',
+          border:'0.5px solid rgba(255,255,255,.1)',
+        }}>
+          <WeatherIcon icon={today.icon} desc={today.desc} size={32} />
+          <div>
+            <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
+              <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:52, fontWeight:300, color:'#fff', lineHeight:1 }}>
+                {today.current ?? today.feel ?? today.hi}°
+              </span>
+              <span style={{ fontSize:14, color:'rgba(255,255,255,.45)', paddingBottom:6 }}>F</span>
+            </div>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em' }}>{today.desc}</div>
+            <div style={{ fontSize:11, color:'rgba(255,255,255,.38)', marginTop:2 }}>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Clock — centered (offset down slightly so it clears the top grid) ── */}
       <div style={{
-        position:'absolute', top:'50%', left:'50%',
+        position:'absolute', top:'calc(50% + 40px)', left:'50%',
         transform:'translate(-50%, -50%)',
         zIndex:3, textAlign:'center', pointerEvents:'none',
         padding:'20px 36px 24px',
         borderRadius:24,
-        background:'rgba(0,0,0,.18)',
-        backdropFilter:'blur(2px)',
+        background:'rgba(0,0,0,.22)',
+        backdropFilter:'blur(4px)',
+        WebkitBackdropFilter:'blur(4px)',
       }}>
         <div style={{
           fontFamily:'Cormorant Garamond, serif',
@@ -210,33 +282,10 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         }}>{dateStr}</div>
       </div>
 
-      {/* ── 7-day weather pills — right side ── */}
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{ position:'absolute', right:28, top:'50%', transform:'translateY(-50%)', zIndex:3, display:'flex', flexDirection:'column', gap:5 }}
-      >
-        {liveWeather.slice(0,7).map((d, i) => (
-          <div key={d.day} onClick={() => onWeather(i)} style={{
-            display:'flex', alignItems:'center', gap:8,
-            background:'rgba(0,0,0,.45)', border:'0.5px solid rgba(255,255,255,.12)',
-            borderRadius:99, padding:'6px 14px', backdropFilter:'blur(12px)',
-            cursor:'pointer', transition:'all .15s',
-          }}
-            onMouseEnter={e => e.currentTarget.style.background='rgba(0,0,0,.65)'}
-            onMouseLeave={e => e.currentTarget.style.background='rgba(0,0,0,.45)'}
-          >
-            <span style={{ fontSize:11, color:'rgba(255,255,255,.5)', letterSpacing:'.06em', textTransform:'uppercase', width:28 }}>{d.day}</span>
-            <WeatherIcon icon={d.icon} desc={d.desc} size={18} />
-            <span style={{ fontSize:13, color:'rgba(255,255,255,.85)', fontWeight:500, minWidth:54 }}>{d.hi}°/{d.lo}°</span>
-            {d.precip > 20 && <span style={{ fontSize:11, color:'#93C5FD', minWidth:28 }}>{d.precip}%</span>}
-          </div>
-        ))}
-      </div>
-
-      {/* ── Bottom: featured activity + calendar ── */}
+      {/* ── Bottom: featured activity ── */}
       <div style={{
         position:'absolute', bottom:44, left:30, right:28, zIndex:3,
-        display:'grid', gridTemplateColumns: calQueue.length > 0 ? '1fr 220px' : '1fr', gap:24, alignItems:'end',
+        display:'grid', gridTemplateColumns:'1fr', gap:24, alignItems:'end',
       }}>
         {/* Featured rotating activity */}
         {feature && (
@@ -266,27 +315,6 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
           </div>
         )}
 
-        {/* Calendar — only shown when real events exist (no mock fallback) */}
-        {calQueue.length > 0 && (
-          <div style={{
-            background:'rgba(0,0,0,.55)', border:'0.5px solid rgba(255,255,255,.1)',
-            borderRadius:14, padding:'14px 16px', backdropFilter:'blur(16px)',
-          }}>
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
-              This weekend
-            </div>
-            {calQueue.slice(0,4).map((e, i) => {
-              const day = e.date ? new Date(e.date+'T12:00').toLocaleDateString('en-US',{weekday:'short'}) : '';
-              return (
-                <div key={i} style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:7 }}>
-                  <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', color:'rgba(255,255,255,.3)', width:24 }}>{day}</span>
-                  <span style={{ fontSize:13, color:'rgba(255,255,255,.8)', fontWeight:500, flex:1, lineHeight:1.2 }}>{e.title||e.name}</span>
-                  <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{e.time}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* ── Fun fact ticker — bottom strip ── */}
