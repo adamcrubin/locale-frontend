@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
 import WeatherIcon from '../WeatherIcon';
 import { ACTIVITIES as MOCK_ACTIVITIES } from '../../data/content';
-import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getWeekendWeather } from './utils';
+import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier, getWeekendWeather } from './utils';
 import ActCard from './ActCard';
+import MobileFilterSheet from './MobileFilterSheet';
 
-export default function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, timeFilter, curatedMode, weather }) {
+export default function MobileLayout({
+  visibleCats, activities, removed,
+  onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve,
+  weatherDim, weatherBoost, homeAddress, profileId, spotlightMode,
+  timeFilters = [], setTimeFilters,
+  priceFilters = [], setPriceFilters,
+  curatedMode, weather, onWeather,
+}) {
+  const [filterOpen, setFilterOpen] = useState(false);
+  const activeFilterCount = timeFilters.length + priceFilters.length;
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
@@ -68,9 +78,15 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
       .filter(a => !isPastEvent(a))
       .filter(a => !isFrontendBlocked(a))
       .filter(a => {
-        if (!timeFilter || timeFilter === 'all') return true;
+        if (!timeFilters.length) return true;
         const tod = getTimeOfDay(a);
-        return tod === timeFilter || tod === 'any';
+        return timeFilters.includes(tod) || tod === 'any';
+      })
+      .filter(a => {
+        if (!priceFilters.length) return true;
+        const tier = getPriceTier(a);
+        if (tier === 'unknown') return false;
+        return priceFilters.includes(tier);
       })
   );
 
@@ -87,12 +103,12 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
         overflowX:'auto',
       }} className="no-scroll">
         {weekendWithDate.map((d, i) => (
-          <div key={i} style={{
+          <button key={i} onClick={() => onWeather?.(i)} style={{
             flex:'1 1 0', minWidth:0,
             display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
             padding:'5px 6px', borderRadius:10,
             background:'rgba(255,255,255,.7)', border:'0.5px solid rgba(0,0,0,.06)',
-            fontFamily:'DM Sans, sans-serif',
+            fontFamily:'DM Sans, sans-serif', cursor:'pointer', minHeight:44,
           }}>
             <div style={{ display:'flex', alignItems:'baseline', gap:4, lineHeight:1 }}>
               <span style={{ fontSize:11, fontWeight:700, color:'#3A3530' }}>{d.day}</span>
@@ -103,7 +119,7 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
               <span style={{ fontSize:11, fontWeight:600, color:'#3A3530' }}>{d.hi}°<span style={{ color:'#B8B3AA' }}>/{d.lo}°</span></span>
               {d.precip > 20 && <span style={{ fontSize:10, color:'#2563EB' }}>{d.precip}%</span>}
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -127,6 +143,17 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
             {isDimmed  && ' · 🌧 rain likely'}
           </div>
         </div>
+
+        <button onClick={() => setFilterOpen(true)} title="Filters" style={{
+          height: 32, padding: '0 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          background: activeFilterCount > 0 ? 'rgba(201,168,76,.25)' : 'rgba(0,0,0,.15)',
+          color: activeFilterCount > 0 ? '#C9A84C' : 'currentColor',
+          fontSize: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          minHeight: 40,
+        }}>
+          ⚑{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+        </button>
 
         <button onClick={goNext} style={{
           width: 32, height: 32, borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -153,8 +180,10 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
             padding: '40px 20px', textAlign: 'center',
             fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.6,
           }}>
-            Nothing here yet{timeFilter !== 'all' ? ' for this time of day' : ''}
-            <div style={{ fontSize: 11, marginTop: 8, opacity: .6 }}>Check back Thursday for weekend picks</div>
+            Nothing here yet{activeFilterCount > 0 ? ' matching your filters' : ''}
+            <div style={{ fontSize: 11, marginTop: 8, opacity: .6 }}>
+              {activeFilterCount > 0 ? 'Try clearing filters from the ⚑ button.' : 'Check back Thursday for weekend picks'}
+            </div>
           </div>
         ) : (
           allActs.map(a => (
@@ -171,6 +200,15 @@ export default function MobileLayout({ visibleCats, activities, removed, onCal, 
           ))
         )}
       </div>
+
+      <MobileFilterSheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        timeFilters={timeFilters}
+        setTimeFilters={setTimeFilters}
+        priceFilters={priceFilters}
+        setPriceFilters={setPriceFilters}
+      />
     </div>
   );
 }

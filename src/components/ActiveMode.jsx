@@ -41,7 +41,7 @@ const QUICK_PROMPTS = [
   { label:'✏️ Ask Anything', canned: true },
 ];
 
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilter='all', isDemo=false, onLoginPrompt }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, isDemo=false, onLoginPrompt }) {
   const gateDemo = (feature, fn) => (...args) => {
     if (isDemo) { onLoginPrompt?.(feature); return; }
     return fn?.(...args);
@@ -105,7 +105,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather };
 
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>

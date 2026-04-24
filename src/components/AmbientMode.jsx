@@ -333,8 +333,10 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
             if (cur.length > 1) segments.push(cur);
 
             return (
-              <div style={{ marginTop:10, width: W }}>
-                <svg width={W} height={H} style={{ overflow:'visible' }}>
+              // SVG scales down responsively on narrow viewports via viewBox;
+              // maxWidth caps the growth so it doesn't blow past the widget.
+              <div style={{ marginTop:10, width:'100%', maxWidth: W }}>
+                <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ overflow:'visible', display:'block' }}>
                   {/* Y-axis gridlines + labels */}
                   {yTicks.map(t => {
                     const y = yAtTemp(t);

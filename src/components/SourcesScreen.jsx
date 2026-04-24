@@ -5,6 +5,7 @@
 // Has a "Test" button per source for one-off debug scrape+extract.
 
 import { useState, useEffect } from 'react';
+import { useIsMobile } from './ActiveMode/useIsMobile';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -292,11 +293,14 @@ function TestPanel({ sourceId, sourceName, onClose }) {
 }
 
 // ── Source Row ────────────────────────────────────────────────────────────────
-function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pref, onPrefChange }) {
+function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pref, onPrefChange, isMobile }) {
   const [expanded, setExpanded] = useState(false);
   const type   = source.source_type || guessType(source);
   const typeConf = SOURCE_TYPES[type] || SOURCE_TYPES.neighborhood;
   const lastOk = source.last_ok ? new Date(source.last_ok).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Never';
+
+  // On narrow viewports the 6-column grid crams; stack vertically as a card.
+  const gridCols = isMobile ? '1fr auto' : '1fr 100px 90px 70px 80px 90px';
 
   return (
     <div style={{
@@ -304,7 +308,7 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pre
       opacity: source.active ? 1 : 0.45,
       transition: 'opacity .2s',
     }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 90px 70px 80px 90px', alignItems:'center', padding:'10px 16px', gap:8 }}
+      <div style={{ display:'grid', gridTemplateColumns: gridCols, alignItems:'center', padding:'10px 16px', gap:8, rowGap: isMobile ? 6 : 0 }}
         onClick={() => setExpanded(e => !e)}>
 
         {/* Name + type badge */}
@@ -316,23 +320,33 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pre
           </div>
         </div>
 
-        {/* Type */}
-        <div>
-          <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:typeConf.bg, color:typeConf.color, fontWeight:500 }}>
-            {typeConf.label}
-          </span>
-        </div>
-
-        {/* Status */}
-        <StatusDot source={source} />
-
-        {/* Event count */}
-        <div style={{ fontSize:13, fontWeight:600, color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', textAlign:'center' }}>
-          {eventCount ?? '—'}
-        </div>
-
-        {/* Last scraped */}
-        <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', textAlign:'center' }}>{lastOk}</div>
+        {/* Type + Status + Event count + Last scraped — individual columns on desktop,
+            a single condensed meta row that spans both grid cells on mobile. */}
+        {isMobile ? (
+          <div style={{ gridColumn:'1 / -1', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:10, color:'rgba(255,255,255,.4)' }}>
+            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:typeConf.bg, color:typeConf.color, fontWeight:500 }}>
+              {typeConf.label}
+            </span>
+            <StatusDot source={source} />
+            <span style={{ color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', fontWeight:600 }}>
+              {eventCount ?? '—'} events
+            </span>
+            <span style={{ opacity:.7 }}>{lastOk}</span>
+          </div>
+        ) : (
+          <>
+            <div>
+              <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:typeConf.bg, color:typeConf.color, fontWeight:500 }}>
+                {typeConf.label}
+              </span>
+            </div>
+            <StatusDot source={source} />
+            <div style={{ fontSize:13, fontWeight:600, color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', textAlign:'center' }}>
+              {eventCount ?? '—'}
+            </div>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', textAlign:'center' }}>{lastOk}</div>
+          </>
+        )}
 
         {/* Actions */}
         <div style={{ display:'flex', gap:5, justifyContent:'flex-end' }} onClick={e=>e.stopPropagation()}>
@@ -393,7 +407,8 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pre
 
 // ── Main SourcesScreen ────────────────────────────────────────────────────────
 export default function SourcesScreen({ user, onClose }) {
-  const isAdmin = isAdminUser(user);
+  const isAdmin  = isAdminUser(user);
+  const isMobile = useIsMobile();
   const [sources,     setSources]     = useState([]);
   const [eventCounts, setEventCounts] = useState({});
   const [loading,     setLoading]     = useState(true);
@@ -543,12 +558,14 @@ export default function SourcesScreen({ user, onClose }) {
           <div style={{ fontSize:13, color:'#FDA4AF', padding:16 }}>Error: {error}</div>
         ) : (
           <div style={{ background:'rgba(255,255,255,.03)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:12, overflow:'hidden' }}>
-            {/* Table header */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 90px 70px 80px 90px', padding:'8px 16px', gap:8, borderBottom:'0.5px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.02)' }}>
-              {['Source', 'Type', 'Status', 'Events', 'Last run', 'Actions'].map(h => (
-                <div key={h} style={{ fontSize:9, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(255,255,255,.25)' }}>{h}</div>
-              ))}
-            </div>
+            {/* Table header — desktop only; mobile rows stack so a table header would be misleading */}
+            {!isMobile && (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 90px 70px 80px 90px', padding:'8px 16px', gap:8, borderBottom:'0.5px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.02)' }}>
+                {['Source', 'Type', 'Status', 'Events', 'Last run', 'Actions'].map(h => (
+                  <div key={h} style={{ fontSize:9, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(255,255,255,.25)' }}>{h}</div>
+                ))}
+              </div>
+            )}
 
             {/* Rows grouped by type */}
             {Object.entries(grouped).map(([type, typeSources]) => {
@@ -569,6 +586,7 @@ export default function SourcesScreen({ user, onClose }) {
                       isAdmin={isAdmin}
                       pref={prefs[s.id]}
                       onPrefChange={handlePrefChange}
+                      isMobile={isMobile}
                     />
                   ))}
                 </div>

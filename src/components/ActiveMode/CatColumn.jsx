@@ -17,7 +17,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, priceFilter, hasConflict, crossCatSeen, curatedMode }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode }) {
   const allActsUnsliced = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
@@ -32,18 +32,20 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
         return true;
       })
       .filter(a => {
-        if (!timeFilter || timeFilter === 'all') return true;
+        // Multi-select time filter. Empty array = show all.
+        // "any"-tagged events (no time info) surface regardless of selection.
+        if (!timeFilters?.length) return true;
         const tod = getTimeOfDay(a);
-        return tod === timeFilter || tod === 'any';
+        return timeFilters.includes(tod) || tod === 'any';
       })
       .filter(a => {
-        // Price filter: exclude events whose price tier doesn't match the selection.
-        // When the user picks a specific tier, events with unknown cost are hidden
-        // (so "Free only" doesn't surface mystery-priced items).
-        if (!priceFilter || priceFilter === 'all') return true;
+        // Multi-select price filter. Empty array = show all.
+        // When any specific tier is selected, unknowns are hidden — matches
+        // desktop behavior so "Free only" doesn't surface mystery-priced items.
+        if (!priceFilters?.length) return true;
         const tier = getPriceTier(a);
         if (tier === 'unknown') return false;
-        return tier === priceFilter;
+        return priceFilters.includes(tier);
       })
   );
   const allActs = curatedMode ? allActsUnsliced.slice(0, 5) : allActsUnsliced;

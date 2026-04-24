@@ -78,6 +78,38 @@ function DataBadge({ activitiesSource, weatherSource }) {
   );
 }
 
+// ── ChipRow — multi-select pill row with an "Any" reset chip ──────────────
+// `value` is an array of selected option ids. Empty array = Any.
+// Clicking a specific chip toggles it and clears Any. Clicking Any clears all.
+function ChipRow({ value, onChange, options, anyLabel = 'Any' }) {
+  const isAny = !value || value.length === 0;
+  const toggle = (id) => {
+    const set = new Set(value || []);
+    if (set.has(id)) set.delete(id); else set.add(id);
+    onChange(Array.from(set));
+  };
+  const chipStyle = (active) => ({
+    padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
+    fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
+    background: active ? 'rgba(255,255,255,.18)' : 'transparent',
+    color:      active ? 'rgba(255,255,255,.9)'  : 'rgba(255,255,255,.4)',
+    fontWeight: active ? 600 : 400,
+  });
+  return (
+    <div style={{
+      display:'flex', background:'rgba(255,255,255,.06)',
+      border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+    }}>
+      <button onClick={() => onChange([])} style={chipStyle(isAny)}>{anyLabel}</button>
+      {options.map(o => (
+        <button key={o.id} onClick={() => toggle(o.id)} style={chipStyle(!isAny && value.includes(o.id))}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const { user, loading: authLoading, error: authError, signInWithGoogle, signOut, isEnabled: authEnabled } = useAuth();
@@ -137,9 +169,11 @@ export default function App() {
   const [showPicker,    setShowPicker]    = useState(false);
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
-  const [timeFilter,    setTimeFilter]    = useState('all');
-  // Price filter: 'all' | 'free' | '$' | '$$' | '$$$'
-  const [priceFilter,   setPriceFilter]   = useState('all');
+  // Multi-select filters. Empty array = "any" (show everything for that dimension).
+  // Time values: 'morning' | 'midday' | 'night'
+  // Price values: 'free' | '$' | '$$' | '$$$'
+  const [timeFilters,   setTimeFilters]   = useState([]);
+  const [priceFilters,  setPriceFilters]  = useState([]);
   const [editCalModal,  setEditCalModal]  = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
@@ -282,8 +316,10 @@ export default function App() {
     onEditCal:       gate('calendar', setEditCalModal),
     onLoginPrompt:   (feature) => setLoginPrompt({ feature: feature || 'default' }),
     isDemo,
-    timeFilter,
-    priceFilter,
+    timeFilters,
+    setTimeFilters,
+    priceFilters,
+    setPriceFilters,
     user, onSignOut: signOut,
   };
 
@@ -414,47 +450,33 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Time filter — positioned near the left side of the top bar (desktop, Weekend only) ── */}
+      {/* ── Time + price filters — desktop only (mobile uses a sheet inside MobileLayout) ── */}
       {screen === 'active' && !isMobileInit && (
         <div style={{
           position:'fixed', top:9, left:320, zIndex:30,
           display:'flex', gap:6, alignItems:'center',
         }}>
-          <div style={{
-            display:'flex', background:'rgba(255,255,255,.06)',
-            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
-          }}>
-            {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
-              <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
-                padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
-                fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
-                background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
-                color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-                fontWeight: timeFilter===t.id ? 600 : 400,
-              }}>{t.label}</button>
-            ))}
-          </div>
-          {/* Price filter — any / free / $ / $$ / $$$ */}
-          <div style={{
-            display:'flex', background:'rgba(255,255,255,.06)',
-            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
-          }}>
-            {[
-              {id:'all',  label:'$ Any'},
-              {id:'free', label:'Free'},
-              {id:'$',    label:'$'},
-              {id:'$$',   label:'$$'},
-              {id:'$$$',  label:'$$$'},
-            ].map(p => (
-              <button key={p.id} onClick={() => setPriceFilter(p.id)} style={{
-                padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
-                fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
-                background: priceFilter===p.id ? 'rgba(255,255,255,.18)' : 'transparent',
-                color:      priceFilter===p.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-                fontWeight: priceFilter===p.id ? 600 : 400,
-              }}>{p.label}</button>
-            ))}
-          </div>
+          <ChipRow
+            value={timeFilters}
+            onChange={setTimeFilters}
+            options={[
+              { id:'morning', label:'🌅' },
+              { id:'midday',  label:'☀️' },
+              { id:'night',   label:'🌙' },
+            ]}
+            anyLabel="Any"
+          />
+          <ChipRow
+            value={priceFilters}
+            onChange={setPriceFilters}
+            options={[
+              { id:'free', label:'Free' },
+              { id:'$',    label:'$' },
+              { id:'$$',   label:'$$' },
+              { id:'$$$',  label:'$$$' },
+            ]}
+            anyLabel="$ Any"
+          />
         </div>
       )}
 

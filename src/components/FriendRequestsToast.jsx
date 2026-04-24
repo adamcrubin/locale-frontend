@@ -32,7 +32,7 @@ export default function FriendRequestsToast({ user, onOpenSettings }) {
 
   return (
     <div style={{
-      position: 'fixed', top: 70, right: 18, zIndex: 50,
+      position: 'fixed', top: 70, right: 12, left: 'auto', zIndex: 50,
       background: 'rgba(28, 26, 23, 0.96)', backdropFilter: 'blur(8px)',
       border: '0.5px solid rgba(201, 168, 76, .35)',
       borderRadius: 10, padding: '10px 14px',
@@ -40,7 +40,8 @@ export default function FriendRequestsToast({ user, onOpenSettings }) {
       boxShadow: '0 6px 18px rgba(0,0,0,.35)',
       animation: 'fadeIn 250ms ease both',
       fontFamily: 'DM Sans, sans-serif',
-      maxWidth: 320,
+      width: 'min(320px, calc(100vw - 24px))',
+      boxSizing: 'border-box',
     }}>
       <span style={{ fontSize: 18 }}>👋</span>
       <div style={{ flex: 1, minWidth: 0 }}>
