@@ -176,6 +176,7 @@ const PAGES = {
   trust: {
     title: 'Trust & Safety',
     icon:  '🛡',
+    legal: true,
     body: () => (
       <>
         <H>How we pick sources</H>
