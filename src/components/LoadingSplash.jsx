@@ -22,11 +22,21 @@ const PHOTOS = [
 ];
 const bg = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1600&h=900&q=70`;
 
+// Mix of progress-y lines and quick how-to-use tips. Rotates every ~2.2s,
+// so a 10-item list is ~22 seconds end-to-end — enough for most cold loads
+// to finish before it wraps.
 const TAGLINES = [
   'Curating a great weekend…',
-  'Getting the latest events for you…',
-  'Checking the weather…',
-  'Finding the best neighborhoods…',
+  '💡 Tap 👍 on events you like — your feed learns fast',
+  'Reading the local press so you don\'t have to…',
+  '💡 ⚑ Filter button up top — by time, price, or category',
+  'Cross-checking the weather…',
+  '💡 ♥ Save events for later with the heart button',
+  'Ranking what\'s actually worth your weekend…',
+  '💡 📅 One tap adds any event to your Google Calendar',
+  'Tuning picks to your neighborhood…',
+  '💡 Invite friends in Settings — their saves bubble up in your feed',
+  'Almost there — loading your picks…',
 ];
 
 export const SPLASH_SESSION_KEY = 'locale.splashShown';

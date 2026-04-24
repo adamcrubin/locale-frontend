@@ -97,10 +97,14 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   }
 
   // ── Merge thin columns into a synthetic "Other" bucket ─────────────────
-  // Any category with < THIN_THRESHOLD events this weekend gets pulled out
-  // of visibleCats and its items are rolled into `activities.other`. Items
-  // keep their original category (via categories[]) so the Other column
-  // can render each title prefixed with the source emoji via sourceCatIcon.
+  // Any non-tail category with < THIN_THRESHOLD events this weekend gets
+  // pulled out and its items rolled into activities.other with the source
+  // category preserved for emoji-prefixed titles.
+  //
+  // Final ordering: curated → populated columns (sorted) → Other (always
+  // second-to-last) → zero-entry columns (always last). Users can hide
+  // normal categories via settings; Other is always present when it has
+  // content (not in the toggle list).
   const THIN_THRESHOLD = 3;
   let effectiveActivities = activities;
   if (activeCat === 'all') {
@@ -108,25 +112,29 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
     const thinIds = [];
     const otherBucket = [];
     for (const cat of visibleCats) {
-      if (cat.id === 'curated' || cat.id === 'other' || cat.id === 'trips' || cat.id === 'away') continue;
+      if (cat.id === 'curated' || cat.id === 'other') continue;
       const items = activities[cat.id] || [];
       if (items.length > 0 && items.length < THIN_THRESHOLD) {
         thinIds.push(cat.id);
         for (const it of items) {
-          // Preserve original category for sourceCatIcon() on render.
           const cats = Array.isArray(it.categories) ? it.categories : [];
           otherBucket.push({ ...it, categories: cats.includes(cat.id) ? cats : [cat.id, ...cats] });
         }
       }
     }
-    if (thinIds.length > 0 && otherCat) {
+    // Remove thin categories from visibleCats. They're merged into Other.
+    visibleCats = visibleCats.filter(c => !thinIds.includes(c.id));
+    if (otherBucket.length > 0 && otherCat) {
       effectiveActivities = { ...activities, other: otherBucket };
-      visibleCats = visibleCats.filter(c => !thinIds.includes(c.id));
-      // Drop in 'other' before the trailing trips/away columns
-      const tail = visibleCats.filter(c => c.id === 'trips' || c.id === 'away');
-      const body = visibleCats.filter(c => c.id !== 'trips' && c.id !== 'away');
-      visibleCats = [...body, otherCat, ...tail];
     }
+
+    // Rebuild ordering: curated → populated → other → zeros.
+    const curated = visibleCats.filter(c => c.id === 'curated');
+    const rest    = visibleCats.filter(c => c.id !== 'curated' && c.id !== 'other');
+    const populated = rest.filter(c => (effectiveActivities[c.id] || []).length > 0);
+    const zeros     = rest.filter(c => (effectiveActivities[c.id] || []).length === 0);
+    const otherSlot = (otherBucket.length > 0 && otherCat) ? [otherCat] : [];
+    visibleCats = [...curated, ...populated, ...otherSlot, ...zeros];
   }
 
   const COLS_PER_PAGE = isMobile ? 1 : 4;
@@ -148,17 +156,19 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>
 
-      {/* Header */}
+      {/* Header — Locale wordmark + city picker on the same baseline, subtitle below both */}
       <div style={{background:'var(--header-bg)',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <div>
-            <span style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',fontFamily:'var(--font-display)'}}>Locale</span>
-            {!isMobile && <div style={{fontSize:10,color:'rgba(255,255,255,.25)',fontFamily:'var(--font-body)',letterSpacing:'.02em',marginTop:-2}}>your personal weekend planner</div>}
+          <div style={{display:'flex',flexDirection:'column'}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:10}}>
+              <span style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',fontFamily:'var(--font-display)'}}>Locale</span>
+              <button onClick={()=>onSettings()} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 9px',borderRadius:7,cursor:'pointer',background:'rgba(255,255,255,.06)',border:'0.5px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.55)',fontSize:11,fontFamily:'var(--font-body)'}}>
+                <span>📍 {settings.city}</span>
+                <span style={{fontSize:9,opacity:.7}}>▾</span>
+              </button>
+            </div>
+            {!isMobile && <div style={{fontSize:10,color:'rgba(255,255,255,.25)',fontFamily:'var(--font-body)',letterSpacing:'.02em',marginTop:-1}}>your personal weekend planner</div>}
           </div>
-          <button onClick={()=>onSettings()} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.06)',border:'0.5px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.45)',fontSize:11,fontFamily:'var(--font-body)'}}>
-            <span>{settings.city}</span>
-            <span style={{fontSize:9,opacity:.7}}>▾</span>
-          </button>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           {!isMobile && (
