@@ -69,7 +69,28 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
 
-      {hasSpecificTicketUrl && (
+      {/* Reservation button — shown when the server attached a Resy/OpenTable
+          link (either direct or a synthesized search URL for restaurants). Takes
+          precedence over the generic ticket button so restaurants get the clear
+          "find a table" affordance. */}
+      {act.reservation_url && (
+        <a href={act.reservation_url} target="_blank" rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          title={act.reservation_is_search
+            ? `Find a table on ${act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable'}`
+            : `Reserve on ${act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable'}`}
+          style={{ textDecoration:'none' }}>
+          <button style={{
+            width:28, height:28, borderRadius:8,
+            border:'0.5px solid rgba(34,197,94,.35)',
+            background:'rgba(34,197,94,.12)',
+            cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#16A34A',
+          }}>🍽</button>
+        </a>
+      )}
+
+      {hasSpecificTicketUrl && !act.reservation_url && (
         <a href={act.ticket_url} target="_blank" rel="noopener noreferrer"
           onClick={e => e.stopPropagation()} title="Buy tickets"
           style={{ textDecoration:'none' }}>

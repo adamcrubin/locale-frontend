@@ -61,6 +61,9 @@ function transformFeed(feed) {
       confidence:   e.confidence,
       friends_interested: e.friends_interested || [],
       image_url:  e.image_url || null,
+      reservation_url:       e.reservation_url       || null,
+      reservation_platform:  e.reservation_platform  || null,
+      reservation_is_search: !!e.reservation_is_search,
     }));
 
     // Map always-available evergreen venues from the `evergreen_events` table.

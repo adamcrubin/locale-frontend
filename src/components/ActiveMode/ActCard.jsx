@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { postFeedback } from '../../lib/api';
 import { formatMusicGenre, formatSportsEmoji, formatWhen, formatVenue, formatCost } from './utils';
-import { ALL_CATEGORIES } from '../../data/content';
 import ActionBar from './ActionBar';
-
-const CAT_ICON_BY_ID = Object.fromEntries(ALL_CATEGORIES.map(c => [c.id, c.icon]));
 
 // Stable per-name colors for friend avatars. Hash first char to index.
 const AVATAR_COLORS = ['#C9A84C', '#818CF8', '#34D399', '#F472B6', '#60A5FA', '#FBA74E', '#A78BFA'];
@@ -147,22 +144,32 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
 
       {isExpanded && (
         <div style={{ padding: '0 12px 10px' }}>
-          {/* Hero — real image if available, otherwise gradient + category emoji. */}
-          {hasImage ? (
+          {/* Hero — real image only. No fallback block (the category emoji is
+              already shown on the column header + as the compact-mode title
+              prefix in the Curated column). */}
+          {hasImage && (
             <img src={act.image_url} alt="" onError={() => setImgBroken(true)}
               style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6, marginBottom: 8, display: 'block' }} />
-          ) : (
-            <div style={{
-              width: '100%', height: 60, borderRadius: 6, marginBottom: 8,
-              background: 'linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.55))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 28, opacity: 0.75,
-            }}>{CAT_ICON_BY_ID[catId] || '✨'}</div>
           )}
+          {act.why && (
+            <div style={{ fontSize: 11, color: '#6B6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
+              {act.why}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
+            {act.tags?.map(t => (
+              <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'var(--bg2)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>{t}</span>
+            ))}
+          </div>
+          <ActionBar act={act} catId={catId} onCal={onCal} onRemove={() => { sendFeedback('dismissed'); setExiting(true); setTimeout(() => onRemove(act), 200); }}
+            onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
+            onReserve={onReserve} homeAddress={homeAddress} />
+          {/* Friend-interest line — placed at the bottom so the primary content
+              (why, tags, actions) reads first. */}
           {act.friends_interested?.length > 0 && (
             <div style={{
               fontSize: 11, color: '#8B6D2D', fontStyle: 'italic', lineHeight: 1.5,
-              padding: '5px 8px', marginBottom: 6,
+              padding: '5px 8px', marginTop: 8,
               background: 'rgba(201,168,76,.10)', border: '0.5px solid rgba(201,168,76,.25)',
               borderRadius: 6,
               display: 'flex', alignItems: 'center', gap: 6,
@@ -181,26 +188,8 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
               <span>{formatInterestedLine(act.friends_interested)}</span>
             </div>
           )}
-          {act.why && (
-            <div style={{ fontSize: 11, color: '#6B6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
-              {act.why}
-            </div>
-          )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 6 }}>
-            {act.tags?.map(t => (
-              <span key={t} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 99, background: 'var(--bg2)', color: 'var(--muted)', border: '0.5px solid var(--border)' }}>{t}</span>
-            ))}
-          </div>
-          <ActionBar act={act} catId={catId} onCal={onCal} onRemove={() => { sendFeedback('dismissed'); setExiting(true); setTimeout(() => onRemove(act), 200); }}
-            onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
-            onReserve={onReserve} homeAddress={homeAddress} />
-          {/* ── Source transparency ─────────────────────────────────────
-             Shows the user WHY this event surfaced: which editorial source
-             it came from, how confident the extractor was, and the relevance
-             score. Part of the "transparency moat" — competitors don't
-             expose this. Clicking the source name later can lead to the
-             source's own listing (future: deep link into Manage sources). */}
-          {(act.source_name || act.final_score != null || act.confidence) && (
+          {/* Source transparency — quiet footer, no score number. */}
+          {(act.source_name || act.confidence) && (
             <div style={{
               fontSize: 10, color: '#8A847D', marginTop: 8, paddingTop: 8,
               borderTop: '0.5px solid rgba(0,0,0,.08)',
@@ -216,9 +205,6 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
                   background: act.confidence === 'confirmed' ? 'rgba(34,197,94,.12)' : 'rgba(201,168,76,.15)',
                   color:      act.confidence === 'confirmed' ? '#16A34A'              : '#8B6D2D',
                 }}>{act.confidence === 'confirmed' ? '✓ confirmed' : '~ inferred'}</span>
-              )}
-              {act.final_score != null && (
-                <span style={{ opacity: 0.7 }}>relevance {Math.round(act.final_score * 100)}</span>
               )}
             </div>
           )}
