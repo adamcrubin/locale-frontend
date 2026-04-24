@@ -164,7 +164,8 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
 
           <div>
             <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:6 }}>Category visibility</label>
-            {ALL_CATEGORIES.map(cat => (
+            {/* `curated` is auto-prepended to the feed and not user-toggleable, so skip it here. */}
+            {ALL_CATEGORIES.filter(cat => cat.id !== 'curated').map(cat => (
               <CatStateRow
                 key={cat.id} cat={cat}
                 state={(profile.categoryStates||{})[cat.id] || 'always'}
