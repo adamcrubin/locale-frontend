@@ -860,7 +860,7 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
       }}>
         <span>📅 Your Weekend</span>
         {!calConnected && (
-          <span style={{fontSize:8,color:'rgba(201,168,76,.5)',fontWeight:400,fontStyle:'italic'}}>Connect Calendar ↗</span>
+          <span style={{fontSize:8,color:'rgba(255,255,255,.2)',fontWeight:400,fontStyle:'italic'}}>Not connected</span>
         )}
       </div>
 
@@ -918,15 +918,11 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
           );
         })}
 
-        {/* Connect Calendar CTA if not connected */}
+        {/* Calendar connection hint if not connected */}
         {!calConnected && (
-          <div style={{margin:'8px',padding:'10px 12px',borderRadius:8,background:'rgba(201,168,76,.07)',border:'0.5px solid rgba(201,168,76,.15)',cursor:'pointer'}}
-            onClick={() => calendar?.connect?.()}>
-            <div style={{fontSize:10,color:'#C9A84C',fontWeight:600,marginBottom:3}}>
-              🔗 Connect Google Calendar
-            </div>
-            <div style={{fontSize:9,color:'rgba(255,255,255,.3)',lineHeight:1.4}}>
-              See your existing plans alongside suggestions
+          <div style={{margin:'8px',padding:'10px 12px',borderRadius:8,background:'rgba(255,255,255,.03)',border:'0.5px solid rgba(255,255,255,.07)'}}>
+            <div style={{fontSize:9,color:'rgba(255,255,255,.25)',lineHeight:1.4}}>
+              📅 Calendar connects automatically when you sign in with Google
             </div>
           </div>
         )}

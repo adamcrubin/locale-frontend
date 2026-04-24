@@ -378,6 +378,7 @@ export default function App() {
           user={user}
           onSignOut={signOut}
           onShowSources={() => setShowSources(true)}
+          calendar={calendar}
         />
       )}
 
