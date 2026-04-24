@@ -1347,16 +1347,23 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const alwaysCats   = ALL_CATEGORIES.filter(c=>catStates[c.id]==='always');
   const sometimesCats= ALL_CATEGORIES.filter(c=>catStates[c.id]==='sometimes');
   const defaultCats  = ALL_CATEGORIES.slice(0,9);
+  const curatedCat   = ALL_CATEGORIES.find(c=>c.id==='curated');
   let baseCats = activeCat==='all'
     ? (alwaysCats.length>0?[...alwaysCats,...sometimesCats.slice(0,4)]:defaultCats)
     : ALL_CATEGORIES.filter(c=>c.id===activeCat);
 
   // Apply column ordering
-  const visibleCats = columnOrder==='relevancy'
+  let visibleCats = columnOrder==='relevancy'
     ? sortCategoriesByRelevancy(baseCats, activities)
     : columnOrder==='random'
     ? [...baseCats].sort(()=>Math.random()-0.5)
     : baseCats;
+
+  // Always pin "Curated" first when showing the full set, regardless of saved
+  // categoryStates (profiles predate the curated category) or sort order.
+  if (activeCat === 'all' && curatedCat) {
+    visibleCats = [curatedCat, ...visibleCats.filter(c => c.id !== 'curated')];
+  }
 
   const COLS_PER_PAGE = isMobile ? 1 : 4;
   const numPages = Math.max(1, Math.ceil(visibleCats.length/COLS_PER_PAGE));
