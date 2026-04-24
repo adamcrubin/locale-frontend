@@ -24,14 +24,10 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
       .filter(a => !removed[`${cat.id}::${a.title}`])
       .filter(a => !isPastEvent(a))
       .filter(a => !isFrontendBlocked(a))
-      .filter(a => {
-        if (crossCatSeen) {
-          const key = (a.title||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,40);
-          if (crossCatSeen.has(key)) return false;
-          crossCatSeen.add(key);
-        }
-        return true;
-      })
+      // Cross-cat dedup intentionally removed — if Haiku tagged an event for
+      // multiple categories, the user should see it in each of those columns
+      // (previously it only appeared in whichever column rendered first).
+      .filter(() => true)
       .filter(a => {
         // Multi-select time filter. Empty array = show all.
         // "any"-tagged events (no time info) surface regardless of selection.

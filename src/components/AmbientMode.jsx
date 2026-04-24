@@ -275,98 +275,107 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
             <WeatherIcon icon={today.icon} desc={today.desc} size={12} />
             <span>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</span>
           </div>
-          {/* Hourly graph — always 12am→12am, gaps stay empty without shrinking the chart */}
-          {today.hours && today.hours.length >= 2 && (() => {
-            // Parse "7am"/"12pm"/etc. → 0..23. Returns null on unknown labels.
-            const parseHour = (lbl) => {
-              if (lbl == null) return null;
-              const s = String(lbl).toLowerCase().trim();
-              const m = s.match(/^(\d{1,2})\s*(am|pm)$/);
-              if (!m) return null;
-              let h = parseInt(m[1], 10);
-              if (m[2] === 'am') return h === 12 ? 0 : h;
-              return h === 12 ? 12 : h + 12;
-            };
-            // Build a 25-slot array (0..24) so the x-axis runs 12am through 12am.
-            // Slot i=24 mirrors i=0 only if we have data there; else null (gap).
-            const slots = Array.from({ length: 25 }, () => ({ temp: null, p: null }));
-            for (const h of today.hours) {
-              const idx = parseHour(h?.t);
-              if (idx == null) continue;
-              slots[idx] = { temp: h.temp ?? null, p: h.p ?? null };
-            }
-            // Determine y-range from available temps; fall back to today.lo/hi for blank days.
-            const knownTemps = slots.map(s => s.temp).filter(t => t != null);
-            let minT = knownTemps.length ? Math.min(...knownTemps) : (today.lo ?? 40);
-            let maxT = knownTemps.length ? Math.max(...knownTemps) : (today.hi ?? 80);
-            // Round to nice 10° ticks and guarantee a visible band.
-            minT = Math.floor(minT / 10) * 10;
-            maxT = Math.ceil(maxT / 10) * 10;
-            if (maxT - minT < 20) maxT = minT + 20;
-            const rangeT = maxT - minT;
-
-            const W = 320, H = 80;
-            const padL = 28, padR = 8, padT = 6, padB = 14;
-            const plotW = W - padL - padR;
-            const plotH = H - padT - padB;
-            const xAt = i => padL + (i / 24) * plotW;
-            const yAtTemp = t => padT + (1 - (t - minT) / rangeT) * plotH;
-            const yAtP    = p => padT + (1 - (p / 100)) * plotH;
-
-            // Y-axis ticks: 3 lines (min, mid, max). Keep labels small but readable.
-            const yTicks = [minT, Math.round((minT + maxT) / 2 / 10) * 10, maxT];
-            // X-axis ticks: 12am, 6am, 12pm, 6pm, 12am.
-            const xTicks = [0, 6, 12, 18, 24];
-            const xLabel = h => h === 0 || h === 24 ? '12a' : h === 12 ? '12p' : h < 12 ? `${h}a` : `${h-12}p`;
-
-            // Build temp polyline segments that skip nulls (so gaps stay empty).
-            const segments = [];
-            let cur = [];
-            for (let i = 0; i <= 24; i++) {
-              if (slots[i].temp == null) {
-                if (cur.length > 1) segments.push(cur);
-                cur = [];
-              } else {
-                cur.push(`${xAt(i)},${yAtTemp(slots[i].temp)}`);
-              }
-            }
-            if (cur.length > 1) segments.push(cur);
-
-            return (
-              // SVG scales down responsively on narrow viewports via viewBox;
-              // maxWidth caps the growth so it doesn't blow past the widget.
-              <div style={{ marginTop:10, width:'100%', maxWidth: W }}>
-                <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ overflow:'visible', display:'block' }}>
-                  {/* Y-axis gridlines + labels */}
-                  {yTicks.map(t => {
-                    const y = yAtTemp(t);
-                    return (
-                      <g key={`yt-${t}`}>
-                        <line x1={padL} x2={W-padR} y1={y} y2={y} stroke="rgba(255,255,255,.10)" strokeWidth={0.5} />
-                        <text x={padL-4} y={y+3} textAnchor="end" fontSize={9} fill="rgba(255,255,255,.4)" fontFamily="DM Sans, sans-serif">{t}°</text>
-                      </g>
-                    );
-                  })}
-                  {/* Precip bars (only where we have data) */}
-                  {slots.map((s, i) => s.p == null || s.p === 0 ? null : (
-                    <rect key={`p-${i}`} x={xAt(i)-5} y={yAtP(s.p)} width={10} height={H-padB-yAtP(s.p)} fill="rgba(96,165,250,.28)" rx={2} />
-                  ))}
-                  {/* Temp line segments (skip null gaps) */}
-                  {segments.map((pts, i) => (
-                    <polyline key={`seg-${i}`} points={pts.join(' ')} fill="none" stroke="rgba(252,211,77,.85)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-                  ))}
-                  {/* Baseline x-axis */}
-                  <line x1={padL} x2={W-padR} y1={H-padB} y2={H-padB} stroke="rgba(255,255,255,.15)" strokeWidth={0.5} />
-                  {/* X-axis tick labels */}
-                  {xTicks.map(h => (
-                    <text key={`xt-${h}`} x={xAt(h)} y={H-2} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,.4)" fontFamily="DM Sans, sans-serif">{xLabel(h)}</text>
-                  ))}
-                </svg>
-              </div>
-            );
-          })()}
         </div>
       </div>
+
+      {/* ── Big hourly weather chart — right side, vertically centered.
+          Fixed axes (0-100°F, 0-100%) so visual height of the lines reads
+          cleanly across days. Vertical "now" marker at current hour. ── */}
+      {today.hours && today.hours.length >= 2 && (() => {
+        const parseHour = (lbl) => {
+          if (lbl == null) return null;
+          const s = String(lbl).toLowerCase().trim();
+          const m = s.match(/^(\d{1,2})\s*(am|pm)$/);
+          if (!m) return null;
+          let h = parseInt(m[1], 10);
+          if (m[2] === 'am') return h === 12 ? 0 : h;
+          return h === 12 ? 12 : h + 12;
+        };
+        const slots = Array.from({ length: 25 }, () => ({ temp: null, p: null }));
+        for (const h of today.hours) {
+          const idx = parseHour(h?.t);
+          if (idx == null) continue;
+          slots[idx] = { temp: h.temp ?? null, p: h.p ?? null };
+        }
+
+        // Fixed axes: 0-100 for both temp (°F) and precip (%).
+        const W = 480, H = 320;
+        const padL = 38, padR = 14, padT = 16, padB = 28;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+        const xAt = i => padL + (i / 24) * plotW;
+        const yAtTemp = t => padT + (1 - Math.max(0, Math.min(100, t)) / 100) * plotH;
+        const yAtP    = p => padT + (1 - Math.max(0, Math.min(100, p)) / 100) * plotH;
+
+        // 0 / 25 / 50 / 75 / 100 gridlines for shared axis.
+        const yTicks = [0, 25, 50, 75, 100];
+        const xTicks = [0, 6, 12, 18, 24];
+        const xLabel = h => h === 0 || h === 24 ? '12a' : h === 12 ? '12p' : h < 12 ? `${h}a` : `${h-12}p`;
+
+        // Temp polyline — skip nulls so gaps stay blank instead of spiking to 0.
+        const segments = [];
+        let cur = [];
+        for (let i = 0; i <= 24; i++) {
+          if (slots[i].temp == null) {
+            if (cur.length > 1) segments.push(cur);
+            cur = [];
+          } else {
+            cur.push(`${xAt(i)},${yAtTemp(slots[i].temp)}`);
+          }
+        }
+        if (cur.length > 1) segments.push(cur);
+
+        const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+        const nowX = xAt(nowHour);
+
+        return (
+          <div style={{
+            position:'absolute', right:28, top:'50%', transform:'translateY(-50%)',
+            zIndex:3,
+            background:'rgba(0,0,0,.42)', backdropFilter:'blur(12px)',
+            WebkitBackdropFilter:'blur(12px)',
+            borderRadius:14, padding:'14px 16px 10px',
+            border:'0.5px solid rgba(255,255,255,.1)',
+          }}>
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.55)', marginBottom:6 }}>
+              Today — {today.full || today.day}
+            </div>
+            <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
+              {/* Y-axis gridlines + labels (°F left, % right) */}
+              {yTicks.map(t => {
+                const y = yAtTemp(t);
+                return (
+                  <g key={`yt-${t}`}>
+                    <line x1={padL} x2={W-padR} y1={y} y2={y} stroke="rgba(255,255,255,.10)" strokeWidth={0.5} />
+                    <text x={padL-6} y={y+3} textAnchor="end" fontSize={10} fill="rgba(252,211,77,.7)" fontFamily="DM Sans, sans-serif">{t}°</text>
+                    <text x={W-padR+6} y={y+3} textAnchor="start" fontSize={10} fill="rgba(96,165,250,.7)" fontFamily="DM Sans, sans-serif">{t}%</text>
+                  </g>
+                );
+              })}
+              {/* Precip bars */}
+              {slots.map((s, i) => s.p == null || s.p === 0 ? null : (
+                <rect key={`p-${i}`} x={xAt(i)-6} y={yAtP(s.p)} width={12} height={H-padB-yAtP(s.p)} fill="rgba(96,165,250,.32)" rx={2} />
+              ))}
+              {/* Temp segments */}
+              {segments.map((pts, i) => (
+                <polyline key={`seg-${i}`} points={pts.join(' ')} fill="none" stroke="rgba(252,211,77,.9)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+              ))}
+              {/* Current-time vertical marker */}
+              <line x1={nowX} x2={nowX} y1={padT} y2={H-padB} stroke="rgba(255,255,255,.55)" strokeWidth={1.5} strokeDasharray="3 3" />
+              <text x={nowX} y={padT-4} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,.7)" fontFamily="DM Sans, sans-serif" fontWeight={600}>NOW</text>
+              {/* Baseline x-axis */}
+              <line x1={padL} x2={W-padR} y1={H-padB} y2={H-padB} stroke="rgba(255,255,255,.18)" strokeWidth={0.5} />
+              {xTicks.map(h => (
+                <text key={`xt-${h}`} x={xAt(h)} y={H-8} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,.45)" fontFamily="DM Sans, sans-serif">{xLabel(h)}</text>
+              ))}
+            </svg>
+            <div style={{ display:'flex', gap:14, fontSize:10, color:'rgba(255,255,255,.5)', marginTop:4, justifyContent:'center' }}>
+              <span><span style={{ color:'rgba(252,211,77,.9)' }}>—</span>&nbsp;Temp °F</span>
+              <span><span style={{ color:'rgba(96,165,250,.7)' }}>▋</span>&nbsp;Precip %</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Clock — centered (offset down slightly so it clears the top grid) ── */}
       <div style={{

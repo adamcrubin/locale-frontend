@@ -9,7 +9,7 @@ export const ALL_CATEGORIES = [
   { id:'music',       label:'Live music',         icon:'🎵', cls:'cat-music'    },
   { id:'sports',      label:'Sports & games',     icon:'⚽', cls:'cat-sports'   },
   { id:'activities',  label:'Activities',         icon:'🎳', cls:'cat-sports'   },
-  { id:'shopping',    label:'Shopping',           icon:'🛍', cls:'cat-food'     },
+  { id:'shopping',    label:'Shopping & markets', icon:'🛍', cls:'cat-food'     },
   { id:'nerdy',       label:'Nerdy / talks',      icon:'🧠', cls:'cat-nerdy'    },
   { id:'drinks',      label:'Drinks',             icon:'🍺', cls:'cat-sports'   },
   { id:'nightlife',   label:'Nightlife',          icon:'🌃', cls:'cat-music'    },
@@ -17,7 +17,6 @@ export const ALL_CATEGORIES = [
   { id:'film',        label:'Film & cinema',      icon:'🎬', cls:'cat-arts'     },
   { id:'wellness',    label:'Fitness & wellness', icon:'🧘', cls:'cat-trips'    },
   { id:'family',      label:'Family-friendly',    icon:'👨‍👩‍👧', cls:'cat-music'   },
-  { id:'markets',     label:'Markets',            icon:'🛒', cls:'cat-outdoors' },
   { id:'trips',       label:'Day trips',          icon:'🚗', cls:'cat-trips'    },
   { id:'away',        label:'Weekend away',       icon:'🧳', cls:'cat-away'     },
 ];

@@ -16,6 +16,7 @@ import LoginPromptModal     from './components/LoginPromptModal';
 import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
 import FriendRequestsToast from './components/FriendRequestsToast';
 import StaticPage from './components/StaticPage';
+import FilterSheet from './components/FilterSheet';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -155,14 +156,19 @@ export default function App() {
   const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
   const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user);
   const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
-  const { weather,            source: weatherSource    } = useWeather(settings.city);
+  // Prefer the user's selected neighborhood (has lat/lng) for weather —
+  // backend uses those directly; city string is fallback.
+  const { weather,            source: weatherSource    } = useWeather(settings.neighborhood || settings.city);
   const { photos }                                       = usePhotos(settings.city);
 
   const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
 
   // ── Screen state ──────────────────────────────────────────────────────────
   const isMobileInit = typeof window !== 'undefined' && window.innerWidth < 768;
-  const [screen,        setScreen]        = useState(isMobileInit ? 'active' : 'ambient');
+  // Land on active mode (the feed) regardless of device — ambient is a
+  // screensaver, not a useful first impression. Idle timer still transitions
+  // to ambient after inactivity.
+  const [screen,        setScreen]        = useState('active');
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
@@ -177,6 +183,7 @@ export default function App() {
   // Price values: 'free' | '$' | '$$' | '$$$'
   const [timeFilters,   setTimeFilters]   = useState([]);
   const [priceFilters,  setPriceFilters]  = useState([]);
+  const [filterOpen,    setFilterOpen]    = useState(false);
   const [editCalModal,  setEditCalModal]  = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
@@ -323,6 +330,7 @@ export default function App() {
     setTimeFilters,
     priceFilters,
     setPriceFilters,
+    onOpenFilter: () => setFilterOpen(true),
     user, onSignOut: signOut,
   };
 
@@ -423,32 +431,20 @@ export default function App() {
           gap:12, flexWrap:'wrap',
         }}>
           {screen === 'active' && (
-            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-              <ChipRow
-                value={timeFilters}
-                onChange={setTimeFilters}
-                options={[
-                  { id:'morning', label:'🌅' },
-                  { id:'midday',  label:'☀️' },
-                  { id:'night',   label:'🌙' },
-                ]}
-                anyLabel="Any"
-              />
-              <ChipRow
-                value={priceFilters}
-                onChange={setPriceFilters}
-                options={[
-                  { id:'free', label:'Free' },
-                  { id:'$',    label:'$' },
-                  { id:'$$',   label:'$$' },
-                  { id:'$$$',  label:'$$$' },
-                ]}
-                anyLabel="$ Any"
-              />
-            </div>
+            <button onClick={() => setFilterOpen(true)} title="Filters" style={{
+              display:'flex', alignItems:'center', gap:6,
+              padding:'4px 12px', fontSize:11, fontWeight:600, cursor:'pointer',
+              background: (timeFilters.length + priceFilters.length) > 0 ? 'rgba(201,168,76,.22)' : 'rgba(255,255,255,.06)',
+              border:'0.5px solid ' + ((timeFilters.length + priceFilters.length) > 0 ? 'rgba(201,168,76,.45)' : 'rgba(255,255,255,.12)'),
+              borderRadius:99,
+              color: (timeFilters.length + priceFilters.length) > 0 ? '#C9A84C' : 'rgba(255,255,255,.7)',
+              fontFamily:'DM Sans, sans-serif',
+            }}>
+              ⚑ Filter{(timeFilters.length + priceFilters.length) > 0 ? ` · ${timeFilters.length + priceFilters.length}` : ''}
+            </button>
           )}
 
-          {/* Weekend / Weeknight — pushed to the right edge of the container */}
+          {/* Planner: This weekend / Weeknights / Look ahead — pushed to right edge */}
           <div style={{
             display:'flex', background:'rgba(255,255,255,.06)',
             border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
@@ -462,7 +458,7 @@ export default function App() {
                 color:      screen==='active' ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
                 border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
               }}
-            >Weekend</button>
+            >This weekend</button>
             <button
               onClick={() => transitionTo('weekday')}
               style={{
@@ -471,7 +467,17 @@ export default function App() {
                 color:      screen==='weekday' ? '#C4B5FD' : 'rgba(255,255,255,.4)',
                 border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
               }}
-            >Weeknight</button>
+            >Weeknights</button>
+            <button
+              onClick={() => alert('Look ahead — coming soon! This will let you plan future weekends.')}
+              title="Coming soon"
+              style={{
+                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'not-allowed',
+                background: 'transparent',
+                color: 'rgba(255,255,255,.2)',
+                border:'none', fontFamily:'DM Sans, sans-serif',
+              }}
+            >Look ahead</button>
           </div>
         </div>
       )}
@@ -493,6 +499,19 @@ export default function App() {
       {staticPageId && (
         <StaticPage pageId={staticPageId} onClose={() => setStaticPageId(null)} />
       )}
+
+      {/* Unified filter sheet — desktop button + mobile header button both open this */}
+      <FilterSheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        timeFilters={timeFilters}
+        setTimeFilters={setTimeFilters}
+        priceFilters={priceFilters}
+        setPriceFilters={setPriceFilters}
+        activeProfile={activeProfile}
+        updateProfile={updateProfile}
+      />
+
 
       {/* Friend-request toast — auto-hides after first dismiss per session */}
       {user && screen === 'active' && !settingsOpen && (

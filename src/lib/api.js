@@ -16,8 +16,18 @@ async function apiFetch(path, options = {}) {
 }
 
 // ── Weather ───────────────────────────────────────────────────────────────────
-export async function fetchWeather(city) {
-  const data = await apiFetch(`/weather?city=${encodeURIComponent(city)}`);
+// Accepts a city string OR a neighborhood object { lat, lng, zip, label }.
+// Neighborhood objects get sent as lat/lng params (skipping backend geocode).
+export async function fetchWeather(input) {
+  const params = new URLSearchParams();
+  if (input && typeof input === 'object' && Number.isFinite(input.lat)) {
+    params.set('lat', input.lat);
+    params.set('lng', input.lng);
+    if (input.label) params.set('city', input.label);
+  } else if (typeof input === 'string') {
+    params.set('city', input);
+  }
+  const data = await apiFetch(`/weather?${params}`);
   return data.data;
 }
 

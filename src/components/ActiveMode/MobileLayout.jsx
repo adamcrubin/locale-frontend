@@ -1,9 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import WeatherIcon from '../WeatherIcon';
 import { ACTIVITIES as MOCK_ACTIVITIES } from '../../data/content';
 import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier, getWeekendWeather } from './utils';
 import ActCard from './ActCard';
-import MobileFilterSheet from './MobileFilterSheet';
 
 export default function MobileLayout({
   visibleCats, activities, removed,
@@ -11,9 +10,9 @@ export default function MobileLayout({
   weatherDim, weatherBoost, homeAddress, profileId, spotlightMode,
   timeFilters = [], setTimeFilters,
   priceFilters = [], setPriceFilters,
+  onOpenFilter,
   curatedMode, weather, onWeather,
 }) {
-  const [filterOpen, setFilterOpen] = useState(false);
   const activeFilterCount = timeFilters.length + priceFilters.length;
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
@@ -144,7 +143,7 @@ export default function MobileLayout({
           </div>
         </div>
 
-        <button onClick={() => setFilterOpen(true)} title="Filters" style={{
+        <button onClick={() => onOpenFilter?.()} title="Filters" style={{
           height: 32, padding: '0 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
           background: activeFilterCount > 0 ? 'rgba(201,168,76,.25)' : 'rgba(0,0,0,.15)',
           color: activeFilterCount > 0 ? '#C9A84C' : 'currentColor',
@@ -201,14 +200,6 @@ export default function MobileLayout({
         )}
       </div>
 
-      <MobileFilterSheet
-        open={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        timeFilters={timeFilters}
-        setTimeFilters={setTimeFilters}
-        priceFilters={priceFilters}
-        setPriceFilters={setPriceFilters}
-      />
     </div>
   );
 }
