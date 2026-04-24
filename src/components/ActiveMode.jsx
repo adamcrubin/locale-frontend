@@ -1367,7 +1367,11 @@ function useIsMobile() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilter='all' }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilter='all', isDemo=false, onLoginPrompt }) {
+  const gateDemo = (feature, fn) => (...args) => {
+    if (isDemo) { onLoginPrompt?.(feature); return; }
+    return fn?.(...args);
+  };
   const [removed,      setRemoved]      = useState({});
   const [activeCat,    setActiveCat]    = useState('all');
   const [aiPrompt,     setAiPrompt]     = useState(null);
@@ -1437,7 +1441,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   // First column to claim a title wins; subsequent columns skip duplicates
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:(act,cid)=>setReserveAct({act,catId:cid}), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather };
 
   // Calendar strip data -- sort calQueue into Fri/Sat/Sun buckets
   const now2 = new Date();
@@ -1473,7 +1477,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           {/* Ask -- desktop only */}
           {!isMobile && (
-            <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ask</button>
+            <button onClick={gateDemo('ai',()=>setShowAsk(true))} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ask</button>
           )}
           {/* Status dot -- desktop only */}
           {!isMobile && (
@@ -1483,13 +1487,17 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           {!isMobile && (
             <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'var(--font-body)'}}>♥</button>
           )}
-          {/* Profile avatar -- desktop only */}
-          {!isMobile && (
+          {/* Profile avatar -- desktop only, hidden in demo */}
+          {!isMobile && !isDemo && (
             <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 7px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'var(--font-body)'}}>
               <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
               <span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>
               <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
             </button>
+          )}
+          {/* Sign in CTA -- demo mode only */}
+          {isDemo && (
+            <button onClick={()=>onLoginPrompt?.('default')} style={{fontSize:11,padding:'5px 12px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'#C9A84C',border:'none',color:'#1C1A17',fontWeight:600,fontFamily:'var(--font-body)'}}>Sign in</button>
           )}
           {/* Pipeline live indicator -- desktop only */}
           {!isMobile && pipelineActive && (
@@ -1512,7 +1520,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         <span style={{fontSize:11,color:'rgba(255,255,255,.28)',whiteSpace:'nowrap',flexShrink:0,fontFamily:'DM Sans,sans-serif'}}>Pick a plan for me...</span>
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
           {QUICK_PROMPTS.map(p=>(
-            <button key={p.label} onClick={()=>setAiPrompt(p)} style={{
+            <button key={p.label} onClick={gateDemo('ai',()=>setAiPrompt(p))} style={{
               fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
               background:'rgba(255,255,255,.09)',border:'0.5px solid rgba(255,255,255,.14)',
               color:'rgba(255,255,255,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,transition:'all .15s',

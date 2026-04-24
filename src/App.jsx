@@ -12,6 +12,7 @@ import WelcomeScreen        from './components/WelcomeScreen';
 import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
 import PostEventFeedback    from './components/PostEventFeedback';
+import LoginPromptModal     from './components/LoginPromptModal';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -102,6 +103,12 @@ export default function App() {
 
   // ── Demo mode (no login) ──────────────────────────────────────────────────
   const [demoMode, setDemoMode] = useState(false);
+  const [loginPrompt, setLoginPrompt] = useState(null); // null | { feature }
+  const isDemo = !user && demoMode;
+  const gate = (feature, fn) => (...args) => {
+    if (isDemo) { setLoginPrompt({ feature }); return; }
+    return fn?.(...args);
+  };
 
   // ── First-visit flag ──────────────────────────────────────────────────────
   const [firstVisit] = useState(() => !hasVisitedBefore());
@@ -278,15 +285,19 @@ export default function App() {
   const commonProps = {
     settings, activeProfile, calQueue, activities: activitiesWithCurated, weather,
     activitiesSource, weatherSource, calendar,
-    onCalendar:      setCalModal,
+    onCalendar:      gate('calendar', setCalModal),
     onWeather:       setWeatherDay,
-    onSettings:      (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true),
+    onSettings:      gate('settings', (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true)),
     onAmbient:       () => transitionTo('ambient'),
-    onSwitchProfile: () => setShowPicker(true),
-    onSaveItem, onRemoveSaved,
-    onShowSaved:     () => setShowSaved(true),
-    onThumbUp, onThumbDown,
-    onEditCal:       setEditCalModal,
+    onSwitchProfile: gate('profile', () => setShowPicker(true)),
+    onSaveItem:      gate('save', onSaveItem),
+    onRemoveSaved:   gate('save', onRemoveSaved),
+    onShowSaved:     gate('saved', () => setShowSaved(true)),
+    onThumbUp:       gate('thumbs', onThumbUp),
+    onThumbDown:     gate('thumbs', onThumbDown),
+    onEditCal:       gate('calendar', setEditCalModal),
+    onLoginPrompt:   (feature) => setLoginPrompt({ feature: feature || 'default' }),
+    isDemo,
     timeFilter,
     user, onSignOut: signOut,
   };
@@ -497,6 +508,14 @@ export default function App() {
 
       {/* ── Post-event feedback toast ── */}
       <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
+
+      {/* ── Demo-mode login prompt ── */}
+      <LoginPromptModal
+        open={!!loginPrompt}
+        feature={loginPrompt?.feature}
+        onClose={() => setLoginPrompt(null)}
+        onSignIn={() => { setLoginPrompt(null); signInWithGoogle?.(); }}
+      />
     </div>
   );
 }
