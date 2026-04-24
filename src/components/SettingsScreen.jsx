@@ -243,8 +243,20 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
     if (onSignOut) onSignOut();
   };
 
+  // Derive a city label (e.g. "Washington, DC", "Arlington, VA") from the
+  // selected neighborhood so the readonly "City or ZIP" field can go away.
+  function cityFromNeighborhood(n) {
+    if (!n) return 'Falls Church, VA';
+    if (n.area === 'DC')         return 'Washington, DC';
+    if (n.area === 'Arlington')  return 'Arlington, VA';
+    if (n.area === 'Alexandria') return 'Alexandria, VA';
+    if (n.area === 'Maryland')   return `${n.label}, MD`;
+    return `${n.label}, VA`; // NoVA catch-all
+  }
+
   const save = () => {
-    onSave({ city, homeAddress, neighborhood, curatedMode, testMode });
+    const effectiveCity = neighborhood ? cityFromNeighborhood(neighborhood) : city;
+    onSave({ city: effectiveCity, homeAddress, neighborhood, curatedMode, testMode });
     onClose();
   };
 
@@ -275,15 +287,12 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
 
       <div style={{ padding:16, flex:1 }}>
 
-        {/* ── Location ── */}
+        {/* ── Location — single unified neighborhood picker (city derived) ── */}
         <Section title="Location">
           <div style={{ marginBottom:8 }}>
-            <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>City or ZIP <span style={{ color:'#C9A84C' }}>*</span></label>
-            <input value="Falls Church, VA" readOnly style={{ ...inpStyle, opacity:.5, cursor:'not-allowed' }} />
-            <div style={{ fontSize:10, color:'rgba(201,168,76,.55)', marginTop:4 }}>🚧 New cities coming soon!</div>
-          </div>
-          <div style={{ marginBottom:8 }}>
-            <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>Neighborhood <span style={{ color:'rgba(255,255,255,.25)' }}>(optional)</span></label>
+            <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>
+              Neighborhood <span style={{ color:'#C9A84C' }}>*</span>
+            </label>
             <button
               onClick={() => setShowNeighborhoodPicker(true)}
               style={{
@@ -291,26 +300,32 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                 display:'flex', alignItems:'center', justifyContent:'space-between',
                 cursor:'pointer', textAlign:'left', background:'rgba(255,255,255,.06)',
                 color: neighborhood ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)',
+                minHeight: 40,
               }}
             >
-              <span>{neighborhood ? neighborhood.label : 'Pick your neighborhood…'}</span>
-              <span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>▾</span>
+              <span style={{ display:'flex', alignItems:'center', gap:6, minWidth:0 }}>
+                <span>📍</span>
+                {neighborhood ? (
+                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {neighborhood.label}
+                    <span style={{ color:'rgba(255,255,255,.4)' }}> · {cityFromNeighborhood(neighborhood)} · {neighborhood.zip}</span>
+                  </span>
+                ) : (
+                  <span>Choose your neighborhood…</span>
+                )}
+              </span>
+              <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginLeft:8, flexShrink:0 }}>▾</span>
             </button>
-            {neighborhood && (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:4 }}>
-                <div style={{ fontSize:10, color:'rgba(255,255,255,.25)' }}>
-                  {neighborhood.area} · ZIP {neighborhood.zip}
-                </div>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:4 }}>
+              <div style={{ fontSize:10, color:'rgba(255,255,255,.25)' }}>
+                Tunes event rankings by distance.
+              </div>
+              {neighborhood && (
                 <button
                   onClick={() => setNeighborhood(null)}
                   style={{ fontSize:10, color:'rgba(255,255,255,.3)', background:'none', border:'none', cursor:'pointer', fontFamily:'DM Sans, sans-serif', padding:'0 2px' }}
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-            <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:4 }}>
-              Used for distance-based sorting when no exact address is set.
+                >Clear</button>
+              )}
             </div>
           </div>
           <div>
