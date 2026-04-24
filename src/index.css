@@ -63,6 +63,18 @@ html, body, #root {
   }
 }
 
+/* ── Placeholder text: italic + dim; clears when the input is focused ── */
+input::placeholder,
+textarea::placeholder {
+  font-style: italic;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+input:focus::placeholder,
+textarea:focus::placeholder {
+  opacity: 0;
+}
+
 .cat-outdoors { background: var(--c-outdoors-bg); color: var(--c-outdoors); }
 .cat-food     { background: var(--c-food-bg);     color: var(--c-food);     }
 .cat-arts     { background: var(--c-arts-bg);     color: var(--c-arts);     }
