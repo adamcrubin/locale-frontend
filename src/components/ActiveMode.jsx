@@ -1210,16 +1210,20 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
         {weekendWithDate.map((d, i) => (
           <div key={i} style={{
             flex:'1 1 0', minWidth:0,
-            display:'flex', alignItems:'center', justifyContent:'center', gap:5,
-            padding:'4px 8px', borderRadius:99,
+            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:2,
+            padding:'5px 6px', borderRadius:10,
             background:'rgba(255,255,255,.7)', border:'0.5px solid rgba(0,0,0,.06)',
             fontFamily:'DM Sans, sans-serif',
           }}>
-            <span style={{ fontSize:11, fontWeight:700, color:'#3A3530' }}>{d.day}</span>
-            <span style={{ fontSize:10, color:'#6B6560' }}>({d.dateStr})</span>
-            <WeatherIcon icon={d.icon} desc={d.desc} size={14} />
-            <span style={{ fontSize:11, fontWeight:600, color:'#3A3530' }}>{d.hi}°<span style={{ color:'#B8B3AA' }}>/{d.lo}°</span></span>
-            {d.precip > 20 && <span style={{ fontSize:10, color:'#2563EB' }}>{d.precip}%</span>}
+            <div style={{ display:'flex', alignItems:'baseline', gap:4, lineHeight:1 }}>
+              <span style={{ fontSize:11, fontWeight:700, color:'#3A3530' }}>{d.day}</span>
+              <span style={{ fontSize:10, color:'#6B6560' }}>({d.dateStr})</span>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:4, lineHeight:1 }}>
+              <WeatherIcon icon={d.icon} desc={d.desc} size={14} />
+              <span style={{ fontSize:11, fontWeight:600, color:'#3A3530' }}>{d.hi}°<span style={{ color:'#B8B3AA' }}>/{d.lo}°</span></span>
+              {d.precip > 20 && <span style={{ fontSize:10, color:'#2563EB' }}>{d.precip}%</span>}
+            </div>
           </div>
         ))}
       </div>
