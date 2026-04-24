@@ -194,6 +194,34 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
           <ActionBar act={act} catId={catId} onCal={onCal} onRemove={() => { sendFeedback('dismissed'); setExiting(true); setTimeout(() => onRemove(act), 200); }}
             onHeart={onHeart} onThumbUp={handleThumbUp} onThumbDown={handleThumbDown}
             onReserve={onReserve} homeAddress={homeAddress} />
+          {/* ── Source transparency ─────────────────────────────────────
+             Shows the user WHY this event surfaced: which editorial source
+             it came from, how confident the extractor was, and the relevance
+             score. Part of the "transparency moat" — competitors don't
+             expose this. Clicking the source name later can lead to the
+             source's own listing (future: deep link into Manage sources). */}
+          {(act.source_name || act.final_score != null || act.confidence) && (
+            <div style={{
+              fontSize: 10, color: '#8A847D', marginTop: 8, paddingTop: 8,
+              borderTop: '0.5px solid rgba(0,0,0,.08)',
+              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            }} title="Why this showed up in your feed">
+              <span style={{ opacity: 0.6 }}>ℹ</span>
+              {act.source_name && (
+                <span>From <span style={{ fontWeight: 500, color: '#6B6560' }}>{act.source_name}</span></span>
+              )}
+              {act.confidence && (
+                <span style={{
+                  padding: '0 6px', borderRadius: 99, fontSize: 9,
+                  background: act.confidence === 'confirmed' ? 'rgba(34,197,94,.12)' : 'rgba(201,168,76,.15)',
+                  color:      act.confidence === 'confirmed' ? '#16A34A'              : '#8B6D2D',
+                }}>{act.confidence === 'confirmed' ? '✓ confirmed' : '~ inferred'}</span>
+              )}
+              {act.final_score != null && (
+                <span style={{ opacity: 0.7 }}>relevance {Math.round(act.final_score * 100)}</span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
