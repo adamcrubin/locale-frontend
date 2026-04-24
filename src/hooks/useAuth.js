@@ -43,18 +43,19 @@ export function useAuth() {
       // On sign-in, automatically store Calendar tokens in backend so the
       // Calendar API works without a separate "Connect Calendar" popup.
       if (event === 'SIGNED_IN' && session?.provider_token) {
-        const userId    = session.user?.id    || 'anonymous';
         const email     = session.user?.email || null;
         const profileId = (() => { try { return localStorage.getItem('locale-active-profile') || 'default'; } catch { return 'default'; } })();
         const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
         fetch(`${BASE}/auth/google/store-tokens`, {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
           body:    JSON.stringify({
             access_token:  session.provider_token,
             refresh_token: session.provider_refresh_token || null,
             email,
-            userId,
             profileId,
           }),
         })
