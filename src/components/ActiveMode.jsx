@@ -876,7 +876,7 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
               <div style={{
                 padding:'6px 14px 4px',display:'flex',alignItems:'center',gap:6,
               }}>
-                <span style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,.55)',letterSpacing:'.04em',flex:1}}>{label} {date.getDate()}</span>
+                <span style={{fontSize:12,fontWeight:700,color:'rgba(255,255,255,.55)',letterSpacing:'.04em',flex:1}}>{label} {date.getDate()}</span>
                 {wx && (
                 <button onClick={() => {
                   const allDays = weather?.length > 0 ? weather : MOCK_WEATHER;
@@ -887,8 +887,8 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
                   background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',
                   borderRadius:99,padding:'3px 9px',cursor:'pointer',
                 }}>
-                  <WeatherIcon icon={wx.icon} desc={wx.desc} size={12} />
-                  <span style={{fontSize:10,color:'rgba(255,255,255,.65)',fontWeight:500}}>{wx.hi}°<span style={{color:'rgba(255,255,255,.35)',fontWeight:400}}>/{wx.lo}°</span></span>
+                  <WeatherIcon icon={wx.icon} desc={wx.desc} size={13} />
+                  <span style={{fontSize:11,color:'rgba(255,255,255,.65)',fontWeight:500}}>{wx.hi}°<span style={{color:'rgba(255,255,255,.35)',fontWeight:400}}>/{wx.lo}°</span></span>
                 </button>
               )}
               </div>
@@ -916,8 +916,8 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
                         onMouseEnter={ev => { if (e.googleId) ev.currentTarget.style.background='rgba(255,255,255,.09)'; }}
                         onMouseLeave={ev => { if (e.googleId) ev.currentTarget.style.background='rgba(255,255,255,.04)'; }}
                       >
-                        <span style={{fontSize:9,color:'rgba(255,255,255,.3)',flexShrink:0,width:32,lineHeight:1.2}}>{e.time||'All day'}</span>
-                        <span style={{fontSize:11,color:'rgba(255,255,255,.72)',fontWeight:500,lineHeight:1.2,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title||e.name}</span>
+                        <span style={{fontSize:10,color:'rgba(255,255,255,.3)',flexShrink:0,width:34,lineHeight:1.2}}>{e.time||'All day'}</span>
+                        <span style={{fontSize:13,color:'rgba(255,255,255,.72)',fontWeight:500,lineHeight:1.2,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title||e.name}</span>
                         {e.googleId && <span style={{fontSize:8,color:'rgba(255,255,255,.2)',flexShrink:0}}>✎</span>}
                       </div>
                     ))
@@ -1436,24 +1436,28 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           </button>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
-          {/* Ask -- always shown */}
-          <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>
-            {isMobile ? '✏️' : 'Ask'}
-          </button>
-          {/* Status dot -- always shown */}
-          <div title={`Activities: ${activitiesSource}`} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:activitiesSource==='live'?'#22c55e':'#f59e0b',boxShadow:activitiesSource==='live'?'0 0 6px #22c55e88':'0 0 6px #f59e0b66'}}/>
+          {/* Ask -- desktop only */}
+          {!isMobile && (
+            <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ask</button>
+          )}
+          {/* Status dot -- desktop only */}
+          {!isMobile && (
+            <div title={`Activities: ${activitiesSource}`} style={{width:8,height:8,borderRadius:'50%',flexShrink:0,background:activitiesSource==='live'?'#22c55e':'#f59e0b',boxShadow:activitiesSource==='live'?'0 0 6px #22c55e88':'0 0 6px #f59e0b66'}}/>
+          )}
           {/* Saved -- desktop only */}
           {!isMobile && (
             <button onClick={onShowSaved} style={{fontSize:13,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'#E53E3E',fontFamily:'var(--font-body)'}}>♥</button>
           )}
-          {/* Profile avatar -- always shown, name hidden on mobile */}
-          <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 7px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'var(--font-body)'}}>
-            <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
-            {!isMobile && <span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>}
-            <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
-          </button>
-          {/* Pipeline live indicator */}
-          {pipelineActive && (
+          {/* Profile avatar -- desktop only */}
+          {!isMobile && (
+            <button onClick={onSwitchProfile} style={{display:'flex',alignItems:'center',gap:4,padding:'4px 7px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:profileColor.border,border:`0.5px solid ${profileColor.border}`,fontFamily:'var(--font-body)'}}>
+              <div style={{width:16,height:16,borderRadius:'50%',background:profileColor.hex,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'white',fontWeight:600}}>{activeProfile?.name?.charAt(0)||'A'}</div>
+              <span style={{fontSize:11,color:profileColor.light,fontWeight:500}}>{activeProfile?.name}</span>
+              <span style={{fontSize:9,color:`${profileColor.light}88`}}>▾</span>
+            </button>
+          )}
+          {/* Pipeline live indicator -- desktop only */}
+          {!isMobile && pipelineActive && (
             <div style={{display:'flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:99,background:'rgba(201,168,76,.12)',border:'0.5px solid rgba(201,168,76,.25)'}}>
               <span style={{width:6,height:6,borderRadius:'50%',background:'#C9A84C',display:'inline-block',animation:'pulse 1.2s ease-in-out infinite'}}/>
               <span style={{fontSize:10,color:'#C9A84C',fontWeight:500,whiteSpace:'nowrap'}}>{pipelineLabel}</span>
@@ -1468,13 +1472,13 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         </div>
       </div>
 
-      {/* ── Quick prompts ── */}
-      <div style={{background:'var(--header-bg2)',padding:isMobile?'5px 10px':'7px 18px',display:'flex',alignItems:'center',gap:8}}>
-        {!isMobile && <span style={{fontSize:11,color:'rgba(255,255,255,.28)',whiteSpace:'nowrap',flexShrink:0,fontFamily:'DM Sans,sans-serif'}}>Pick a plan for me...</span>}
+      {/* ── Quick prompts -- desktop only ── */}
+      {!isMobile && <div style={{background:'var(--header-bg2)',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>
+        <span style={{fontSize:11,color:'rgba(255,255,255,.28)',whiteSpace:'nowrap',flexShrink:0,fontFamily:'DM Sans,sans-serif'}}>Pick a plan for me...</span>
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
           {QUICK_PROMPTS.map(p=>(
             <button key={p.label} onClick={()=>setAiPrompt(p)} style={{
-              fontSize:isMobile?10:11,padding:isMobile?'4px 9px':'5px 12px',borderRadius:99,whiteSpace:'nowrap',
+              fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
               background:'rgba(255,255,255,.09)',border:'0.5px solid rgba(255,255,255,.14)',
               color:'rgba(255,255,255,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,transition:'all .15s',
             }}
@@ -1483,14 +1487,12 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
             >{p.label}</button>
           ))}
           <button onClick={()=>setShowAsk(true)} style={{
-            fontSize:isMobile?10:11,padding:isMobile?'4px 9px':'5px 12px',borderRadius:99,whiteSpace:'nowrap',
+            fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
             background:'rgba(201,168,76,.1)',border:'0.5px solid rgba(201,168,76,.2)',
             color:'rgba(201,168,76,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,flexShrink:0,
           }}>✏️ Ask Anything</button>
         </div>
-      </div>
-
-
+      </div>}
 
 
 

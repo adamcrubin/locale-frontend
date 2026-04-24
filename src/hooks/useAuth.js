@@ -81,7 +81,7 @@ export function useAuth() {
           // Request Calendar scope at sign-in time — no second popup ever
           scopes: 'https://www.googleapis.com/auth/calendar',
           redirectTo: window.location.origin,
-          queryParams: { access_type: 'offline', prompt: 'consent' },
+          queryParams: { access_type: 'offline' },
         },
       });
       if (error) { setError(error.message); setLoading(false); return false; }

@@ -158,11 +158,10 @@ export default function App() {
     if (!calendar.events?.length) return;
     // Backend already normalizes events to { title, date, time } via getUpcomingEvents()
     const normalized = calendar.events.map(e => ({
-      title: e.title || e.summary || 'Event',
-      date:  e.date  || e.start?.dateTime?.split('T')[0] || e.start?.date || '',
-      time:  e.time  || (e.start?.dateTime
-        ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-        : null),
+      title:   e.title || e.summary || 'Event',
+      date:    e.date  || e.start?.dateTime?.split('T')[0] || e.start?.date || '',
+      time:    e.time  || null,
+      endTime: e.endTime || null,
       added: true, fromGoogle: true, googleId: e.id,
     }));
     setCalQueue(prev => [...prev.filter(e => !e.fromGoogle), ...normalized]);
@@ -329,8 +328,8 @@ export default function App() {
       {screen === 'active'  && <ActiveMode  {...commonProps} />}
       {screen === 'weekday' && <WeekdayMode {...commonProps} activities={weekdayActivities} />}
 
-      {/* ── Top bar: time filter + weekend/weekday toggle ── */}
-      {(screen === 'active' || screen === 'weekday') && (
+      {/* ── Top bar: time filter + weekend/weekday toggle (desktop only) ── */}
+      {(screen === 'active' || screen === 'weekday') && !isMobileInit && (
         <div style={{
           position:'fixed', top:9, left:'50%', transform:'translateX(-50%)',
           zIndex:30, display:'flex', alignItems:'center', gap:6,
@@ -451,9 +450,6 @@ export default function App() {
 
       {/* ── Post-event feedback toast ── */}
       <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
-
-      {/* ── Data source indicator (dev helper) ── */}
-      <DataBadge activitiesSource={activitiesSource} weatherSource={weatherSource} />
     </div>
   );
 }

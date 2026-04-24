@@ -208,26 +208,26 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
               return (
                 <div key={i} style={{ display:'flex', flexDirection:'column', gap:3, minWidth:0 }}>
                   {/* Row 1: day + date */}
-                  <div style={{ fontSize:11, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.55)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
+                  <div style={{ fontSize:13, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.55)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
                     {dayLabel} <span style={{ fontWeight:400, opacity:.7 }}>{dateLabel}</span>
                   </div>
                   {/* Row 2: weather pill */}
                   <div onClick={() => onWeather(i)} style={{
                     display:'inline-flex', alignItems:'center', gap:4,
                     background:'rgba(255,255,255,.09)', border:'0.5px solid rgba(255,255,255,.12)',
-                    borderRadius:99, padding:'3px 8px', cursor:'pointer',
+                    borderRadius:99, padding:'4px 10px', cursor:'pointer',
                     transition:'background .12s', width:'fit-content',
                   }}
                     onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.18)'}
                     onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.09)'}
                   >
-                    <WeatherIcon icon={w.icon} desc={w.desc} size={12} />
-                    <span style={{ fontSize:11, color:'rgba(255,255,255,.85)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
-                    {w.precip > 20 && <span style={{ fontSize:10, color:'#93C5FD' }}>{w.precip}%</span>}
+                    <WeatherIcon icon={w.icon} desc={w.desc} size={14} />
+                    <span style={{ fontSize:13, color:'rgba(255,255,255,.85)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
+                    {w.precip > 20 && <span style={{ fontSize:11, color:'#93C5FD' }}>{w.precip}%</span>}
                   </div>
                   {/* Row 3: calendar events */}
                   {evts.slice(0, 3).map((e, j) => (
-                    <div key={j} style={{ fontSize:11, color:'rgba(255,255,255,.7)', lineHeight:1.35, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
+                    <div key={j} style={{ fontSize:12, color:'rgba(255,255,255,.7)', lineHeight:1.35, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
                       <span style={{ color:'rgba(255,255,255,.4)', flexShrink:0 }}>•</span>
                       <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
                         {e.time ? <span style={{ color:'rgba(255,255,255,.4)', marginRight:3, fontSize:10 }}>{e.time}</span> : null}
@@ -255,18 +255,21 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
           WebkitBackdropFilter:'blur(12px)',
           borderRadius:14, padding:'12px 18px',
           border:'0.5px solid rgba(255,255,255,.1)',
-          minWidth:180,
+          minWidth:200,
         }}>
-          {/* Current-hour icon (or day icon if no hourly) */}
-          <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={48} />
-          {/* Temperature */}
-          <div style={{ display:'flex', alignItems:'baseline', gap:3, marginTop:4 }}>
-            <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:52, fontWeight:300, color:'#fff', lineHeight:1 }}>
-              {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
-            </span>
-            <span style={{ fontSize:13, color:'rgba(255,255,255,.4)', paddingBottom:4 }}>F</span>
+          {/* Icon + temp inline */}
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={52} />
+            <div>
+              <div style={{ display:'flex', alignItems:'baseline', gap:3 }}>
+                <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:56, fontWeight:300, color:'#fff', lineHeight:1 }}>
+                  {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
+                </span>
+                <span style={{ fontSize:14, color:'rgba(255,255,255,.4)', paddingBottom:4 }}>F</span>
+              </div>
+              <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{currentHourData?.desc || today.desc}</div>
+            </div>
           </div>
-          <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{currentHourData?.desc || today.desc}</div>
           {/* Bottom stats row */}
           <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'rgba(255,255,255,.38)', marginTop:4 }}>
             <WeatherIcon icon={today.icon} desc={today.desc} size={12} />

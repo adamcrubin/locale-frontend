@@ -2,19 +2,38 @@ import { useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// "7:00 AM" / "7:00 PM" → "07:00" / "19:00" for <input type="time">
+function to24h(raw) {
+  if (!raw) return '';
+  const m = raw.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.?m\.?|p\.?m\.?)/i);
+  if (m) {
+    let h = parseInt(m[1]);
+    const min = m[2] || '00';
+    const isPM = /pm|p\.?m/i.test(m[3]);
+    if (isPM && h < 12) h += 12;
+    if (!isPM && h === 12) h = 0;
+    return `${String(h).padStart(2,'0')}:${min}`;
+  }
+  const plain = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (plain) return `${String(parseInt(plain[1])).padStart(2,'0')}:${plain[2]}`;
+  return raw.slice(0, 5);
+}
+
 export default function EditCalendarEventModal({ event, userId, profileId, onClose, onSaved, onDeleted }) {
-  const [title,   setTitle]   = useState(event.title || event.name || '');
-  const [date,    setDate]    = useState(event.date || '');
-  const [time,    setTime]    = useState(event.time || '10:00');
-  const [notes,   setNotes]   = useState(event.notes || '');
-  const [status,  setStatus]  = useState('');
-  const [busy,    setBusy]    = useState(false);
+  const [title,     setTitle]     = useState(event.title || event.name || '');
+  const [date,      setDate]      = useState(event.date || '');
+  const [startTime, setStartTime] = useState(to24h(event.time || ''));
+  const [endTime,   setEndTime]   = useState(to24h(event.endTime || ''));
+  const [notes,     setNotes]     = useState(event.notes || '');
+  const [status,    setStatus]    = useState('');
+  const [busy,      setBusy]      = useState(false);
 
   const inp = {
     width:'100%', padding:'7px 10px', borderRadius:8,
     border:'0.5px solid rgba(255,255,255,.12)', fontSize:12,
     background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.85)',
     fontFamily:'DM Sans, sans-serif', outline:'none', boxSizing:'border-box',
+    colorScheme:'dark',
   };
 
   const save = async () => {
@@ -25,12 +44,12 @@ export default function EditCalendarEventModal({ event, userId, profileId, onClo
       const res = await fetch(`${BASE}/calendar/events/${event.googleId}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ title, date, time, notes, userId, profileId }),
+        body:    JSON.stringify({ title, date, time: startTime, endTime, notes, userId, profileId }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Update failed');
       setStatus('Updated!');
-      setTimeout(() => { onSaved({ ...event, title, date, time }); onClose(); }, 900);
+      setTimeout(() => { onSaved({ ...event, title, date, time: startTime, endTime }); onClose(); }, 900);
     } catch (e) {
       setStatus(`Error: ${e.message}`);
       setBusy(false);
@@ -59,20 +78,31 @@ export default function EditCalendarEventModal({ event, userId, profileId, onClo
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:70, padding:16 }}>
-      <div style={{ background:'#252220', borderRadius:14, border:'0.5px solid rgba(255,255,255,.1)', padding:20, width:310, maxWidth:'100%' }}>
+      <div style={{ background:'#252220', borderRadius:14, border:'0.5px solid rgba(255,255,255,.1)', padding:20, width:320, maxWidth:'100%' }}>
         <div className="serif" style={{ fontSize:17, color:'rgba(255,255,255,.9)', fontWeight:300, marginBottom:14 }}>Edit calendar event</div>
 
-        {[
-          { l:'Title', t:'text', v:title, s:setTitle },
-          { l:'Date',  t:'date', v:date,  s:setDate  },
-          { l:'Time',  t:'time', v:time,  s:setTime  },
-          { l:'Notes', t:'text', v:notes, s:setNotes },
-        ].map(f => (
-          <div key={f.l} style={{ marginBottom:9 }}>
-            <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>{f.l}</label>
-            <input type={f.t} value={f.v} onChange={e => f.s(e.target.value)} style={inp} />
+        <div style={{ marginBottom:9 }}>
+          <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>Title</label>
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:9 }}>
+          <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
+        </div>
+        <div style={{ display:'flex', gap:8, marginBottom:9 }}>
+          <div style={{ flex:1 }}>
+            <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>Start time</label>
+            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={inp} />
           </div>
-        ))}
+          <div style={{ flex:1 }}>
+            <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>End time</label>
+            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={inp} />
+          </div>
+        </div>
+        <div style={{ marginBottom:9 }}>
+          <label style={{ fontSize:11, color:'rgba(255,255,255,.35)', display:'block', marginBottom:3 }}>Notes</label>
+          <input type="text" value={notes} onChange={e => setNotes(e.target.value)} style={inp} />
+        </div>
 
         <div style={{ display:'flex', gap:7, marginTop:4 }}>
           <button onClick={onClose} disabled={busy} style={{ flex:1, padding:8, borderRadius:9, fontSize:12, cursor:'pointer', background:'transparent', color:'rgba(255,255,255,.45)', border:'0.5px solid rgba(255,255,255,.12)', fontFamily:'DM Sans, sans-serif' }}>Cancel</button>

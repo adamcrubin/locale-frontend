@@ -87,15 +87,6 @@ export default function WeekdayMode({ settings, activeProfile, calQueue, activit
   return (
     <div className="fade-enter" style={{ display:'grid', gridTemplateRows:'auto auto auto auto 1fr auto', height:'100%', background:'#F4F1EB', overflow:'hidden' }}>
 
-      {/* Feature coming soon banner */}
-      <div style={{ background:'rgba(147,124,215,0.15)', borderBottom:'0.5px solid rgba(147,124,215,.3)', padding:'10px 18px', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-        <span style={{ fontSize:16 }}>🚧</span>
-        <div style={{ textAlign:'center' }}>
-          <div style={{ fontSize:13, fontWeight:600, color:'#C4B5FD', fontFamily:'DM Sans, sans-serif' }}>Weeknight Mode — Coming Soon</div>
-          <div style={{ fontSize:11, color:'rgba(196,181,253,.6)', fontFamily:'DM Sans, sans-serif' }}>Weeknight event discovery is in development. Check back soon!</div>
-        </div>
-      </div>
-
       {/* Header */}
       <div style={{ background:'#1C1A17', padding:'9px 18px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -114,6 +105,15 @@ export default function WeekdayMode({ settings, activeProfile, calQueue, activit
           </button>
           <button onClick={onSettings} style={{ fontSize:11, padding:'5px 11px', borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,.07)', border:'0.5px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.55)', fontFamily:'DM Sans, sans-serif' }}>Settings</button>
           <button onClick={onAmbient} style={{ fontSize:11, padding:'5px 11px', borderRadius:8, cursor:'pointer', background:'rgba(201,168,76,.14)', border:'0.5px solid rgba(201,168,76,.3)', color:'#C9A84C', fontFamily:'DM Sans, sans-serif' }}>Ambient</button>
+        </div>
+      </div>
+
+      {/* Feature coming soon banner */}
+      <div style={{ background:'rgba(147,124,215,0.15)', borderBottom:'0.5px solid rgba(147,124,215,.3)', padding:'10px 18px', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+        <span style={{ fontSize:16 }}>🚧</span>
+        <div style={{ textAlign:'center' }}>
+          <div style={{ fontSize:13, fontWeight:600, color:'#C4B5FD', fontFamily:'DM Sans, sans-serif' }}>Weeknight Mode — Coming Soon</div>
+          <div style={{ fontSize:11, color:'rgba(196,181,253,.6)', fontFamily:'DM Sans, sans-serif' }}>Weeknight event discovery is in development. Check back soon!</div>
         </div>
       </div>
 
