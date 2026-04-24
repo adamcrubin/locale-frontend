@@ -15,27 +15,57 @@ const PAGES = {
     icon:  'ℹ',
     body: () => (
       <>
-        <H>Locale is your personal weekend planner.</H>
+        <Kicker>OUR STORY</Kicker>
+        <H>One man's dream to reclaim the weekend.</H>
         <P>
-          DC's weekend has hundreds of concerts, markets, comedy shows, new
-          restaurants, and outdoor events happening at once. Most of them are
-          scattered across a dozen newsletters and venue sites. Locale reads
-          those sources for you, filters by your preferences and the weather,
-          and surfaces what's actually worth your weekend.
+          It began with a Tuesday-night scrolling session. Seventeen browser
+          tabs open — Washingtonian, DCist, Eventbrite, three venue calendars,
+          a Substack, an email newsletter from 2019 that was somehow still
+          being forwarded weekly — and still, the question <em>"what should I
+          do Saturday?"</em> answered only with a shrug.
         </P>
         <P>
-          Locale is built by Adam Rubin. It's in beta — curation runs every
-          night, sources are transparently listed inside the app, and every
-          event shows which source it came from.
+          Adam Rubin, lifelong weekend enthusiast, stared into the abyss. He
+          thought of his beloved Harlow. He thought of Kailee. Both had been
+          looking at him expectantly from the couch — waiting for direction,
+          for purpose, for a plan that did not involve watching the same
+          brunch spot's Instagram reel for the fifteenth consecutive minute.
+          Their little faces: sad. Their Saturdays: deserved better.
         </P>
         <P>
-          More about Adam:{' '}
+          <em>"There has to be a better way,"</em> he muttered into his
+          kombucha. And then, in the way only the truly inspired can, he did
+          something about it.
+        </P>
+        <P>
+          Locale was born in a Falls Church apartment in the spring of 2026,
+          under the watchful disappointment of Harlow and Kailee, who sensed —
+          in the way only the truest of observers can — that a turning point
+          was at hand. The mission, typed into a README at 2 a.m.:{' '}
+          <strong>read every local newsletter, magazine, venue page, and
+          aggregator so you don't have to.</strong> Surface what's actually
+          worth the weekend, filtered for your taste and tuned to the weather,
+          rendered in a layout that doesn't feel like a DMV website.
+        </P>
+        <P>
+          Today, Locale crawls hundreds of DC-area sources every twenty-four
+          hours. AI models do the heavy lifting — extracting events, writing
+          one-sentence blurbs, ranking by relevance. But the editorial soul is
+          human. Every source is vetted. Every scoring decision is inspectable
+          from inside the app. The goal is simple and only slightly grandiose:{' '}
+          <strong>give Washingtonians (and Harlow, and Kailee) the best
+          weekend of their lives. Every week. Without the research tax.</strong>
+        </P>
+        <P>
+          This is a beta. It will get better. Talk to us.
+        </P>
+        <P style={{ marginTop: 20 }}>
+          — Adam Rubin<br />
           <A href="https://adamcrubin.com">adamcrubin.com</A>
           {' · '}
           <A href="https://linkedin.com/in/Adam-c-Rubin">LinkedIn</A>
-        </P>
-        <P>
-          Questions, ideas, complaints: <A href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</A>.
+          {' · '}
+          <A href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</A>
         </P>
       </>
     ),
@@ -246,6 +276,12 @@ const H = ({ children }) => (
     fontSize:22, color:'rgba(255,255,255,.95)',
     marginTop:24, marginBottom:8, lineHeight:1.25,
   }}>{children}</h2>
+);
+const Kicker = ({ children }) => (
+  <div style={{
+    fontSize:10, fontWeight:700, letterSpacing:'.18em', textTransform:'uppercase',
+    color:'#C9A84C', marginTop:4, marginBottom:-4,
+  }}>{children}</div>
 );
 const H3 = ({ children }) => (
   <h3 style={{
