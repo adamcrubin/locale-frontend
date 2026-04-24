@@ -202,6 +202,31 @@ export function dedupeActivities(acts) {
   });
 }
 
+// Price tier for filter chips.
+// Returns 'free' | '$' | '$$' | '$$$' | 'unknown'.
+// Prefers cost_cents_max (backend), falls back to parsing cost_display/cost strings
+// so mock data ("$45/person", "Free") still bucket correctly.
+//
+// Buckets: Free ($0), $ (≤$25), $$ ($26–$75), $$$ ($76+).
+export function getPriceTier(act) {
+  const costStr = (act.cost_display || act.cost || '').toLowerCase();
+  if (act.is_free === true || costStr === 'free' || costStr === '$0') return 'free';
+  // Prefer numeric backend field when set. 0/0 = free.
+  if (act.cost_cents_max === 0 && act.cost_cents_min === 0) return 'free';
+  let priceDollars = null;
+  if (typeof act.cost_cents_max === 'number' && act.cost_cents_max > 0) {
+    priceDollars = act.cost_cents_max / 100;
+  } else if (costStr) {
+    const nums = costStr.match(/\d+(?:\.\d+)?/g);
+    if (nums?.length) priceDollars = Math.max(...nums.map(parseFloat));
+  }
+  if (priceDollars == null) return 'unknown';
+  if (priceDollars === 0)   return 'free';
+  if (priceDollars <= 25)   return '$';
+  if (priceDollars <= 75)   return '$$';
+  return '$$$';
+}
+
 export function getTimeOfDay(act) {
   const when = (act.start_time || act.when_display || act.when || '').toLowerCase();
   const m = when.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);

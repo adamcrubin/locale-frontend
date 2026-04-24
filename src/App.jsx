@@ -137,6 +137,8 @@ export default function App() {
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
   const [timeFilter,    setTimeFilter]    = useState('all');
+  // Price filter: 'all' | 'free' | '$' | '$$' | '$$$'
+  const [priceFilter,   setPriceFilter]   = useState('all');
   const [editCalModal,  setEditCalModal]  = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
@@ -280,6 +282,7 @@ export default function App() {
     onLoginPrompt:   (feature) => setLoginPrompt({ feature: feature || 'default' }),
     isDemo,
     timeFilter,
+    priceFilter,
     user, onSignOut: signOut,
   };
 
@@ -414,18 +417,43 @@ export default function App() {
       {screen === 'active' && !isMobileInit && (
         <div style={{
           position:'fixed', top:9, left:320, zIndex:30,
-          display:'flex', background:'rgba(255,255,255,.06)',
-          border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+          display:'flex', gap:6, alignItems:'center',
         }}>
-          {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
-            <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
-              padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
-              fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
-              background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
-              color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-              fontWeight: timeFilter===t.id ? 600 : 400,
-            }}>{t.label}</button>
-          ))}
+          <div style={{
+            display:'flex', background:'rgba(255,255,255,.06)',
+            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+          }}>
+            {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
+              <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
+                padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
+                fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
+                background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
+                color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
+                fontWeight: timeFilter===t.id ? 600 : 400,
+              }}>{t.label}</button>
+            ))}
+          </div>
+          {/* Price filter — any / free / $ / $$ / $$$ */}
+          <div style={{
+            display:'flex', background:'rgba(255,255,255,.06)',
+            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+          }}>
+            {[
+              {id:'all',  label:'$ Any'},
+              {id:'free', label:'Free'},
+              {id:'$',    label:'$'},
+              {id:'$$',   label:'$$'},
+              {id:'$$$',  label:'$$$'},
+            ].map(p => (
+              <button key={p.id} onClick={() => setPriceFilter(p.id)} style={{
+                padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
+                fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
+                background: priceFilter===p.id ? 'rgba(255,255,255,.18)' : 'transparent',
+                color:      priceFilter===p.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
+                fontWeight: priceFilter===p.id ? 600 : 400,
+              }}>{p.label}</button>
+            ))}
+          </div>
         </div>
       )}
 

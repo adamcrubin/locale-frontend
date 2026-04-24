@@ -1,5 +1,5 @@
 import { ACTIVITIES as MOCK_ACTIVITIES, ALL_CATEGORIES } from '../../data/content';
-import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay } from './utils';
+import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier } from './utils';
 import ActCard from './ActCard';
 import { SpotlightHero } from './Spotlight';
 
@@ -17,7 +17,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, hasConflict, crossCatSeen, curatedMode }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilter, priceFilter, hasConflict, crossCatSeen, curatedMode }) {
   const allActsUnsliced = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
@@ -35,6 +35,15 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
         if (!timeFilter || timeFilter === 'all') return true;
         const tod = getTimeOfDay(a);
         return tod === timeFilter || tod === 'any';
+      })
+      .filter(a => {
+        // Price filter: exclude events whose price tier doesn't match the selection.
+        // When the user picks a specific tier, events with unknown cost are hidden
+        // (so "Free only" doesn't surface mystery-priced items).
+        if (!priceFilter || priceFilter === 'all') return true;
+        const tier = getPriceTier(a);
+        if (tier === 'unknown') return false;
+        return tier === priceFilter;
       })
   );
   const allActs = curatedMode ? allActsUnsliced.slice(0, 5) : allActsUnsliced;
