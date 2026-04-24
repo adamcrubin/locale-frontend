@@ -27,10 +27,10 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
   const [expanded,      setExpanded]      = useState(false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
-  // Track image load failures so we can hide broken thumbnails and
-  // fall back to the gradient hero treatment without an empty rect.
-  const [imgBroken,     setImgBroken]     = useState(false);
-  const hasImage = !!act.image_url && !imgBroken;
+  // Image rendering is intentionally disabled for now — og:image often
+  // returns site logos rather than event photos, which render as giant
+  // icons on cards. `image_url` is still captured in the DB so we can
+  // re-enable once we have a filter for "is this actually an event photo".
 
   const isRec      = act.content_type === 'recommendation';
   const isExpanded = expanded;
@@ -82,12 +82,6 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
           userSelect: 'none',
         }}
       >
-        {/* Compact thumbnail — shown only when we have a real image. No fallback here
-            so imageless cards stay clean; the expanded view handles the gradient fallback. */}
-        {hasImage && (
-          <img src={act.image_url} alt="" onError={() => setImgBroken(true)}
-            style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-        )}
         {isRec && <span style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A17', lineHeight: 1.3,
@@ -144,13 +138,6 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
 
       {isExpanded && (
         <div style={{ padding: '0 12px 10px' }}>
-          {/* Hero — real image only. No fallback block (the category emoji is
-              already shown on the column header + as the compact-mode title
-              prefix in the Curated column). */}
-          {hasImage && (
-            <img src={act.image_url} alt="" onError={() => setImgBroken(true)}
-              style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6, marginBottom: 8, display: 'block' }} />
-          )}
           {act.why && (
             <div style={{ fontSize: 11, color: '#6B6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
               {act.why}

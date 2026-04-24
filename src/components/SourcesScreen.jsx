@@ -292,113 +292,106 @@ function TestPanel({ sourceId, sourceName, onClose }) {
   );
 }
 
-// ── Source Row ────────────────────────────────────────────────────────────────
+// ── Source Row — compact single-line (32px) ──────────────────────────────
+// Click to expand — reveals url, notes, last_error, test panel.
 function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pref, onPrefChange, isMobile }) {
   const [expanded, setExpanded] = useState(false);
-  const type   = source.source_type || guessType(source);
+  const type     = source.source_type || guessType(source);
   const typeConf = SOURCE_TYPES[type] || SOURCE_TYPES.neighborhood;
-  const lastOk = source.last_ok ? new Date(source.last_ok).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'Never';
+  const lastOk   = source.last_ok ? new Date(source.last_ok).toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '—';
+  const ok       = source.last_ok && !source.last_error;
+  const failing  = !!source.last_error;
+  const dotColor = ok ? '#22c55e' : failing ? '#ef4444' : '#f59e0b';
 
-  // On narrow viewports the 6-column grid crams; stack vertically as a card.
-  const gridCols = isMobile ? '1fr auto' : '1fr 100px 90px 70px 80px 90px';
+  const iconBtn = (active, activeBg, activeColor, inactiveBg) => ({
+    padding:'3px 7px', borderRadius:6, fontSize:11, cursor:'pointer',
+    background: active ? activeBg : inactiveBg,
+    border: '0.5px solid ' + (active ? activeColor + '55' : 'rgba(255,255,255,.12)'),
+    color: active ? activeColor : 'rgba(255,255,255,.45)',
+    minWidth: 28, minHeight: 28,
+  });
 
   return (
     <div style={{
-      borderBottom: '0.5px solid rgba(255,255,255,.06)',
-      opacity: source.active ? 1 : 0.45,
+      borderBottom: '0.5px solid rgba(255,255,255,.05)',
+      opacity: source.active ? 1 : 0.4,
       transition: 'opacity .2s',
     }}>
-      <div style={{ display:'grid', gridTemplateColumns: gridCols, alignItems:'center', padding:'10px 16px', gap:8, rowGap: isMobile ? 6 : 0 }}
-        onClick={() => setExpanded(e => !e)}>
-
-        {/* Name + type badge */}
-        <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-          <span style={{ fontSize:14, flexShrink:0 }}>{typeConf.icon}</span>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:13, fontWeight:500, color:'rgba(255,255,255,.85)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{source.name}</div>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{source.url}</div>
-          </div>
+      <div onClick={() => setExpanded(e => !e)} title={source.url}
+        style={{
+          display:'flex', alignItems:'center', gap:8,
+          padding: isMobile ? '6px 12px' : '5px 14px',
+          cursor:'pointer', minHeight: 32,
+        }}>
+        {/* Type icon — tooltip reveals full type label */}
+        <span title={typeConf.label} style={{ fontSize:14, flexShrink:0, opacity:.9 }}>{typeConf.icon}</span>
+        {/* Name (truncated) */}
+        <div style={{ fontSize:13, color:'rgba(255,255,255,.85)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1, minWidth:0 }}>
+          {source.name}
         </div>
-
-        {/* Type + Status + Event count + Last scraped — individual columns on desktop,
-            a single condensed meta row that spans both grid cells on mobile. */}
-        {isMobile ? (
-          <div style={{ gridColumn:'1 / -1', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:10, color:'rgba(255,255,255,.4)' }}>
-            <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:typeConf.bg, color:typeConf.color, fontWeight:500 }}>
-              {typeConf.label}
-            </span>
-            <StatusDot source={source} />
-            <span style={{ color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', fontWeight:600 }}>
-              {eventCount ?? '—'} events
-            </span>
-            <span style={{ opacity:.7 }}>{lastOk}</span>
+        {/* Status dot only — no "OK" text */}
+        <span title={failing ? source.last_error : (ok ? 'OK' : 'Not yet run')}
+          style={{ width:7, height:7, borderRadius:'50%', background:dotColor, flexShrink:0 }} />
+        {/* Event count — hidden on very narrow viewports to keep one line */}
+        {!isMobile && (
+          <div style={{ fontSize:11, fontWeight:600, width:36, textAlign:'right',
+            color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', flexShrink:0 }}>
+            {eventCount ?? 0}
           </div>
-        ) : (
-          <>
-            <div>
-              <span style={{ fontSize:10, padding:'2px 7px', borderRadius:99, background:typeConf.bg, color:typeConf.color, fontWeight:500 }}>
-                {typeConf.label}
-              </span>
-            </div>
-            <StatusDot source={source} />
-            <div style={{ fontSize:13, fontWeight:600, color: eventCount > 0 ? '#C9A84C' : 'rgba(255,255,255,.25)', textAlign:'center' }}>
-              {eventCount ?? '—'}
-            </div>
-            <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', textAlign:'center' }}>{lastOk}</div>
-          </>
         )}
-
-        {/* Actions */}
-        <div style={{ display:'flex', gap:5, justifyContent:'flex-end' }} onClick={e=>e.stopPropagation()}>
+        {/* Last scraped — desktop only */}
+        {!isMobile && (
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', width:52, textAlign:'right', flexShrink:0 }}>{lastOk}</div>
+        )}
+        {/* Actions — inline, compact */}
+        <div style={{ display:'flex', gap:4, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
           {isAdmin && (
-            <button onClick={()=>onTest(source)} disabled={testing}
-              title="Test this source" style={{
-                padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
-                background: testing ? 'rgba(255,255,255,.04)' : 'rgba(96,165,250,.15)',
-                border:'0.5px solid rgba(96,165,250,.25)', color:'#60A5FA',
-                opacity: testing ? 0.5 : 1,
-              }}>🧪</button>
+            <button onClick={()=>onTest(source)} disabled={testing} title="Test scrape"
+              style={iconBtn(false, '', '#60A5FA', testing ? 'rgba(255,255,255,.04)' : 'rgba(96,165,250,.12)')}>
+              🧪
+            </button>
           )}
           {isAdmin ? (
             <button onClick={()=>onToggle(source)}
-              title={source.active ? 'Disable source' : 'Enable source'} style={{
-                padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
-                background: source.active ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
-                border: `0.5px solid ${source.active ? 'rgba(239,68,68,.25)' : 'rgba(34,197,94,.25)'}`,
-                color: source.active ? '#ef4444' : '#22c55e',
-              }}>{source.active ? 'Disable' : 'Enable'}</button>
+              title={source.active ? 'Disable source' : 'Enable source'}
+              style={iconBtn(true,
+                source.active ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
+                source.active ? '#ef4444' : '#22c55e',
+                'transparent')}>
+              {source.active ? '⊘' : '✓'}
+            </button>
           ) : (
             <>
               <button onClick={()=>onPrefChange(source.id, pref === 'like' ? null : 'like')}
-                title="I like events from this source" style={{
-                  padding:'3px 9px', borderRadius:6, fontSize:12, cursor:'pointer',
-                  background: pref === 'like' ? 'rgba(34,197,94,.22)' : 'rgba(255,255,255,.05)',
-                  border: `0.5px solid ${pref === 'like' ? 'rgba(34,197,94,.45)' : 'rgba(255,255,255,.12)'}`,
-                  color: pref === 'like' ? '#22c55e' : 'rgba(255,255,255,.45)',
-                }}>👍</button>
+                title="Like this source" style={iconBtn(pref === 'like', 'rgba(34,197,94,.22)', '#22c55e', 'rgba(255,255,255,.05)')}>👍</button>
               <button onClick={()=>onPrefChange(source.id, pref === 'dislike' ? null : 'dislike')}
-                title="I don't like events from this source" style={{
-                  padding:'3px 9px', borderRadius:6, fontSize:12, cursor:'pointer',
-                  background: pref === 'dislike' ? 'rgba(239,68,68,.22)' : 'rgba(255,255,255,.05)',
-                  border: `0.5px solid ${pref === 'dislike' ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.12)'}`,
-                  color: pref === 'dislike' ? '#ef4444' : 'rgba(255,255,255,.45)',
-                }}>👎</button>
+                title="Dislike this source" style={iconBtn(pref === 'dislike', 'rgba(239,68,68,.22)', '#ef4444', 'rgba(255,255,255,.05)')}>👎</button>
             </>
           )}
         </div>
       </div>
 
-      {/* Expanded test panel */}
-      {expanded && testing === source.id && (
-        <div style={{ padding:'0 16px 12px' }}>
-          <TestPanel sourceId={source.id} sourceName={source.name} onClose={()=>setExpanded(false)} />
-        </div>
-      )}
-      {source.last_error && expanded && (
-        <div style={{ padding:'0 16px 12px' }}>
-          <div style={{ fontSize:11, color:'#FDA4AF', padding:'8px 12px', background:'rgba(159,18,57,.12)', borderRadius:8 }}>
-            Last error: {source.last_error}
+      {/* Expanded details */}
+      {expanded && (
+        <div style={{ padding:'4px 14px 10px', display:'flex', flexDirection:'column', gap:6 }}>
+          <a href={source.url} target="_blank" rel="noreferrer"
+            style={{ fontSize:11, color:'#60A5FA', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {source.url}
+          </a>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', display:'flex', gap:10, flexWrap:'wrap' }}>
+            <span>Type: <span style={{ color: typeConf.color }}>{typeConf.label}</span></span>
+            {source.category_hint && <span>Hint: {source.category_hint}</span>}
+            {source.base_zip && <span>Base zip: {source.base_zip}</span>}
+            {source.is_far_away && <span style={{ color:'#F59E0B' }}>⚠ 2+ hrs away</span>}
           </div>
+          {source.last_error && (
+            <div style={{ fontSize:11, color:'#FDA4AF', padding:'6px 10px', background:'rgba(159,18,57,.12)', borderRadius:6 }}>
+              Last error: {source.last_error}
+            </div>
+          )}
+          {testing === source.id && (
+            <TestPanel sourceId={source.id} sourceName={source.name} onClose={()=>setExpanded(false)} />
+          )}
         </div>
       )}
     </div>
@@ -406,9 +399,10 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pre
 }
 
 // ── Main SourcesScreen ────────────────────────────────────────────────────────
-export default function SourcesScreen({ user, onClose }) {
+export default function SourcesScreen({ user, settings, onClose }) {
   const isAdmin  = isAdminUser(user);
   const isMobile = useIsMobile();
+  const userZip  = settings?.neighborhood?.zip || null;
   const [sources,     setSources]     = useState([]);
   const [eventCounts, setEventCounts] = useState({});
   const [loading,     setLoading]     = useState(true);
@@ -417,6 +411,8 @@ export default function SourcesScreen({ user, onClose }) {
   const [testingId,   setTestingId]   = useState(null);
   const [filterType,  setFilterType]  = useState('all');
   const [search,      setSearch]      = useState('');
+  const [sortBy,      setSortBy]      = useState('events'); // events | alpha | recent | failing
+  const [farExpanded, setFarExpanded] = useState(false);
   const [prefs,       setPrefs]       = useState(loadSourcePrefs);
 
   const handlePrefChange = (sourceId, next) => {
@@ -437,8 +433,9 @@ export default function SourcesScreen({ user, onClose }) {
   const load = async () => {
     setLoading(true);
     try {
+      const srcUrl = `${BASE}/sources?zip=dc-metro${userZip ? `&userZip=${encodeURIComponent(userZip)}` : ''}`;
       const [srcRes, countRes] = await Promise.all([
-        fetch(`${BASE}/sources?zip=dc-metro`).then(r=>r.json()),
+        fetch(srcUrl).then(r=>r.json()),
         fetch(`${BASE}/admin/sources/event-counts?zip=dc-metro`).then(r=>r.json()).catch(()=>({counts:{}})),
       ]);
       setSources(srcRes.sources || []);
@@ -449,7 +446,7 @@ export default function SourcesScreen({ user, onClose }) {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [userZip]);
 
   const toggleSource = async (source) => {
     try {
@@ -475,13 +472,26 @@ export default function SourcesScreen({ user, onClose }) {
   const totalEvents = Object.values(eventCounts).reduce((a,b) => a+b, 0);
 
   // Filter + search
-  const visible = sources
+  const searchLower = search.toLowerCase();
+  const matched = sources
     .filter(s => filterType === 'all' || (s.source_type || guessType(s)) === filterType)
-    .filter(s => !search || s.name.toLowerCase().includes(search.toLowerCase()) || s.url.toLowerCase().includes(search.toLowerCase()));
+    .filter(s => !search || s.name.toLowerCase().includes(searchLower) || (s.url || '').toLowerCase().includes(searchLower));
 
-  // Group by type
+  // Sort
+  const sortFns = {
+    events:  (a, b) => (eventCounts[b.id] || 0) - (eventCounts[a.id] || 0),
+    alpha:   (a, b) => a.name.localeCompare(b.name),
+    recent:  (a, b) => new Date(b.last_ok || 0) - new Date(a.last_ok || 0),
+    failing: (a, b) => (b.last_error ? 1 : 0) - (a.last_error ? 1 : 0),
+  };
+  const sorted = [...matched].sort(sortFns[sortBy] || sortFns.events);
+
+  // Split near vs far, then group near sources by type.
+  const nearSources = sorted.filter(s => !s.is_far_away);
+  const farSources  = sorted.filter(s =>  s.is_far_away);
+
   const grouped = {};
-  for (const s of visible) {
+  for (const s of nearSources) {
     const t = s.source_type || guessType(s);
     if (!grouped[t]) grouped[t] = [];
     grouped[t].push(s);
@@ -513,69 +523,70 @@ export default function SourcesScreen({ user, onClose }) {
         )}
       </div>
 
-      <div style={{ padding:16, flex:1 }}>
+      <div style={{ padding:'10px 14px', flex:1 }}>
 
-        {/* ── Stats row ── */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:10, marginBottom:16 }}>
-          {[
-            ['Total sources',    sources.length,       '#C9A84C',  '📡'],
-            ['Active',           active.length,         '#22c55e',  '✅'],
-            ['Failing',          failing.length,        failing.length > 0 ? '#ef4444' : '#22c55e', '⚠️'],
-            ['Events this wknd', totalEvents,           '#60A5FA',  '🗓'],
-          ].map(([label, value, color, icon]) => (
-            <div key={label} style={{ background:'rgba(255,255,255,.04)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:10, padding:'12px 14px' }}>
-              <div style={{ fontSize:18, marginBottom:4 }}>{icon}</div>
-              <div style={{ fontSize:22, fontWeight:700, color, lineHeight:1 }}>{value}</div>
-              <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:4, textTransform:'uppercase', letterSpacing:'.06em' }}>{label}</div>
-            </div>
-          ))}
+        {/* Stats — compact inline strip instead of 4 tall cards */}
+        <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginBottom:10, display:'flex', gap:14, flexWrap:'wrap' }}>
+          <span><strong style={{ color:'#C9A84C' }}>{sources.length}</strong> sources</span>
+          <span><strong style={{ color:'#22c55e' }}>{active.length}</strong> active</span>
+          <span style={{ color: failing.length > 0 ? '#ef4444' : 'rgba(255,255,255,.45)' }}>
+            <strong>{failing.length}</strong> failing
+          </span>
+          <span><strong style={{ color:'#60A5FA' }}>{totalEvents}</strong> events this weekend</span>
+          {farSources.length > 0 && (
+            <span style={{ color:'#F59E0B' }}><strong>{farSources.length}</strong> 2+ hrs away</span>
+          )}
         </div>
 
-        {/* ── Filter bar ── */}
-        <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap', alignItems:'center' }}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search sources..."
-            style={{ padding:'6px 11px', borderRadius:8, border:'0.5px solid rgba(255,255,255,.12)', background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.8)', fontSize:12, fontFamily:'DM Sans,sans-serif', outline:'none', width:180 }} />
+        {/* Control bar: search + sort + type filter + refresh */}
+        <div style={{ display:'flex', gap:8, marginBottom:10, flexWrap:'wrap', alignItems:'center' }}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search sources…"
+            style={{ padding:'6px 11px', borderRadius:8, border:'0.5px solid rgba(255,255,255,.12)', background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.85)', fontSize:12, fontFamily:'DM Sans,sans-serif', outline:'none', flex: '1 1 220px', minWidth: 0 }} />
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+            style={{ padding:'6px 10px', borderRadius:8, border:'0.5px solid rgba(255,255,255,.12)',
+              background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.75)', fontSize:12,
+              fontFamily:'DM Sans,sans-serif', outline:'none', cursor:'pointer' }}>
+            <option value="events">Sort: Most events</option>
+            <option value="alpha">Sort: A–Z</option>
+            <option value="recent">Sort: Recently scraped</option>
+            <option value="failing">Sort: Failing first</option>
+          </select>
+          <button onClick={load} title="Refresh" style={{ padding:'6px 10px', borderRadius:8, fontSize:11, cursor:'pointer', background:'rgba(255,255,255,.06)', border:'0.5px solid rgba(255,255,255,.1)', color:'rgba(255,255,255,.4)' }}>↻</button>
+        </div>
+
+        {/* Type filter chips — compact row */}
+        <div style={{ display:'flex', gap:5, marginBottom:10, flexWrap:'wrap', alignItems:'center' }}>
           {['all', ...Object.keys(SOURCE_TYPES)].map(t => {
             const conf = SOURCE_TYPES[t];
-            const active2 = filterType === t;
+            const a = filterType === t;
             return (
               <button key={t} onClick={()=>setFilterType(t)} style={{
-                padding:'4px 12px', borderRadius:99, fontSize:11, cursor:'pointer',
-                background: active2 ? (conf?.bg || 'rgba(201,168,76,.15)') : 'rgba(255,255,255,.04)',
-                border: `0.5px solid ${active2 ? (conf?.color || '#C9A84C') + '55' : 'rgba(255,255,255,.1)'}`,
-                color: active2 ? (conf?.color || '#C9A84C') : 'rgba(255,255,255,.4)',
-                fontWeight: active2 ? 600 : 400,
+                padding:'3px 10px', borderRadius:99, fontSize:11, cursor:'pointer',
+                background: a ? (conf?.bg || 'rgba(201,168,76,.15)') : 'rgba(255,255,255,.04)',
+                border: `0.5px solid ${a ? (conf?.color || '#C9A84C') + '55' : 'rgba(255,255,255,.1)'}`,
+                color: a ? (conf?.color || '#C9A84C') : 'rgba(255,255,255,.4)',
+                fontWeight: a ? 600 : 400,
               }}>{t === 'all' ? '✦ All' : `${conf.icon} ${conf.label}`}</button>
             );
           })}
-          <button onClick={load} style={{ marginLeft:'auto', padding:'4px 12px', borderRadius:8, fontSize:11, cursor:'pointer', background:'rgba(255,255,255,.06)', border:'0.5px solid rgba(255,255,255,.1)', color:'rgba(255,255,255,.4)' }}>↻ Refresh</button>
         </div>
 
-        {/* ── Table ── */}
+        {/* Table */}
         {loading ? (
-          <div style={{ textAlign:'center', padding:40, color:'rgba(255,255,255,.3)', fontSize:13 }}>Loading sources...</div>
+          <div style={{ textAlign:'center', padding:30, color:'rgba(255,255,255,.3)', fontSize:13 }}>Loading sources…</div>
         ) : error ? (
           <div style={{ fontSize:13, color:'#FDA4AF', padding:16 }}>Error: {error}</div>
         ) : (
-          <div style={{ background:'rgba(255,255,255,.03)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:12, overflow:'hidden' }}>
-            {/* Table header — desktop only; mobile rows stack so a table header would be misleading */}
-            {!isMobile && (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 100px 90px 70px 80px 90px', padding:'8px 16px', gap:8, borderBottom:'0.5px solid rgba(255,255,255,.08)', background:'rgba(255,255,255,.02)' }}>
-                {['Source', 'Type', 'Status', 'Events', 'Last run', 'Actions'].map(h => (
-                  <div key={h} style={{ fontSize:9, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'rgba(255,255,255,.25)' }}>{h}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Rows grouped by type */}
+          <div style={{ background:'rgba(255,255,255,.03)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:10, overflow:'hidden' }}>
+            {/* Near sources grouped by type */}
             {Object.entries(grouped).map(([type, typeSources]) => {
               const conf = SOURCE_TYPES[type] || SOURCE_TYPES.neighborhood;
               return (
                 <div key={type}>
-                  <div style={{ padding:'6px 16px', background:'rgba(255,255,255,.02)', borderBottom:'0.5px solid rgba(255,255,255,.05)', display:'flex', alignItems:'center', gap:7 }}>
-                    <span style={{ fontSize:12 }}>{conf.icon}</span>
-                    <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:conf.color }}>{conf.label}</span>
-                    <span style={{ fontSize:10, color:'rgba(255,255,255,.2)' }}>({typeSources.length})</span>
+                  <div style={{ padding:'4px 14px', background:'rgba(255,255,255,.02)', borderBottom:'0.5px solid rgba(255,255,255,.05)', display:'flex', alignItems:'center', gap:7 }}>
+                    <span style={{ fontSize:11 }}>{conf.icon}</span>
+                    <span style={{ fontSize:9, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:conf.color }}>{conf.label}</span>
+                    <span style={{ fontSize:9, color:'rgba(255,255,255,.2)' }}>({typeSources.length})</span>
                   </div>
                   {typeSources.map(s => (
                     <SourceRow key={s.id} source={s}
@@ -593,14 +604,49 @@ export default function SourcesScreen({ user, onClose }) {
               );
             })}
 
-            {visible.length === 0 && (
-              <div style={{ padding:32, textAlign:'center', color:'rgba(255,255,255,.25)', fontSize:13 }}>No sources match your filter.</div>
+            {matched.length === 0 && (
+              <div style={{ padding:24, textAlign:'center', color:'rgba(255,255,255,.25)', fontSize:13 }}>No sources match your filter.</div>
+            )}
+
+            {/* Far-away sources — collapsed by default */}
+            {farSources.length > 0 && (
+              <div>
+                <button onClick={() => setFarExpanded(e => !e)}
+                  style={{ width:'100%', padding:'8px 14px',
+                    background:'rgba(245,158,11,.06)', border:'none',
+                    borderTop:'0.5px solid rgba(245,158,11,.2)',
+                    borderBottom: farExpanded ? '0.5px solid rgba(245,158,11,.2)' : 'none',
+                    display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                    fontFamily:'DM Sans, sans-serif',
+                  }}>
+                  <span style={{ fontSize:11, color:'#F59E0B' }}>{farExpanded ? '▾' : '▸'}</span>
+                  <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#F59E0B' }}>
+                    Sources 2+ hrs away
+                  </span>
+                  <span style={{ fontSize:10, color:'rgba(245,158,11,.6)' }}>({farSources.length})</span>
+                  <span style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginLeft:'auto', fontStyle:'italic' }}>
+                    Events still flow through — just tucked away.
+                  </span>
+                </button>
+                {farExpanded && farSources.map(s => (
+                  <SourceRow key={s.id} source={s}
+                    eventCount={eventCounts[s.id]}
+                    onToggle={toggleSource}
+                    onTest={handleTest}
+                    testing={testingId === s.id ? s.id : null}
+                    isAdmin={isAdmin}
+                    pref={prefs[s.id]}
+                    onPrefChange={handlePrefChange}
+                    isMobile={isMobile}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
 
-        <div style={{ fontSize:10, color:'rgba(255,255,255,.15)', marginTop:12, textAlign:'center' }}>
-          DC Metro · Falls Church, VA · Sources are scraped daily
+        <div style={{ fontSize:10, color:'rgba(255,255,255,.15)', marginTop:8, textAlign:'center' }}>
+          DC Metro · scraped daily
         </div>
       </div>
 

@@ -491,7 +491,7 @@ export default function App() {
       )}
 
       {showSources && (
-        <SourcesScreen user={user} onClose={() => setShowSources(false)} />
+        <SourcesScreen user={user} settings={settings} onClose={() => setShowSources(false)} />
       )}
 
       {/* Friend-request toast — auto-hides after first dismiss per session */}
