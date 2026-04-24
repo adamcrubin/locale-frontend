@@ -386,7 +386,8 @@ export default function App() {
       {calModal && (
         <CalendarModal
           activity={calModal}
-          gcalConnected={settings.gcalConnected}
+          gcalConnected={calendar.connected}
+          userId={calendar.deviceId}
           onClose={() => setCalModal(null)}
           onAdded={onAdded}
           profileId={activeProfile?.id}
