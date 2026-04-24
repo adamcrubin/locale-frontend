@@ -3,6 +3,17 @@ import { ALL_CATEGORIES, PREFERENCES, BUDGET_LEVELS, PROFILE_COLORS, DEFAULT_PRO
 import ThemeToggle, { useTheme } from './ThemeToggle';
 import NeighborhoodPicker from './NeighborhoodPicker';
 
+// Admin is determined by email membership. Keep in sync with the list in
+// SourcesScreen.jsx — both files gate the same audience.
+const ADMIN_EMAILS = new Set([
+  'adam@locale.app',
+  'adamcrubin@gmail.com',
+]);
+function isAdminUser(user) {
+  const email = (user?.email || '').toLowerCase();
+  return ADMIN_EMAILS.has(email);
+}
+
 function Section({ title, desc, children }) {
   return (
     <div style={{ background:'rgba(255,255,255,.04)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:11, padding:14, marginBottom:10 }}>
@@ -186,6 +197,7 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
 }
 
 export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources, calendar }) {
+  const isAdmin = isAdminUser(user);
   const [city,          setCity]        = useState(settings.city);
   const [homeAddress,   setHomeAddress] = useState(settings.homeAddress || '');
   const [neighborhood,  setNeighborhood] = useState(settings.neighborhood || null);
@@ -193,7 +205,41 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
   const [curatedMode,   setCuratedMode] = useState(settings.curatedMode || false);
   const [testMode,      setTestMode]    = useState(settings.testMode || false);
   const [adminExpanded, setAdminExpanded] = useState(false);
+  const [friendsOpen,   setFriendsOpen] = useState(false);
   const { themeId, setTheme, currentTheme } = useTheme();
+
+  // ── Delete account flow ───────────────────────────────────────────────────
+  // Two-step confirmation. Calls DELETE /account which must tear down:
+  //   - supabase auth user
+  //   - profile_events / user_event_interactions rows
+  //   - user_preferences / household_settings rows
+  //   - friendships rows (once Friends ships)
+  // Client falls back to sign-out if the backend endpoint doesn't exist yet,
+  // so the UI is usable before the backend is wired.
+  const deleteAccount = async () => {
+    if (!window.confirm('Delete your Locale account? All saved events, profiles, preferences, and friends will be permanently removed. This cannot be undone.')) return;
+    const typed = window.prompt('Type DELETE to confirm');
+    if (typed !== 'DELETE') return;
+    const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    try {
+      const res = await fetch(`${BASE}/account/delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user?.email || null, userId: user?.id || null }),
+      });
+      if (!res.ok && res.status !== 404) {
+        const msg = await res.text().catch(() => 'unknown error');
+        throw new Error(`Server said ${res.status}: ${msg}`);
+      }
+      // Clear local app state so nothing survives to next sign-in.
+      try { localStorage.clear(); } catch {}
+      alert('Your account has been deleted. Signing you out.');
+    } catch (e) {
+      alert('Delete failed: ' + e.message + '\n\nYou will be signed out locally. Contact support if your account still appears.');
+    }
+    onClose();
+    if (onSignOut) onSignOut();
+  };
 
   const save = () => {
     onSave({ city, homeAddress, neighborhood, curatedMode, testMode });
@@ -331,8 +377,8 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
           </Section>
         )}
 
-        {/* ── Admin Tools (collapsible) ── */}
-        <div style={{ background:'rgba(255,255,255,.04)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:11, marginBottom:10, overflow:'hidden' }}>
+        {/* ── Admin Tools (collapsible) — admin only ── */}
+        {isAdmin && <div style={{ background:'rgba(255,255,255,.04)', border:'0.5px solid rgba(255,255,255,.08)', borderRadius:11, marginBottom:10, overflow:'hidden' }}>
           <div onClick={() => setAdminExpanded(e => !e)} style={{ padding:14, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
             <div>
               <span style={{ fontSize:12, fontWeight:600, color:'rgba(255,255,255,.5)' }}>Admin Tools</span>
@@ -379,7 +425,7 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                       let scraped = 0, start = Date.now();
                       while (scraped === 0 && Date.now() - start < 240000) {
                         await new Promise(r => setTimeout(r, 8000));
-                        try { const c = await (await fetch(`${BASE}/admin/scraped?zip=22046`)).json(); scraped = c.scraped?.length || 0; } catch {}
+                        try { const c = await (await fetch(`${BASE}/admin/scraped?zip=dc-metro`)).json(); scraped = c.scraped?.length || 0; } catch {}
                       }
                       if (scraped === 0) { alert('Scraping timed out — check Render logs.'); return; }
                       alert(`✓ Scraped ${scraped} sources.\n\nStep 3/3: Running extraction...`);
@@ -387,7 +433,7 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                       let events = 0, extStart = Date.now();
                       while (events === 0 && Date.now() - extStart < 120000) {
                         await new Promise(r => setTimeout(r, 5000));
-                        try { const e = await (await fetch(`${BASE}/admin/events?zip=22046&limit=5`)).json(); events = e.count || 0; } catch {}
+                        try { const e = await (await fetch(`${BASE}/admin/events?zip=dc-metro&limit=5`)).json(); events = e.count || 0; } catch {}
                       }
                       alert(`✓ Done! ${events} events in database. Reload to see new events.`);
                     } catch (e) { alert('Pipeline failed: ' + e.message); }
@@ -400,7 +446,7 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                   onClick={async () => {
                     const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
                     try {
-                      const check = await (await fetch(`${BASE}/admin/scraped?zip=22046`)).json();
+                      const check = await (await fetch(`${BASE}/admin/scraped?zip=dc-metro`)).json();
                       const sources = check.scraped?.length || 0;
                       if (sources === 0) { alert('No scraped content found. Run "Clear all events & re-extract" first.'); return; }
                       alert(`Found ${sources} scraped sources. Running extraction — takes ~60 seconds.`);
@@ -408,7 +454,7 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                       let events = 0, start = Date.now();
                       while (events === 0 && Date.now() - start < 90000) {
                         await new Promise(r => setTimeout(r, 5000));
-                        try { const ev = await (await fetch(`${BASE}/admin/events?zip=22046&limit=5`)).json(); events = ev.count || 0; } catch {}
+                        try { const ev = await (await fetch(`${BASE}/admin/events?zip=dc-metro&limit=5`)).json(); events = ev.count || 0; } catch {}
                       }
                       alert(events > 0 ? `✓ Done! ${events} events. Reload to see them.` : 'Extraction ran but 0 events found. Check logs.');
                     } catch (e) { alert('Extract failed: ' + e.message); }
@@ -417,12 +463,12 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* ── Account ── */}
         {(user || onSignOut) && (
           <Section title="Account">
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:10 }}>
               <div>
                 <div style={{ fontSize:12, color:'rgba(255,255,255,.6)' }}>{user?.email || 'Signed in'}</div>
                 <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>Calendar connected automatically via Google sign-in</div>
@@ -434,6 +480,17 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
                   color:'rgba(255,255,255,.4)', fontFamily:'DM Sans, sans-serif',
                 }}>Sign out</button>
               )}
+            </div>
+            <div style={{ borderTop:'0.5px solid rgba(255,255,255,.07)', paddingTop:10, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
+              <div>
+                <div style={{ fontSize:12, color:'rgba(253,164,175,.8)' }}>Delete account</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:2 }}>Permanently removes your profile, saved events, preferences, and friends.</div>
+              </div>
+              <button onClick={deleteAccount} style={{
+                fontSize:11, padding:'5px 12px', borderRadius:8, cursor:'pointer',
+                background:'rgba(159,18,57,.15)', border:'0.5px solid rgba(253,164,175,.25)',
+                color:'#FDA4AF', fontFamily:'DM Sans, sans-serif', flexShrink:0,
+              }}>Delete</button>
             </div>
           </Section>
         )}

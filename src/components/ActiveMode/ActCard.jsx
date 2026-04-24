@@ -3,7 +3,7 @@ import { postFeedback } from '../../lib/api';
 import { formatMusicGenre, formatSportsEmoji, formatWhen, formatVenue, formatCost } from './utils';
 import ActionBar from './ActionBar';
 
-export default function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
+export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
   const [expanded,      setExpanded]      = useState(false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
@@ -22,10 +22,14 @@ export default function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbU
 
   const toggle = () => setExpanded(e => !e);
 
+  // Default card bg: recommendations get a warm off-white; everything else is pure white.
+  // The Curated column passes an explicit `cardBg` (honey-gold tint) so its cards stand out.
+  const baseBg = cardBg ?? (isRec ? '#F9F7F4' : '#FFFFFF');
+
   return (
     <div style={{
-      background:   isRec ? '#F9F7F4' : '#FFFFFF',
-      border:       '1px solid rgba(0,0,0,0.10)',
+      background:   baseBg,
+      border:       cardBg ? '1px solid rgba(201,168,76,.25)' : '1px solid rgba(0,0,0,0.10)',
       borderRadius: 8,
       minHeight:    44,
       flexShrink:   0,
@@ -50,7 +54,7 @@ export default function ActCard({ act, catId, onCal, onRemove, onHeart, onThumbU
           display: 'flex', alignItems: 'center', gap: 8,
           cursor: 'pointer',
           minHeight: 44,
-          background: isRec ? '#F9F7F4' : '#FFFFFF',
+          background: baseBg,
           userSelect: 'none',
         }}
       >

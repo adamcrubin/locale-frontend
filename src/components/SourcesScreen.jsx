@@ -8,6 +8,30 @@ import { useState, useEffect } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// Admin is determined by email membership in this list. Keep in sync with
+// backend admin checks if/when we gate /admin/* routes server-side.
+// Non-admins see like/dislike controls that feed relevancy scoring instead
+// of the enable/disable buttons that change the pipeline for everyone.
+const ADMIN_EMAILS = new Set([
+  'adam@locale.app',
+  'adamcrubin@gmail.com',
+]);
+function isAdminUser(user) {
+  const email = (user?.email || '').toLowerCase();
+  return ADMIN_EMAILS.has(email);
+}
+
+// Non-admin source preferences live in localStorage and are sent to the
+// backend as a batched update so relevancy scoring can weight events from
+// liked sources higher and demote disliked ones.
+const PREF_KEY = 'locale.sourcePrefs';
+function loadSourcePrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch { return {}; }
+}
+function saveSourcePrefs(next) {
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(next)); } catch {}
+}
+
 // ── Source type config ────────────────────────────────────────────────────────
 const SOURCE_TYPES = {
   editorial:   { label: 'Editorial',    icon: '📰', color: '#C9A84C',  bg: 'rgba(201,168,76,.12)'  },
@@ -76,7 +100,7 @@ function AddSourceModal({ onClose, onAdded }) {
       const res  = await fetch(`${BASE}/admin/sources/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...draft, zip_code: '22046' }),
+        body: JSON.stringify({ ...draft, zip_code: 'dc-metro' }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
@@ -193,7 +217,7 @@ function TestPanel({ sourceId, sourceName, onClose }) {
         const res  = await fetch(`${BASE}/admin/sources/test`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourceId, zip: '22046' }),
+          body: JSON.stringify({ sourceId, zip: 'dc-metro' }),
         });
         const data = await res.json();
         if (!data.ok) throw new Error(data.error);
@@ -268,7 +292,7 @@ function TestPanel({ sourceId, sourceName, onClose }) {
 }
 
 // ── Source Row ────────────────────────────────────────────────────────────────
-function SourceRow({ source, eventCount, onToggle, onTest, testing }) {
+function SourceRow({ source, eventCount, onToggle, onTest, testing, isAdmin, pref, onPrefChange }) {
   const [expanded, setExpanded] = useState(false);
   const type   = source.source_type || guessType(source);
   const typeConf = SOURCE_TYPES[type] || SOURCE_TYPES.neighborhood;
@@ -312,20 +336,41 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing }) {
 
         {/* Actions */}
         <div style={{ display:'flex', gap:5, justifyContent:'flex-end' }} onClick={e=>e.stopPropagation()}>
-          <button onClick={()=>onTest(source)} disabled={testing}
-            title="Test this source" style={{
-              padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
-              background: testing ? 'rgba(255,255,255,.04)' : 'rgba(96,165,250,.15)',
-              border:'0.5px solid rgba(96,165,250,.25)', color:'#60A5FA',
-              opacity: testing ? 0.5 : 1,
-            }}>🧪</button>
-          <button onClick={()=>onToggle(source)}
-            title={source.active ? 'Disable source' : 'Enable source'} style={{
-              padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
-              background: source.active ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
-              border: `0.5px solid ${source.active ? 'rgba(239,68,68,.25)' : 'rgba(34,197,94,.25)'}`,
-              color: source.active ? '#ef4444' : '#22c55e',
-            }}>{source.active ? 'Disable' : 'Enable'}</button>
+          {isAdmin && (
+            <button onClick={()=>onTest(source)} disabled={testing}
+              title="Test this source" style={{
+                padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
+                background: testing ? 'rgba(255,255,255,.04)' : 'rgba(96,165,250,.15)',
+                border:'0.5px solid rgba(96,165,250,.25)', color:'#60A5FA',
+                opacity: testing ? 0.5 : 1,
+              }}>🧪</button>
+          )}
+          {isAdmin ? (
+            <button onClick={()=>onToggle(source)}
+              title={source.active ? 'Disable source' : 'Enable source'} style={{
+                padding:'3px 9px', borderRadius:6, fontSize:11, cursor:'pointer',
+                background: source.active ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
+                border: `0.5px solid ${source.active ? 'rgba(239,68,68,.25)' : 'rgba(34,197,94,.25)'}`,
+                color: source.active ? '#ef4444' : '#22c55e',
+              }}>{source.active ? 'Disable' : 'Enable'}</button>
+          ) : (
+            <>
+              <button onClick={()=>onPrefChange(source.id, pref === 'like' ? null : 'like')}
+                title="I like events from this source" style={{
+                  padding:'3px 9px', borderRadius:6, fontSize:12, cursor:'pointer',
+                  background: pref === 'like' ? 'rgba(34,197,94,.22)' : 'rgba(255,255,255,.05)',
+                  border: `0.5px solid ${pref === 'like' ? 'rgba(34,197,94,.45)' : 'rgba(255,255,255,.12)'}`,
+                  color: pref === 'like' ? '#22c55e' : 'rgba(255,255,255,.45)',
+                }}>👍</button>
+              <button onClick={()=>onPrefChange(source.id, pref === 'dislike' ? null : 'dislike')}
+                title="I don't like events from this source" style={{
+                  padding:'3px 9px', borderRadius:6, fontSize:12, cursor:'pointer',
+                  background: pref === 'dislike' ? 'rgba(239,68,68,.22)' : 'rgba(255,255,255,.05)',
+                  border: `0.5px solid ${pref === 'dislike' ? 'rgba(239,68,68,.45)' : 'rgba(255,255,255,.12)'}`,
+                  color: pref === 'dislike' ? '#ef4444' : 'rgba(255,255,255,.45)',
+                }}>👎</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -347,7 +392,8 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing }) {
 }
 
 // ── Main SourcesScreen ────────────────────────────────────────────────────────
-export default function SourcesScreen({ onClose }) {
+export default function SourcesScreen({ user, onClose }) {
+  const isAdmin = isAdminUser(user);
   const [sources,     setSources]     = useState([]);
   const [eventCounts, setEventCounts] = useState({});
   const [loading,     setLoading]     = useState(true);
@@ -356,13 +402,29 @@ export default function SourcesScreen({ onClose }) {
   const [testingId,   setTestingId]   = useState(null);
   const [filterType,  setFilterType]  = useState('all');
   const [search,      setSearch]      = useState('');
+  const [prefs,       setPrefs]       = useState(loadSourcePrefs);
+
+  const handlePrefChange = (sourceId, next) => {
+    setPrefs(p => {
+      const copy = { ...p };
+      if (next) copy[sourceId] = next; else delete copy[sourceId];
+      saveSourcePrefs(copy);
+      // Fire-and-forget the backend sync. Backend can ignore if endpoint
+      // is not live yet; relevancy still works from localStorage client-side.
+      fetch(`${BASE}/sources/${sourceId}/preference`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preference: next, email: user?.email || null }),
+      }).catch(() => {});
+      return copy;
+    });
+  };
 
   const load = async () => {
     setLoading(true);
     try {
       const [srcRes, countRes] = await Promise.all([
-        fetch(`${BASE}/sources?zip=22046`).then(r=>r.json()),
-        fetch(`${BASE}/admin/sources/event-counts?zip=22046`).then(r=>r.json()).catch(()=>({counts:{}})),
+        fetch(`${BASE}/sources?zip=dc-metro`).then(r=>r.json()),
+        fetch(`${BASE}/admin/sources/event-counts?zip=dc-metro`).then(r=>r.json()).catch(()=>({counts:{}})),
       ]);
       setSources(srcRes.sources || []);
       setEventCounts(countRes.counts || {});
@@ -423,11 +485,17 @@ export default function SourcesScreen({ onClose }) {
           <span className="serif" style={{ fontSize:20, color:'rgba(255,255,255,.9)', fontWeight:300 }}>Sources</span>
           <span style={{ fontSize:11, color:'rgba(255,255,255,.25)' }}>Event data pipeline</span>
         </div>
-        <button onClick={() => setShowAdd(true)} style={{
-          background:'rgba(201,168,76,.2)', border:'0.5px solid rgba(201,168,76,.35)',
-          borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600,
-          cursor:'pointer', color:'#C9A84C',
-        }}>+ Add source</button>
+        {isAdmin ? (
+          <button onClick={() => setShowAdd(true)} style={{
+            background:'rgba(201,168,76,.2)', border:'0.5px solid rgba(201,168,76,.35)',
+            borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:600,
+            cursor:'pointer', color:'#C9A84C',
+          }}>+ Add source</button>
+        ) : (
+          <span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>
+            👍 / 👎 tunes your feed — doesn't change sources for everyone
+          </span>
+        )}
       </div>
 
       <div style={{ padding:16, flex:1 }}>
@@ -498,6 +566,9 @@ export default function SourcesScreen({ onClose }) {
                       onToggle={toggleSource}
                       onTest={handleTest}
                       testing={testingId === s.id ? s.id : null}
+                      isAdmin={isAdmin}
+                      pref={prefs[s.id]}
+                      onPrefChange={handlePrefChange}
                     />
                   ))}
                 </div>
@@ -511,7 +582,7 @@ export default function SourcesScreen({ onClose }) {
         )}
 
         <div style={{ fontSize:10, color:'rgba(255,255,255,.15)', marginTop:12, textAlign:'center' }}>
-          ZIP 22046 · Falls Church, VA · Sources are scraped daily
+          DC Metro · Falls Church, VA · Sources are scraped daily
         </div>
       </div>
 

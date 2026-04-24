@@ -176,8 +176,19 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       <ColumnErrorBoundary>
         {isMobile
           ? <MobileLayout visibleCats={visibleCats} {...colProps} />
-          : <div style={{display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
-              <div style={{flex:1,display:'flex',minHeight:0,overflow:'hidden'}}>
+          : <div style={{flex:1,display:'flex',minHeight:0,overflow:'hidden'}}>
+              <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,minHeight:0,overflow:'hidden'}}>
+                {numPages>1&&(
+                  <div style={{background:'#1C1A17',borderBottom:'0.5px solid rgba(255,255,255,.06)',padding:'8px 18px',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+                    <button onClick={()=>setColPage(p=>(p-1+numPages)%numPages)} style={{padding:'10px 26px',borderRadius:10,cursor:'pointer',background:'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.18)',color:'rgba(255,255,255,.8)',fontSize:22,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>←</button>
+                    <div style={{flex:1,display:'flex',justifyContent:'center',gap:5}}>
+                      {Array.from({length:numPages}).map((_,i)=>(
+                        <div key={i} onClick={()=>setColPage(i)} style={{width:i===safePage?18:6,height:6,borderRadius:99,background:i===safePage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
+                      ))}
+                    </div>
+                    <button onClick={()=>setColPage(p=>(p+1)%numPages)} style={{padding:'10px 26px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:22,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
+                  </div>
+                )}
                 {(() => {
                   const slots = [];
                   let i = 0;
@@ -196,7 +207,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                   }
                   return (
                     <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
-                      style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${slots.length},1fr)`,minHeight:0}}
+                      style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${slots.length},1fr)`,minHeight:0,overflow:'hidden'}}
                     >
                       {slots.map(slot =>
                         slot.type === 'stacked'
@@ -206,28 +217,16 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                     </div>
                   );
                 })()}
-                <WeekendSidebar
-                  activities={activities}
-                  calQueue={calQueue}
-                  weather={weather}
-                  onCal={onCalendar}
-                  onWeather={onWeather}
-                  calendar={calendar}
-                  onEditCal={onEditCal}
-                />
               </div>
-
-              {numPages>1&&(
-                <div style={{background:'#1C1A17',borderTop:'0.5px solid rgba(255,255,255,.06)',padding:'6px 18px',display:'flex',alignItems:'center',gap:8}}>
-                  <button onClick={()=>setColPage(p=>Math.max(0,p-1))} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(255,255,255,.1)',border:'0.5px solid rgba(255,255,255,.18)',color:'rgba(255,255,255,.8)',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>←</button>
-                  <div style={{flex:1,display:'flex',justifyContent:'center',gap:5}}>
-                    {Array.from({length:numPages}).map((_,i)=>(
-                      <div key={i} onClick={()=>setColPage(i)} style={{width:i===safePage?18:6,height:6,borderRadius:99,background:i===safePage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
-                    ))}
-                  </div>
-                  <button onClick={()=>setColPage(p=>(p+1)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
-                </div>
-              )}
+              <WeekendSidebar
+                activities={activities}
+                calQueue={calQueue}
+                weather={weather}
+                onCal={onCalendar}
+                onWeather={onWeather}
+                calendar={calendar}
+                onEditCal={onEditCal}
+              />
             </div>
         }
       </ColumnErrorBoundary>

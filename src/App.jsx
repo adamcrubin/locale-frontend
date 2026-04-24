@@ -448,7 +448,7 @@ export default function App() {
       )}
 
       {showSources && (
-        <SourcesScreen onClose={() => setShowSources(false)} />
+        <SourcesScreen user={user} onClose={() => setShowSources(false)} />
       )}
 
       {settingsOpen && (
