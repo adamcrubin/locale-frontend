@@ -3,7 +3,8 @@ import AmbientMode          from './components/AmbientMode';
 import ActiveMode           from './components/ActiveMode';
 import WeekdayMode          from './components/WeekdayMode';
 import WeatherScreen        from './components/WeatherScreen';
-import CalendarModal        from './components/CalendarModal';
+import CalendarModal             from './components/CalendarModal';
+import EditCalendarEventModal    from './components/EditCalendarEventModal';
 import SettingsScreen       from './components/SettingsScreen';
 import ProfilePicker        from './components/ProfilePicker';
 import SourcesScreen        from './components/SourcesScreen';
@@ -146,6 +147,7 @@ export default function App() {
   const [showPicker,    setShowPicker]    = useState(false);
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
+  const [editCalModal,  setEditCalModal]  = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
   const calendar = useCalendar(activeProfile, user);
@@ -255,6 +257,7 @@ export default function App() {
     onSaveItem, onRemoveSaved,
     onShowSaved:     () => setShowSaved(true),
     onThumbUp, onThumbDown,
+    onEditCal:       setEditCalModal,
     user, onSignOut: signOut,
   };
 
@@ -391,6 +394,17 @@ export default function App() {
           onClose={() => setCalModal(null)}
           onAdded={onAdded}
           profileId={activeProfile?.id}
+        />
+      )}
+
+      {editCalModal && (
+        <EditCalendarEventModal
+          event={editCalModal}
+          userId={calendar.deviceId}
+          profileId={activeProfile?.id || 'default'}
+          onClose={() => setEditCalModal(null)}
+          onSaved={(updated) => setCalQueue(q => q.map(e => e.googleId === updated.googleId ? { ...e, ...updated } : e))}
+          onDeleted={(id) => setCalQueue(q => q.filter(e => e.googleId !== id))}
         />
       )}
 

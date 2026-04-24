@@ -325,7 +325,7 @@ function SourceRow({ source, eventCount, onToggle, onTest, testing }) {
               background: source.active ? 'rgba(239,68,68,.12)' : 'rgba(34,197,94,.12)',
               border: `0.5px solid ${source.active ? 'rgba(239,68,68,.25)' : 'rgba(34,197,94,.25)'}`,
               color: source.active ? '#ef4444' : '#22c55e',
-            }}>{source.active ? 'Off' : 'On'}</button>
+            }}>{source.active ? 'Disable' : 'Enable'}</button>
         </div>
       </div>
 

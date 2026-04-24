@@ -119,13 +119,19 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
             ))}
           </div>
 
-          {/* Right: hourly for selected day — scrollable, starts at 7am */}
-          <div ref={hourlyRef} style={{ padding:'12px 16px', overflowY:'auto' }} className="no-scroll">
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
+          {/* Right: hourly for selected day — scrollable, starts at 7am, even hours only */}
+          <div ref={hourlyRef} style={{ padding:'0 16px 12px', overflowY:'auto', position:'relative' }} className="no-scroll">
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.08em', textTransform:'uppercase', color:'#C9A84C', padding:'12px 0 10px', position:'sticky', top:0, background:'#1C1A17', zIndex:1 }}>
               Hourly — {d.day?.toLowerCase()}
             </div>
-            {d.hours && d.hours.length > 0 ? d.hours.map((h,i)=>(
-              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:i<d.hours.length-1?'0.5px solid rgba(255,255,255,.06)':'none', fontSize:12 }}>
+            {d.hours && d.hours.length > 0 ? d.hours.filter(h => {
+              const raw = (h.t || '').trim();
+              const isNoon = raw.toLowerCase() === '12 pm';
+              const isMidnight = raw.toLowerCase() === '12 am';
+              const num = parseInt(raw);
+              return isNoon || isMidnight || (num % 2 === 0);
+            }).map((h,i,arr)=>(
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:i<arr.length-1?'0.5px solid rgba(255,255,255,.06)':'none', fontSize:12 }}>
                 <span style={{ width:40, color:'rgba(255,255,255,.35)', flexShrink:0, fontSize:11 }}>{h.t}</span>
                 <span style={{ width:22, textAlign:'center', flexShrink:0 }}><WeatherIcon icon={h.icon} desc={h.desc} size={14} /></span>
                 <span style={{ flex:1, color:'rgba(255,255,255,.42)', fontSize:11 }}>{h.desc}</span>

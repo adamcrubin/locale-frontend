@@ -625,7 +625,10 @@ function WeatherPillBar({ weather, onWeather }) {
           >
             <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,.5)', letterSpacing: '.06em', textTransform: 'uppercase', width: 26 }}>{d.day}</span>
             <WeatherIcon icon={d.icon} desc={d.desc} size={16} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)' }}>{d.hi}°</span>
+            {d.nightIcon && d.nightIcon !== d.icon && (
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.35)' }}>→<WeatherIcon icon={d.nightIcon} desc={d.nightDesc||''} size={13} /></span>
+            )}
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.85)' }}>{d.hi}°/<span style={{ color:'rgba(255,255,255,.5)' }}>{d.lo}°</span></span>
             {d.precip > 20 && <span style={{ fontSize: 10, color: '#93C5FD' }}>{d.precip}%</span>}
           </button>
         );
@@ -787,7 +790,7 @@ function SpotlightOverlay({ activities, onDismiss, onCal }) {
 // ── Desktop sidebar -- Spotlight + Weekend Calendar ───────────────────────────
 // Always shown on desktop. Top: best event of the weekend.
 // Bottom: Fri/Sat/Sun calendar sections from calQueue.
-function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calendar }) {
+function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calendar, onEditCal }) {
   // Top spotlight event
   const hero = Object.values(activities).flat()
     .filter(a => a?.title)
@@ -901,14 +904,22 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
                   {events
                     .sort((a,b) => (a.time||'').localeCompare(b.time||''))
                     .map((e,i) => (
-                      <div key={i} style={{
-                        display:'flex',alignItems:'baseline',gap:5,
-                        padding:'4px 6px',borderRadius:5,
-                        background:'rgba(255,255,255,.04)',
-                        border:'0.5px solid rgba(255,255,255,.06)',
-                      }}>
+                      <div key={i}
+                        onClick={() => e.googleId && onEditCal?.(e)}
+                        style={{
+                          display:'flex',alignItems:'baseline',gap:5,
+                          padding:'4px 6px',borderRadius:5,
+                          background:'rgba(255,255,255,.04)',
+                          border:'0.5px solid rgba(255,255,255,.06)',
+                          cursor: e.googleId ? 'pointer' : 'default',
+                          transition:'background .12s',
+                        }}
+                        onMouseEnter={ev => { if (e.googleId) ev.currentTarget.style.background='rgba(255,255,255,.09)'; }}
+                        onMouseLeave={ev => { if (e.googleId) ev.currentTarget.style.background='rgba(255,255,255,.04)'; }}
+                      >
                         <span style={{fontSize:9,color:'rgba(255,255,255,.3)',flexShrink:0,width:32,lineHeight:1.2}}>{e.time||'All day'}</span>
                         <span style={{fontSize:11,color:'rgba(255,255,255,.72)',fontWeight:500,lineHeight:1.2,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.title||e.name}</span>
+                        {e.googleId && <span style={{fontSize:8,color:'rgba(255,255,255,.2)',flexShrink:0}}>✎</span>}
                       </div>
                     ))
                   }
@@ -1354,7 +1365,7 @@ function useIsMobile() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal }) {
   const [removed,      setRemoved]      = useState({});
   const [activeCat,    setActiveCat]    = useState('all');
   const [timeFilter,   setTimeFilter]   = useState('all');   // 'all' | 'morning' | 'midday' | 'night'
@@ -1446,8 +1457,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           <span style={{fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:'var(--font-body)'}}>{settings.city}</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
-          {/* Theme toggle -- always shown */}
-          <ThemeToggle themeId={themeId} setTheme={setTheme} currentTheme={currentTheme} />
           {/* Ask -- always shown */}
           <button onClick={()=>setShowAsk(true)} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>
             {isMobile ? '✏️' : 'Ask'}
@@ -1550,6 +1559,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                 onCal={onCalendar}
                 onWeather={onWeather}
                 calendar={calendar}
+                onEditCal={onEditCal}
               />
             </div>
 
@@ -1562,7 +1572,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                     <div key={i} onClick={()=>setColPage(i)} style={{width:i===safePage?18:6,height:6,borderRadius:99,background:i===safePage?'#C9A84C':'rgba(255,255,255,.2)',cursor:'pointer',transition:'all .2s'}}/>
                   ))}
                 </div>
-                <button onClick={()=>setColPage(p=>Math.min(numPages-1,p+1))} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
+                <button onClick={()=>setColPage(p=>(p+1)%numPages)} style={{padding:'7px 20px',borderRadius:10,cursor:'pointer',background:'rgba(201,168,76,.2)',border:'0.5px solid rgba(201,168,76,.35)',color:'#C9A84C',fontSize:18,fontFamily:'DM Sans,sans-serif',fontWeight:500,lineHeight:1,transition:'all .15s'}}>→</button>
               </div>
             )}
           </div>

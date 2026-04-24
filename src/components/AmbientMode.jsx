@@ -6,7 +6,7 @@ function WeatherIcon({ icon, desc = '', size = 18 }) {
   const d = (desc || '').toLowerCase();
   const i = (icon || '');
   if (d.includes('thunder') || d.includes('storm') || i.includes('⛈') || i.includes('🌩'))
-    return <span style={{ fontSize: size, color: '#818CF8' }}>⛈</span>;
+    return <span style={{ fontSize: size, color: '#818CF8' }}>🌩️</span>;
   if (d.includes('snow') || d.includes('ice') || d.includes('blizzard') || i.includes('❄') || i.includes('🌨'))
     return <span style={{ fontSize: size, color: '#BAE6FD' }}>❄️</span>;
   if (d.includes('frost'))
@@ -237,22 +237,27 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
       {/* ── Today's weather — top left (glass backdrop) ── */}
       <div style={{ position:'absolute', top:110, left:30, zIndex:3 }}>
         <div style={{
-          display:'inline-flex', alignItems:'center', gap:10,
+          display:'inline-flex', flexDirection:'column', alignItems:'flex-start',
           background:'rgba(0,0,0,.42)', backdropFilter:'blur(12px)',
           WebkitBackdropFilter:'blur(12px)',
-          borderRadius:14, padding:'10px 16px',
+          borderRadius:14, padding:'12px 18px',
           border:'0.5px solid rgba(255,255,255,.1)',
+          minWidth:160,
         }}>
-          <WeatherIcon icon={today.icon} desc={today.desc} size={32} />
-          <div>
-            <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
-              <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:52, fontWeight:300, color:'#fff', lineHeight:1 }}>
-                {today.current ?? today.feel ?? today.hi}°
-              </span>
-              <span style={{ fontSize:14, color:'rgba(255,255,255,.45)', paddingBottom:6 }}>F</span>
-            </div>
-            <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em' }}>{today.desc}</div>
-            <div style={{ fontSize:11, color:'rgba(255,255,255,.38)', marginTop:2 }}>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</div>
+          {/* Big weather picture icon */}
+          <WeatherIcon icon={today.icon} desc={today.desc} size={48} />
+          {/* Temperature */}
+          <div style={{ display:'flex', alignItems:'baseline', gap:3, marginTop:4 }}>
+            <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:52, fontWeight:300, color:'#fff', lineHeight:1 }}>
+              {today.current ?? today.feel ?? today.hi}°
+            </span>
+            <span style={{ fontSize:13, color:'rgba(255,255,255,.4)', paddingBottom:4 }}>F</span>
+          </div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{today.desc}</div>
+          {/* Bottom stats row with icon */}
+          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'rgba(255,255,255,.38)', marginTop:4 }}>
+            <WeatherIcon icon={today.icon} desc={today.desc} size={12} />
+            <span>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</span>
           </div>
         </div>
       </div>
