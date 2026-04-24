@@ -1,5 +1,6 @@
 import { ACTIVITIES as MOCK_ACTIVITIES, ALL_CATEGORIES } from '../../data/content';
 import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier } from './utils';
+import { titlePrefixForCategory } from '../../lib/eventEmoji';
 import ActCard from './ActCard';
 import { SpotlightHero } from './Spotlight';
 
@@ -78,14 +79,20 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
-          : allActs.map(a=>(
+          : allActs.map(a=>{
+              // Compute title prefix:
+              // - Curated column: emoji of the source category the event came from
+              // - Music / sports / shopping columns: sub-type hint (venue size,
+              //   spectator-vs-participation, event-vs-evergreen-shop)
+              // - Everything else: no prefix
+              const catPrefix = isCurated ? sourceCatIcon(a) : titlePrefixForCategory(a, cat.id);
+              const prefixedTitle = catPrefix ? `${catPrefix} ${a.title}` : a.title;
+              return (
               <ActCard key={a.title}
                 act={{
                   ...a,
                   _conflict: hasConflict?.(a),
-                  // In the Curated column, prefix the title with the source-category
-                  // emoji so users can see which lane the event originated from.
-                  title: isCurated ? `${sourceCatIcon(a)} ${a.title}` : a.title,
+                  title: prefixedTitle,
                 }}
                 catId={cat.id}
                 cardBg={isCurated ? curatedCardBg : undefined}
@@ -98,7 +105,8 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                 homeAddress={homeAddress}
                 profileId={profileId}
               />
-            ))
+              );
+            })
         }
       </div>
     </div>
