@@ -60,6 +60,7 @@ function transformFeed(feed) {
       final_score:  e.final_score,
       confidence:   e.confidence,
       friends_interested: e.friends_interested || [],
+      image_url:  e.image_url || null,
     }));
 
     // Map always-available evergreen venues from the `evergreen_events` table.

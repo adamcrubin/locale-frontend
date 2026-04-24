@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { postFeedback } from '../../lib/api';
 import { formatMusicGenre, formatSportsEmoji, formatWhen, formatVenue, formatCost } from './utils';
+import { ALL_CATEGORIES } from '../../data/content';
 import ActionBar from './ActionBar';
+
+const CAT_ICON_BY_ID = Object.fromEntries(ALL_CATEGORIES.map(c => [c.id, c.icon]));
 
 // Stable per-name colors for friend avatars. Hash first char to index.
 const AVATAR_COLORS = ['#C9A84C', '#818CF8', '#34D399', '#F472B6', '#60A5FA', '#FBA74E', '#A78BFA'];
@@ -27,6 +30,10 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
   const [expanded,      setExpanded]      = useState(false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
+  // Track image load failures so we can hide broken thumbnails and
+  // fall back to the gradient hero treatment without an empty rect.
+  const [imgBroken,     setImgBroken]     = useState(false);
+  const hasImage = !!act.image_url && !imgBroken;
 
   const isRec      = act.content_type === 'recommendation';
   const isExpanded = expanded;
@@ -78,6 +85,12 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
           userSelect: 'none',
         }}
       >
+        {/* Compact thumbnail — shown only when we have a real image. No fallback here
+            so imageless cards stay clean; the expanded view handles the gradient fallback. */}
+        {hasImage && (
+          <img src={act.image_url} alt="" onError={() => setImgBroken(true)}
+            style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+        )}
         {isRec && <span style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A17', lineHeight: 1.3,
@@ -134,6 +147,18 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
 
       {isExpanded && (
         <div style={{ padding: '0 12px 10px' }}>
+          {/* Hero — real image if available, otherwise gradient + category emoji. */}
+          {hasImage ? (
+            <img src={act.image_url} alt="" onError={() => setImgBroken(true)}
+              style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6, marginBottom: 8, display: 'block' }} />
+          ) : (
+            <div style={{
+              width: '100%', height: 60, borderRadius: 6, marginBottom: 8,
+              background: 'linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.55))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 28, opacity: 0.75,
+            }}>{CAT_ICON_BY_ID[catId] || '✨'}</div>
+          )}
           {act.friends_interested?.length > 0 && (
             <div style={{
               fontSize: 11, color: '#8B6D2D', fontStyle: 'italic', lineHeight: 1.5,
