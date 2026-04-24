@@ -29,6 +29,12 @@ const PAGES = {
           event shows which source it came from.
         </P>
         <P>
+          More about Adam:{' '}
+          <A href="https://adamcrubin.com">adamcrubin.com</A>
+          {' · '}
+          <A href="https://linkedin.com/in/Adam-c-Rubin">LinkedIn</A>
+        </P>
+        <P>
           Questions, ideas, complaints: <A href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</A>.
         </P>
       </>
