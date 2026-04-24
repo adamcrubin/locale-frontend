@@ -191,6 +191,10 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         position:'absolute', top:'50%', left:'50%',
         transform:'translate(-50%, -50%)',
         zIndex:3, textAlign:'center', pointerEvents:'none',
+        padding:'20px 36px 24px',
+        borderRadius:24,
+        background:'rgba(0,0,0,.18)',
+        backdropFilter:'blur(2px)',
       }}>
         <div style={{
           fontFamily:'Cormorant Garamond, serif',
@@ -232,7 +236,7 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
       {/* ── Bottom: featured activity + calendar ── */}
       <div style={{
         position:'absolute', bottom:44, left:30, right:28, zIndex:3,
-        display:'grid', gridTemplateColumns:'1fr 220px', gap:24, alignItems:'end',
+        display:'grid', gridTemplateColumns: calQueue.length > 0 ? '1fr 220px' : '1fr', gap:24, alignItems:'end',
       }}>
         {/* Featured rotating activity */}
         {feature && (
@@ -262,25 +266,27 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
           </div>
         )}
 
-        {/* Calendar — bottom right */}
-        <div style={{
-          background:'rgba(0,0,0,.55)', border:'0.5px solid rgba(255,255,255,.1)',
-          borderRadius:14, padding:'14px 16px', backdropFilter:'blur(16px)',
-        }}>
-          <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
-            This weekend
-          </div>
-          {(calQueue.length > 0
-            ? calQueue.map(e => ({ day: new Date(e.date+'T12:00').toLocaleDateString('en-US',{weekday:'short'}), name: e.title, time: e.time }))
-            : CALENDAR_EVENTS
-          ).slice(0,4).map((e, i) => (
-            <div key={i} style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:7 }}>
-              <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', color:'rgba(255,255,255,.3)', width:24 }}>{e.day}</span>
-              <span style={{ fontSize:13, color:'rgba(255,255,255,.8)', fontWeight:500, flex:1, lineHeight:1.2 }}>{e.name}</span>
-              <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{e.time}</span>
+        {/* Calendar — only shown when real events exist (no mock fallback) */}
+        {calQueue.length > 0 && (
+          <div style={{
+            background:'rgba(0,0,0,.55)', border:'0.5px solid rgba(255,255,255,.1)',
+            borderRadius:14, padding:'14px 16px', backdropFilter:'blur(16px)',
+          }}>
+            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase', color:'#C9A84C', marginBottom:10 }}>
+              This weekend
             </div>
-          ))}
-        </div>
+            {calQueue.slice(0,4).map((e, i) => {
+              const day = e.date ? new Date(e.date+'T12:00').toLocaleDateString('en-US',{weekday:'short'}) : '';
+              return (
+                <div key={i} style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:7 }}>
+                  <span style={{ fontSize:10, fontWeight:700, letterSpacing:'.05em', textTransform:'uppercase', color:'rgba(255,255,255,.3)', width:24 }}>{day}</span>
+                  <span style={{ fontSize:13, color:'rgba(255,255,255,.8)', fontWeight:500, flex:1, lineHeight:1.2 }}>{e.title||e.name}</span>
+                  <span style={{ fontSize:11, color:'rgba(255,255,255,.3)' }}>{e.time}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Fun fact ticker — bottom strip ── */}

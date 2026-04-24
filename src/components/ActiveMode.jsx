@@ -1004,6 +1004,10 @@ function AskClaude({ settings, activeProfile, onClose }) {
           </div>
           <button onClick={onClose} style={{background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',borderRadius:8,padding:'5px 12px',fontSize:12,cursor:'pointer',fontFamily:'DM Sans,sans-serif',color:'rgba(255,255,255,.55)'}}>✕</button>
         </div>
+        {/* Experimental banner */}
+        <div style={{padding:'7px 18px',background:'rgba(201,168,76,.06)',borderBottom:'0.5px solid rgba(201,168,76,.12)',flexShrink:0}}>
+          <span style={{fontSize:10,color:'rgba(201,168,76,.6)',letterSpacing:'.04em'}}>⚠️ Experimental — answers are general and may not reflect current event listings</span>
+        </div>
 
         {/* Messages */}
         <div style={{flex:1,overflowY:'auto',padding:'14px 18px',display:'flex',flexDirection:'column',gap:10}} className="no-scroll">
