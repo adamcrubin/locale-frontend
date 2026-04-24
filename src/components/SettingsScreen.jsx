@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ALL_CATEGORIES, PREFERENCES, BUDGET_LEVELS, PROFILE_COLORS, DEFAULT_PROFILE } from '../data/content';
 import ThemeToggle, { useTheme } from './ThemeToggle';
 import NeighborhoodPicker from './NeighborhoodPicker';
+import { useFriends } from '../hooks/useFriends';
 
 // Admin is determined by email membership. Keep in sync with the list in
 // SourcesScreen.jsx — both files gate the same audience.
@@ -362,6 +363,9 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
           </div>
         </Section>
 
+        {/* ── Friends ── */}
+        {user && <FriendsSection user={user} />}
+
         {/* ── Data Sources ── */}
         {onShowSources && (
           <Section title="Data Sources">
@@ -498,6 +502,146 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
         <button onClick={save} style={{ width:'100%', padding:11, background:'rgba(26,99,50,.35)', color:'#6EE7A0', border:'0.5px solid rgba(110,231,160,.25)', borderRadius:9, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'DM Sans, sans-serif', marginTop:4 }}>Save & close</button>
       </div>
     </div>
+  );
+}
+
+// ── Friends section ───────────────────────────────────────────────────────────
+// Lists current friends, shows incoming pending requests with accept/decline
+// inline, and a small email-invite form. Hidden when the backend is still in
+// auto-all demo mode (FRIENDS_AUTO_ALL=true) — the list would be "every user
+// on Locale" which isn't actionable; we show a small notice instead.
+function FriendsSection({ user }) {
+  const { friends, pending, autoAll, loading, invite, accept, decline, remove } = useFriends(user);
+  const [emailInput, setEmailInput]   = useState('');
+  const [inviteMsg,  setInviteMsg]    = useState(null);  // { ok, text }
+  const [busy,       setBusy]         = useState(false);
+
+  const doInvite = async () => {
+    const email = emailInput.trim();
+    if (!email) return;
+    setBusy(true);
+    setInviteMsg(null);
+    try {
+      const res = await invite(email);
+      setEmailInput('');
+      setInviteMsg({ ok: true, text: res.state === 'queued_for_signup'
+        ? `✓ We'll alert ${email} once they join Locale.`
+        : `✓ Invite sent to ${email}.` });
+    } catch (e) {
+      setInviteMsg({ ok: false, text: e.message || 'Invite failed.' });
+    }
+    setBusy(false);
+  };
+
+  const btn = {
+    fontSize:11, padding:'4px 10px', borderRadius:7, cursor:'pointer',
+    fontFamily:'DM Sans, sans-serif',
+  };
+  const inputStyle = { width:'100%', padding:'7px 10px', borderRadius:8,
+    border:'0.5px solid rgba(255,255,255,.12)', fontSize:12,
+    background:'rgba(255,255,255,.06)', color:'rgba(255,255,255,.85)',
+    fontFamily:'DM Sans, sans-serif', outline:'none', boxSizing:'border-box' };
+
+  return (
+    <Section title={`Friends${pending.length > 0 ? ` · ${pending.length} pending` : ''}`}
+             desc="When your friends save, like, or add an event to their calendar, you'll see their avatar on it — and it'll score higher in your feed.">
+      {autoAll && (
+        <div style={{ fontSize:10, color:'rgba(201,168,76,.75)', padding:'6px 8px',
+                      background:'rgba(201,168,76,.08)', border:'0.5px dashed rgba(201,168,76,.3)',
+                      borderRadius:6, marginBottom:10 }}>
+          Demo mode — every Locale user counts as a friend right now. Real invite flow is live;
+          flip <code style={{ background:'rgba(0,0,0,.3)', padding:'0 4px', borderRadius:3 }}>FRIENDS_AUTO_ALL</code> off
+          server-side once you want to switch.
+        </div>
+      )}
+
+      {/* Pending incoming */}
+      {pending.length > 0 && (
+        <div style={{ marginBottom:10 }}>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 }}>
+            Incoming requests
+          </div>
+          {pending.map(p => (
+            <div key={p.friendship_id} style={{
+              display:'flex', alignItems:'center', gap:8,
+              padding:'7px 9px', borderRadius:8, marginBottom:5,
+              background:'rgba(201,168,76,.08)',
+              border:'0.5px solid rgba(201,168,76,.25)',
+            }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, color:'rgba(255,255,255,.85)', fontWeight:500 }}>{p.name}</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.35)' }}>{p.email}</div>
+              </div>
+              <button onClick={() => accept(p.friendship_id)} style={{ ...btn,
+                background:'rgba(34,197,94,.2)', border:'0.5px solid rgba(34,197,94,.35)', color:'#22c55e' }}>Accept</button>
+              <button onClick={() => decline(p.friendship_id)} style={{ ...btn,
+                background:'rgba(255,255,255,.05)', border:'0.5px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.4)' }}>Decline</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Invite form */}
+      {!autoAll && (
+        <div style={{ marginBottom:10 }}>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 }}>
+            Invite by email
+          </div>
+          <div style={{ display:'flex', gap:6 }}>
+            <input type="email" value={emailInput}
+              onChange={e => setEmailInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !busy && doInvite()}
+              placeholder="friend@example.com" style={inputStyle} />
+            <button onClick={doInvite} disabled={busy || !emailInput.trim()} style={{ ...btn,
+              flexShrink:0, padding:'7px 14px',
+              background:'rgba(201,168,76,.2)', border:'0.5px solid rgba(201,168,76,.35)',
+              color:'#C9A84C', fontWeight:600, opacity: busy || !emailInput.trim() ? 0.5 : 1 }}>
+              {busy ? '⏳' : 'Invite'}
+            </button>
+          </div>
+          {inviteMsg && (
+            <div style={{ fontSize:11, marginTop:6,
+              color: inviteMsg.ok ? '#6EE7A0' : '#FDA4AF' }}>{inviteMsg.text}</div>
+          )}
+        </div>
+      )}
+
+      {/* Current friends */}
+      <div>
+        <div style={{ fontSize:10, color:'rgba(255,255,255,.35)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 }}>
+          {autoAll ? `Locale users (${friends.length})` : `Your friends (${friends.length})`}
+        </div>
+        {loading && friends.length === 0 ? (
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontStyle:'italic' }}>Loading…</div>
+        ) : friends.length === 0 ? (
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.3)', fontStyle:'italic' }}>
+            No friends yet. Invite someone above.
+          </div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {friends.map(f => (
+              <div key={f.id} style={{
+                display:'flex', alignItems:'center', gap:8,
+                padding:'6px 9px', borderRadius:7,
+                background:'rgba(255,255,255,.03)',
+              }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,.8)' }}>{f.name}</div>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>{f.email}</div>
+                </div>
+                {!autoAll && f.friendship_id && (
+                  <button onClick={() => {
+                    if (window.confirm(`Remove ${f.name} from your friends?`)) remove(f.friendship_id);
+                  }} style={{ ...btn,
+                    background:'rgba(255,255,255,.04)', border:'0.5px solid rgba(255,255,255,.1)',
+                    color:'rgba(253,164,175,.55)' }}>Remove</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Section>
   );
 }
 

@@ -14,6 +14,7 @@ import OnboardingFlow       from './components/OnboardingFlow';
 import PostEventFeedback    from './components/PostEventFeedback';
 import LoginPromptModal     from './components/LoginPromptModal';
 import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
+import FriendRequestsToast from './components/FriendRequestsToast';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -469,6 +470,11 @@ export default function App() {
 
       {showSources && (
         <SourcesScreen user={user} onClose={() => setShowSources(false)} />
+      )}
+
+      {/* Friend-request toast — auto-hides after first dismiss per session */}
+      {user && screen === 'active' && !settingsOpen && (
+        <FriendRequestsToast user={user} onOpenSettings={() => setSettingsOpen(true)} />
       )}
 
       {settingsOpen && (

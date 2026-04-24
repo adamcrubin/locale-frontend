@@ -114,12 +114,41 @@ export async function fetchCategoryPhotos(category, city, count = 8) {
 
 // ── Friends ───────────────────────────────────────────────────────────────────
 // In auto-all mode, this returns every other Supabase user so the
-// friends_interested indicator has signal without an invite flow.
+// friends_interested indicator has signal without an invite flow. When
+// FRIENDS_AUTO_ALL=false on the backend, this returns the accepted friendships
+// from the friendships table and the invite/accept/decline endpoints take over.
 export async function fetchFriends(userId) {
   const params = new URLSearchParams();
   if (userId) params.set('userId', userId);
   const data = await apiFetch(`/friends?${params}`);
-  return data.friends || [];
+  return { friends: data.friends || [], autoAll: !!data.auto_all };
+}
+export async function fetchFriendsPending(userId) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  const data = await apiFetch(`/friends/pending?${params}`);
+  return data.pending || [];
+}
+export async function inviteFriend(email, userId) {
+  return apiFetch('/friends/invite', {
+    method: 'POST',
+    body: JSON.stringify({ email, userId }),
+  });
+}
+export async function acceptFriend(id, userId) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  return apiFetch(`/friends/${id}/accept?${params}`, { method: 'POST' });
+}
+export async function declineFriend(id, userId) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  return apiFetch(`/friends/${id}/decline?${params}`, { method: 'POST' });
+}
+export async function removeFriend(friendshipId, userId) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  return apiFetch(`/friends/${friendshipId}?${params}`, { method: 'DELETE' });
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
