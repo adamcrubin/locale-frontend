@@ -1,8 +1,9 @@
 export const ALL_CATEGORIES = [
   { id:'curated',     label:'Curated',            icon:'✨', cls:'cat-arts'     },
+  { id:'other',       label:'Other',              icon:'⭐', cls:'cat-arts'     },
   { id:'outdoors',    label:'Outdoors',           icon:'🌿', cls:'cat-outdoors' },
-  { id:'food',        label:'Food & dining',      icon:'🍽', cls:'cat-food'     },
-  { id:'restaurants', label:'Hot restaurants',    icon:'🍴', cls:'cat-food'     },
+  { id:'food',        label:'Food events',        icon:'🥂', cls:'cat-food'     },
+  { id:'restaurants', label:'Hot restaurants',    icon:'🍽', cls:'cat-food'     },
   { id:'arts',        label:'Arts & culture',     icon:'🎨', cls:'cat-arts'     },
   { id:'theater',     label:'Theater & dance',    icon:'🎭', cls:'cat-arts'     },
   { id:'books',       label:'Books & talks',      icon:'📚', cls:'cat-nerdy'    },

@@ -96,6 +96,39 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
     visibleCats = [curatedCat, ...visibleCats.filter(c => c.id !== 'curated')];
   }
 
+  // ── Merge thin columns into a synthetic "Other" bucket ─────────────────
+  // Any category with < THIN_THRESHOLD events this weekend gets pulled out
+  // of visibleCats and its items are rolled into `activities.other`. Items
+  // keep their original category (via categories[]) so the Other column
+  // can render each title prefixed with the source emoji via sourceCatIcon.
+  const THIN_THRESHOLD = 3;
+  let effectiveActivities = activities;
+  if (activeCat === 'all') {
+    const otherCat = ALL_CATEGORIES.find(c => c.id === 'other');
+    const thinIds = [];
+    const otherBucket = [];
+    for (const cat of visibleCats) {
+      if (cat.id === 'curated' || cat.id === 'other' || cat.id === 'trips' || cat.id === 'away') continue;
+      const items = activities[cat.id] || [];
+      if (items.length > 0 && items.length < THIN_THRESHOLD) {
+        thinIds.push(cat.id);
+        for (const it of items) {
+          // Preserve original category for sourceCatIcon() on render.
+          const cats = Array.isArray(it.categories) ? it.categories : [];
+          otherBucket.push({ ...it, categories: cats.includes(cat.id) ? cats : [cat.id, ...cats] });
+        }
+      }
+    }
+    if (thinIds.length > 0 && otherCat) {
+      effectiveActivities = { ...activities, other: otherBucket };
+      visibleCats = visibleCats.filter(c => !thinIds.includes(c.id));
+      // Drop in 'other' before the trailing trips/away columns
+      const tail = visibleCats.filter(c => c.id === 'trips' || c.id === 'away');
+      const body = visibleCats.filter(c => c.id !== 'trips' && c.id !== 'away');
+      visibleCats = [...body, otherCat, ...tail];
+    }
+  }
+
   const COLS_PER_PAGE = isMobile ? 1 : 4;
   const numPages = Math.max(1, Math.ceil(visibleCats.length/COLS_PER_PAGE));
   const safePage = Math.min(colPage, numPages - 1);
@@ -110,7 +143,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather };
 
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>

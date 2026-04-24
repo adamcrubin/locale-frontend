@@ -8,12 +8,13 @@ import { SpotlightHero } from './Spotlight';
 // event with the emoji of the category it originated in.
 const CAT_ICON_BY_ID = Object.fromEntries(ALL_CATEGORIES.map(c => [c.id, c.icon]));
 
-// Given a curated event, return the icon of its "home" category (first non-curated
-// category in act.categories, or fallback to a generic ✨ if nothing is known).
+// Given an event shown in the Curated or Other column, return the icon of
+// its "home" category (first non-meta category in act.categories, or fallback
+// to a generic ✨ if nothing is known).
 function sourceCatIcon(act) {
   const cats = Array.isArray(act?.categories) ? act.categories : [];
   for (const c of cats) {
-    if (c && c !== 'curated' && CAT_ICON_BY_ID[c]) return CAT_ICON_BY_ID[c];
+    if (c && c !== 'curated' && c !== 'other' && CAT_ICON_BY_ID[c]) return CAT_ICON_BY_ID[c];
   }
   return '✨';
 }
@@ -51,6 +52,10 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
   const isBoosted = weatherBoost.includes(cat.id);
   const showHero  = spotlightMode === 'hero';
   const isCurated = cat.id === 'curated';
+  // The synthetic "Other" column also prefixes titles with the source-category
+  // emoji (same treatment as Curated) so users can see which bucket each
+  // merged-in event originally belonged to.
+  const isOther   = cat.id === 'other';
 
   // Curated column gets a subtly distinct column background + card tint so
   // it reads as a "special" lane at a glance (not just via header label).
@@ -77,11 +82,11 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
           : allActs.map(a=>{
               // Compute title prefix:
-              // - Curated column: emoji of the source category the event came from
+              // - Curated or Other column: emoji of the source category the event came from
               // - Music / sports / shopping columns: sub-type hint (venue size,
               //   spectator-vs-participation, event-vs-evergreen-shop)
               // - Everything else: no prefix
-              const catPrefix = isCurated ? sourceCatIcon(a) : titlePrefixForCategory(a, cat.id);
+              const catPrefix = (isCurated || isOther) ? sourceCatIcon(a) : titlePrefixForCategory(a, cat.id);
               const prefixedTitle = catPrefix ? `${catPrefix} ${a.title}` : a.title;
               return (
               <ActCard key={a.title}
