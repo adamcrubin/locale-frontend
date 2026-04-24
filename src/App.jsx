@@ -407,33 +407,52 @@ export default function App() {
       {screen === 'active'  && <ActiveMode  {...commonProps} />}
       {screen === 'weekday' && <WeekdayMode {...commonProps} activities={weekdayActivities} />}
 
-      {/* ── Top bar: weekend/weekday toggle (desktop only, centered) ── */}
+      {/* ── Top-bar controls (desktop only) ───────────────────────────────
+          One fixed-positioned flex container holds BOTH the filter chips and
+          the Weekend/Weeknight toggle so they can't overlap each other.
+          - left:320 clears the Locale wordmark + city dropdown on the left
+          - right:230 reserves room for profile pill + heart + gear on the right
+          - flex-wrap lets the Weekend toggle drop to a second row if chips
+            grow wide enough that everything can't fit on one line
+          - toggle uses `marginLeft:auto` so it sits against the right edge of
+            the container with filters left-aligned */}
       {(screen === 'active' || screen === 'weekday') && !isMobileInit && (
         <div style={{
-          position:'fixed', top:9, left:'50%', transform:'translateX(-50%)',
-          zIndex:30, display:'flex', alignItems:'center', gap:6,
+          position:'fixed', top:9, left:320, right:230,
+          zIndex:30, display:'flex', alignItems:'center',
+          gap:12, flexWrap:'wrap',
         }}>
-          {/* Weekend / Weeknight toggle lives here; time filter moved to the left */}
-          {false && screen === 'active' && (
-            <div style={{
-              display:'flex', background:'rgba(255,255,255,.06)',
-              border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
-            }}>
-              {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
-                <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
-                  padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
-                  fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
-                  background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
-                  color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-                  fontWeight: timeFilter===t.id ? 600 : 400,
-                }}>{t.label}</button>
-              ))}
+          {screen === 'active' && (
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <ChipRow
+                value={timeFilters}
+                onChange={setTimeFilters}
+                options={[
+                  { id:'morning', label:'🌅' },
+                  { id:'midday',  label:'☀️' },
+                  { id:'night',   label:'🌙' },
+                ]}
+                anyLabel="Any"
+              />
+              <ChipRow
+                value={priceFilters}
+                onChange={setPriceFilters}
+                options={[
+                  { id:'free', label:'Free' },
+                  { id:'$',    label:'$' },
+                  { id:'$$',   label:'$$' },
+                  { id:'$$$',  label:'$$$' },
+                ]}
+                anyLabel="$ Any"
+              />
             </div>
           )}
-          {/* Weekend / Weeknight */}
+
+          {/* Weekend / Weeknight — pushed to the right edge of the container */}
           <div style={{
             display:'flex', background:'rgba(255,255,255,.06)',
             border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+            marginLeft:'auto', flexShrink:0,
           }}>
             <button
               onClick={() => transitionTo('active')}
@@ -454,36 +473,6 @@ export default function App() {
               }}
             >Weeknight</button>
           </div>
-        </div>
-      )}
-
-      {/* ── Time + price filters — desktop only (mobile uses a sheet inside MobileLayout) ── */}
-      {screen === 'active' && !isMobileInit && (
-        <div style={{
-          position:'fixed', top:9, left:320, zIndex:30,
-          display:'flex', gap:6, alignItems:'center',
-        }}>
-          <ChipRow
-            value={timeFilters}
-            onChange={setTimeFilters}
-            options={[
-              { id:'morning', label:'🌅' },
-              { id:'midday',  label:'☀️' },
-              { id:'night',   label:'🌙' },
-            ]}
-            anyLabel="Any"
-          />
-          <ChipRow
-            value={priceFilters}
-            onChange={setPriceFilters}
-            options={[
-              { id:'free', label:'Free' },
-              { id:'$',    label:'$' },
-              { id:'$$',   label:'$$' },
-              { id:'$$$',  label:'$$$' },
-            ]}
-            anyLabel="$ Any"
-          />
         </div>
       )}
 
