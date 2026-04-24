@@ -122,6 +122,16 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
   const liveWeather = weather.length > 0 ? weather : WEATHER;
   const today = liveWeather[0] || WEATHER[0];
 
+  // Current hour's icon/desc from today's hourly data
+  const currentHourData = (() => {
+    const h = new Date().getHours();
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const h12 = h % 12 || 12;
+    const label = `${h12} ${ampm}`;
+    const norm = s => (s||'').toLowerCase().replace(/\s+/g,'');
+    return (today.hours||[]).find(x => norm(x.t) === norm(label)) || null;
+  })();
+
   // Live activities with fallback
   const activitySource = Object.keys(activities).length > 0 ? activities : ACTIVITIES;
 
@@ -198,7 +208,7 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
               return (
                 <div key={i} style={{ display:'flex', flexDirection:'column', gap:3, minWidth:0 }}>
                   {/* Row 1: day + date */}
-                  <div style={{ fontSize:9, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.45)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
+                  <div style={{ fontSize:11, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.55)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
                     {dayLabel} <span style={{ fontWeight:400, opacity:.7 }}>{dateLabel}</span>
                   </div>
                   {/* Row 2: weather pill */}
@@ -211,15 +221,18 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
                     onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.18)'}
                     onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.09)'}
                   >
-                    <WeatherIcon icon={w.icon} desc={w.desc} size={11} />
-                    <span style={{ fontSize:10, color:'rgba(255,255,255,.8)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
-                    {w.precip > 20 && <span style={{ fontSize:9, color:'#93C5FD' }}>{w.precip}%</span>}
+                    <WeatherIcon icon={w.icon} desc={w.desc} size={12} />
+                    <span style={{ fontSize:11, color:'rgba(255,255,255,.85)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
+                    {w.precip > 20 && <span style={{ fontSize:10, color:'#93C5FD' }}>{w.precip}%</span>}
                   </div>
                   {/* Row 3: calendar events */}
-                  {evts.slice(0, 2).map((e, j) => (
-                    <div key={j} style={{ fontSize:9, color:'rgba(255,255,255,.6)', lineHeight:1.25, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {e.time ? <span style={{ color:'rgba(255,255,255,.35)', marginRight:3 }}>{e.time}</span> : null}
-                      {e.title || e.name}
+                  {evts.slice(0, 3).map((e, j) => (
+                    <div key={j} style={{ fontSize:11, color:'rgba(255,255,255,.7)', lineHeight:1.35, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
+                      <span style={{ color:'rgba(255,255,255,.4)', flexShrink:0 }}>•</span>
+                      <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
+                        {e.time ? <span style={{ color:'rgba(255,255,255,.4)', marginRight:3, fontSize:10 }}>{e.time}</span> : null}
+                        {e.title || e.name}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -242,23 +255,52 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
           WebkitBackdropFilter:'blur(12px)',
           borderRadius:14, padding:'12px 18px',
           border:'0.5px solid rgba(255,255,255,.1)',
-          minWidth:160,
+          minWidth:180,
         }}>
-          {/* Big weather picture icon */}
-          <WeatherIcon icon={today.icon} desc={today.desc} size={48} />
+          {/* Current-hour icon (or day icon if no hourly) */}
+          <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={48} />
           {/* Temperature */}
           <div style={{ display:'flex', alignItems:'baseline', gap:3, marginTop:4 }}>
             <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:52, fontWeight:300, color:'#fff', lineHeight:1 }}>
-              {today.current ?? today.feel ?? today.hi}°
+              {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
             </span>
             <span style={{ fontSize:13, color:'rgba(255,255,255,.4)', paddingBottom:4 }}>F</span>
           </div>
-          <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{today.desc}</div>
-          {/* Bottom stats row with icon */}
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{currentHourData?.desc || today.desc}</div>
+          {/* Bottom stats row */}
           <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'rgba(255,255,255,.38)', marginTop:4 }}>
             <WeatherIcon icon={today.icon} desc={today.desc} size={12} />
             <span>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</span>
           </div>
+          {/* Mini hourly graph */}
+          {today.hours && today.hours.length >= 4 && (() => {
+            const hrs = today.hours.filter((_, i) => i % 2 === 0).slice(0, 12);
+            if (hrs.length < 2) return null;
+            const temps = hrs.map(h => h.temp ?? 0);
+            const precips = hrs.map(h => h.p ?? 0);
+            const minT = Math.min(...temps), maxT = Math.max(...temps);
+            const rangeT = Math.max(maxT - minT, 1);
+            const W = 160, H = 36;
+            const xStep = W / (hrs.length - 1);
+            const yT = t => H - ((t - minT) / rangeT) * (H - 6) - 3;
+            const yP = p => H - (p / 100) * (H - 6) - 3;
+            const pts = (fn, arr) => arr.map((v,i) => `${i*xStep},${fn(v)}`).join(' ');
+            return (
+              <div style={{ marginTop:8, width: W }}>
+                <svg width={W} height={H} style={{ overflow:'visible' }}>
+                  {/* Precip bars (background) */}
+                  {hrs.map((h,i) => (
+                    <rect key={i} x={i*xStep-3} y={yP(h.p??0)} width={6} height={H-yP(h.p??0)} fill="rgba(96,165,250,.25)" rx={2} />
+                  ))}
+                  {/* Temp line */}
+                  <polyline points={pts(yT, temps)} fill="none" stroke="rgba(252,211,77,.7)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+                </svg>
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:8, color:'rgba(255,255,255,.25)', marginTop:2 }}>
+                  <span>{hrs[0]?.t}</span><span>{hrs[Math.floor(hrs.length/2)]?.t}</span><span>{hrs[hrs.length-1]?.t}</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

@@ -139,7 +139,8 @@ export default function App() {
   const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
 
   // ── Screen state ──────────────────────────────────────────────────────────
-  const [screen,        setScreen]        = useState('ambient');
+  const isMobileInit = typeof window !== 'undefined' && window.innerWidth < 768;
+  const [screen,        setScreen]        = useState(isMobileInit ? 'active' : 'ambient');
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
@@ -147,6 +148,7 @@ export default function App() {
   const [showPicker,    setShowPicker]    = useState(false);
   const [showSaved,     setShowSaved]     = useState(false);
   const [calQueue,      setCalQueue]      = useState([]);
+  const [timeFilter,    setTimeFilter]    = useState('all');
   const [editCalModal,  setEditCalModal]  = useState(null);
   const [transitioning, setTransitioning] = useState(false);
 
@@ -258,6 +260,7 @@ export default function App() {
     onShowSaved:     () => setShowSaved(true),
     onThumbUp, onThumbDown,
     onEditCal:       setEditCalModal,
+    timeFilter,
     user, onSignOut: signOut,
   };
 
@@ -326,33 +329,53 @@ export default function App() {
       {screen === 'active'  && <ActiveMode  {...commonProps} />}
       {screen === 'weekday' && <WeekdayMode {...commonProps} activities={weekdayActivities} />}
 
-      {/* ── Weekend / Weeknight toggle ── */}
+      {/* ── Top bar: time filter + weekend/weekday toggle ── */}
       {(screen === 'active' || screen === 'weekday') && (
         <div style={{
           position:'fixed', top:9, left:'50%', transform:'translateX(-50%)',
-          zIndex:30, display:'flex',
-          background:'rgba(255,255,255,.06)',
-          border:'0.5px solid rgba(255,255,255,.12)',
-          borderRadius:99, overflow:'hidden',
+          zIndex:30, display:'flex', alignItems:'center', gap:6,
         }}>
-          <button
-            onClick={() => transitionTo('active')}
-            style={{
-              padding:'4px 16px', fontSize:11, fontWeight:500, cursor:'pointer',
-              background: screen==='active' ? 'rgba(255,255,255,.15)' : 'transparent',
-              color:      screen==='active' ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-              border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
-            }}
-          >Weekend</button>
-          <button
-            onClick={() => transitionTo('weekday')}
-            style={{
-              padding:'4px 16px', fontSize:11, fontWeight:500, cursor:'pointer',
-              background: screen==='weekday' ? 'rgba(147,124,215,0.3)' : 'transparent',
-              color:      screen==='weekday' ? '#C4B5FD' : 'rgba(255,255,255,.4)',
-              border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
-            }}
-          >Weeknight</button>
+          {/* Time filter — only on Weekend */}
+          {screen === 'active' && (
+            <div style={{
+              display:'flex', background:'rgba(255,255,255,.06)',
+              border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+            }}>
+              {[{id:'all',label:'Any'},{id:'morning',label:'🌅'},{id:'midday',label:'☀️'},{id:'night',label:'🌙'}].map(t => (
+                <button key={t.id} onClick={() => setTimeFilter(t.id)} style={{
+                  padding:'4px 10px', fontSize:11, cursor:'pointer', border:'none',
+                  fontFamily:'DM Sans, sans-serif', transition:'all .15s', whiteSpace:'nowrap',
+                  background: timeFilter===t.id ? 'rgba(255,255,255,.18)' : 'transparent',
+                  color:      timeFilter===t.id ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
+                  fontWeight: timeFilter===t.id ? 600 : 400,
+                }}>{t.label}</button>
+              ))}
+            </div>
+          )}
+          {/* Weekend / Weeknight */}
+          <div style={{
+            display:'flex', background:'rgba(255,255,255,.06)',
+            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+          }}>
+            <button
+              onClick={() => transitionTo('active')}
+              style={{
+                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'pointer',
+                background: screen==='active' ? 'rgba(255,255,255,.15)' : 'transparent',
+                color:      screen==='active' ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
+                border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
+              }}
+            >Weekend</button>
+            <button
+              onClick={() => transitionTo('weekday')}
+              style={{
+                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'pointer',
+                background: screen==='weekday' ? 'rgba(147,124,215,0.3)' : 'transparent',
+                color:      screen==='weekday' ? '#C4B5FD' : 'rgba(255,255,255,.4)',
+                border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
+              }}
+            >Weeknight</button>
+          </div>
         </div>
       )}
 

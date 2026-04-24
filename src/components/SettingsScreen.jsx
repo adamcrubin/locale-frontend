@@ -228,7 +228,8 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
         <Section title="Location">
           <div style={{ marginBottom:8 }}>
             <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>City or ZIP <span style={{ color:'#C9A84C' }}>*</span></label>
-            <input value={city} onChange={e => setCity(e.target.value)} placeholder="Falls Church, VA or 22046" style={inpStyle} />
+            <input value="Falls Church, VA" readOnly style={{ ...inpStyle, opacity:.5, cursor:'not-allowed' }} />
+            <div style={{ fontSize:10, color:'rgba(201,168,76,.55)', marginTop:4 }}>🚧 New cities coming soon!</div>
           </div>
           <div>
             <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>Home address <span style={{ color:'rgba(255,255,255,.25)' }}>(optional)</span></label>

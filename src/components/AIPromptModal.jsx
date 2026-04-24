@@ -8,6 +8,26 @@ const MOCK_RESPONSES = {
 };
 
 export default function AIPromptModal({ prompt, settings, activeProfile, onClose }) {
+  // Canned prompts: show a teaser, not a live response
+  if (prompt.canned) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:70, padding:'20px 16px' }} onClick={onClose}>
+        <div className="scale-enter" onClick={e => e.stopPropagation()} style={{ background:'#1C1A17', borderRadius:16, border:'0.5px solid rgba(255,255,255,.1)', width:'100%', maxWidth:400, padding:24 }}>
+          <div style={{ fontSize:11, color:'#C9A84C', fontWeight:600, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:8 }}>🎤 Locale AI</div>
+          <div className="serif" style={{ fontSize:18, color:'rgba(255,255,255,.9)', fontWeight:300, marginBottom:12 }}>{prompt.label}</div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.45)', lineHeight:1.7, marginBottom:20 }}>
+            Imagine waking up Saturday with a perfect plan already laid out — coffee, an outdoor market, lunch at a local spot, evening event, all timed to your preferences and the weather.<br/><br/>
+            <em style={{ color:'rgba(201,168,76,.7)' }}>This will be powered by your calendar, weather forecast, and saved preferences.</em>
+          </div>
+          <div style={{ padding:'10px 14px', background:'rgba(201,168,76,.1)', border:'0.5px solid rgba(201,168,76,.2)', borderRadius:9, fontSize:12, color:'rgba(201,168,76,.85)', marginBottom:16 }}>
+            🚧 Not live data — feature coming soon!
+          </div>
+          <button onClick={onClose} style={{ width:'100%', padding:'9px', borderRadius:9, fontSize:12, cursor:'pointer', background:'rgba(255,255,255,.08)', border:'0.5px solid rgba(255,255,255,.12)', color:'rgba(255,255,255,.55)', fontFamily:'DM Sans, sans-serif' }}>Got it</button>
+        </div>
+      </div>
+    );
+  }
+
   const [loading,  setLoading]  = useState(true);
   const [response, setResponse] = useState(null);
   const [error,    setError]    = useState(null);

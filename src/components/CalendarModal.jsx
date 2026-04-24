@@ -20,19 +20,21 @@ export default function CalendarModal({ activity, gcalConnected, onClose, onAdde
     if (!title || !date) { setStatus('Fill in title and date'); return; }
     setStatus(gcalConnected ? 'Adding to Google Calendar…' : 'Saving…');
 
+    let googleId = null;
     try {
       if (gcalConnected && userId) {
-        await addCalendarEvent({ title, date, time, notes, userId, profileId });
+        const result = await addCalendarEvent({ title, date, time, notes, userId, profileId });
+        googleId = result?.id || null;
         setStatus('Added to Google Calendar!');
       } else {
-        setStatus('Saved! Connect Google Calendar in Settings to sync.');
+        setStatus('Saved! Sign in with Google to sync to Calendar.');
       }
     } catch (e) {
-      setStatus('Saved locally — calendar sync unavailable');
+      setStatus('Saved — Google Calendar sync failed');
     }
 
     setDone(true);
-    onAdded({ title, date, time, activityId: activity?.id, activityType: activity?.content_type });
+    onAdded({ title, date, time, googleId, added: true, fromGoogle: !!googleId, activityId: activity?.id, activityType: activity?.content_type });
     setTimeout(onClose, 1600);
   };
 

@@ -27,10 +27,9 @@ class ColumnErrorBoundary extends Component {
 }
 
 const QUICK_PROMPTS = [
-  { label:'Plan my Saturday' },       { label:'Date night' },
-  { label:'What can I do right now?' }, { label:'Free this weekend' },
-  { label:'Rainy Sunday' },            { label:'Hidden gems' },
-  { label:'Kid-friendly' },            { label:'Weekend away' },
+  { label:'A Fun-Filled Saturday', canned: true },
+  { label:'Something New', canned: true },
+  { label:'Weekend Away Itinerary', canned: true },
 ];
 
 // ── Frontend blocklist — catches anything that slipped past the backend ─────────
@@ -889,7 +888,7 @@ function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calen
                   borderRadius:99,padding:'3px 9px',cursor:'pointer',
                 }}>
                   <WeatherIcon icon={wx.icon} desc={wx.desc} size={12} />
-                  <span style={{fontSize:10,color:'rgba(255,255,255,.65)',fontWeight:500}}>{wx.hi}°</span>
+                  <span style={{fontSize:10,color:'rgba(255,255,255,.65)',fontWeight:500}}>{wx.hi}°<span style={{color:'rgba(255,255,255,.35)',fontWeight:400}}>/{wx.lo}°</span></span>
                 </button>
               )}
               </div>
@@ -1149,16 +1148,25 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
   const swipeX   = useRef(null);
   const swipeDir = useRef(null);
-  const tabsRef  = useRef(null);
+  const listRef  = useRef(null);
+
+  // Keep activeCat valid when visibleCats changes
+  useEffect(() => {
+    if (visibleCats.length > 0 && !visibleCats.find(c => c.id === activeCat)) {
+      setActiveCat(visibleCats[0].id);
+    }
+  }, [visibleCats]);
+
+  // Scroll list to top when category changes
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [activeCat]);
 
   const catIdx = visibleCats.findIndex(c => c.id === activeCat);
   const cat    = visibleCats[catIdx] || visibleCats[0];
 
-  // Scroll active tab into view when category changes
-  useEffect(() => {
-    const el = tabsRef.current?.querySelector(`[data-cat="${activeCat}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  }, [activeCat]);
+  const goNext = () => { if (catIdx < visibleCats.length - 1) setActiveCat(visibleCats[catIdx + 1].id); };
+  const goPrev = () => { if (catIdx > 0) setActiveCat(visibleCats[catIdx - 1].id); };
 
   const onTS = e => { swipeX.current = e.touches[0].clientX; swipeDir.current = null; };
   const onTM = e => {
@@ -1171,8 +1179,8 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   const onTE = e => {
     if (swipeDir.current !== 'h') return;
     const dx = e.changedTouches[0].clientX - swipeX.current;
-    if (dx < -40 && catIdx < visibleCats.length - 1) setActiveCat(visibleCats[catIdx + 1].id);
-    else if (dx > 40 && catIdx > 0) setActiveCat(visibleCats[catIdx - 1].id);
+    if (dx < -40) goNext();
+    else if (dx > 40) goPrev();
   };
 
   if (!cat) return null;
@@ -1190,65 +1198,47 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
   const isBoosted = weatherBoost.includes(cat.id);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1, background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1, background: 'var(--bg)', maxWidth: '100vw' }}>
 
-      {/* ── Category tab strip ── */}
-      <div ref={tabsRef} style={{
-        display: 'flex', overflowX: 'auto', flexShrink: 0,
-        background: 'var(--surface)', borderBottom: '0.5px solid var(--border)',
-        WebkitOverflowScrolling: 'touch',
-      }} className="no-scroll">
-        {visibleCats.map(c => {
-          const active    = c.id === activeCat;
-          const boosted   = weatherBoost.includes(c.id);
-          const dimmed    = weatherDim.includes(c.id);
-          return (
-            <button key={c.id} data-cat={c.id} onClick={() => setActiveCat(c.id)} style={{
-              padding: '10px 14px', border: 'none', flexShrink: 0, cursor: 'pointer',
-              borderBottom: `2px solid ${active ? 'var(--text)' : 'transparent'}`,
-              background: 'transparent',
-              fontFamily: 'var(--font-body)', fontSize: 12,
-              fontWeight: active ? 700 : 400,
-              color: active ? 'var(--text)' : 'var(--muted)',
-              display: 'flex', alignItems: 'center', gap: 5,
-              opacity: dimmed ? 0.5 : 1, transition: 'all .15s',
-            }}>
-              <span style={{ fontSize: 14 }}>{c.icon}</span>
-              <span>{c.label}</span>
-              {boosted && <span style={{ fontSize: 9, color: '#92400E' }}>☀</span>}
-              {/* Event count badge */}
-              {(activities[c.id]?.length > 0) && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700, minWidth: 14, height: 14,
-                  borderRadius: 99, background: active ? 'var(--text)' : 'var(--border)',
-                  color: active ? 'var(--bg)' : 'var(--muted)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: '0 3px',
-                }}>{activities[c.id].length}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Category header ── */}
+      {/* ── Category header with L/R arrows ── */}
       <div className={cat.cls} style={{
-        padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+        minWidth: 0,
       }}>
-        <span style={{ fontSize: 18 }}>{cat.icon}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', flex: 1 }}>{cat.label}</span>
-        {isBoosted && <span style={{ fontSize: 10, background: 'rgba(0,0,0,.12)', padding: '2px 7px', borderRadius: 99 }}>☀ great today</span>}
-        {isDimmed  && <span style={{ fontSize: 10, background: 'rgba(0,0,0,.12)', padding: '2px 7px', borderRadius: 99 }}>🌧 rain likely</span>}
-        <span style={{ fontSize: 11, color: 'var(--muted)', opacity: .6 }}>{allActs.length} options</span>
+        <button onClick={goPrev} disabled={catIdx === 0} style={{
+          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: catIdx === 0 ? 'default' : 'pointer',
+          background: catIdx === 0 ? 'transparent' : 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
+          color: catIdx === 0 ? 'rgba(0,0,0,.2)' : 'currentColor', fontFamily: 'DM Sans, sans-serif',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>←</button>
+
+        <span style={{ fontSize: 18, flexShrink: 0 }}>{cat.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.label}</div>
+          <div style={{ fontSize: 10, opacity: .55 }}>
+            {catIdx + 1}/{visibleCats.length} · {allActs.length} events
+            {isBoosted && ' · ☀ great today'}
+            {isDimmed  && ' · 🌧 rain likely'}
+          </div>
+        </div>
+
+        <button onClick={goNext} disabled={catIdx === visibleCats.length - 1} style={{
+          width: 32, height: 32, borderRadius: 8, border: 'none', cursor: catIdx === visibleCats.length - 1 ? 'default' : 'pointer',
+          background: catIdx === visibleCats.length - 1 ? 'transparent' : 'rgba(0,0,0,.15)', fontSize: 16, flexShrink: 0,
+          color: catIdx === visibleCats.length - 1 ? 'rgba(0,0,0,.2)' : 'currentColor', fontFamily: 'DM Sans, sans-serif',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>→</button>
       </div>
 
-      {/* ── Card list -- full width, comfortable padding ── */}
+      {/* ── Card list ── */}
       <div
+        ref={listRef}
         onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
         style={{
           flex: 1, overflowY: 'auto', padding: '10px 12px',
           display: 'flex', flexDirection: 'column', gap: 8,
           WebkitOverflowScrolling: 'touch',
+          maxWidth: '100vw', boxSizing: 'border-box',
         }}
         className="no-scroll"
       >
@@ -1262,7 +1252,7 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
           </div>
         ) : (
           allActs.map(a => (
-            <ActCard key={a.title} act={a} catId={cat.id}
+            <ActCard key={`${cat.id}-${a.title}`} act={a} catId={cat.id}
               onCal={onCal}
               onRemove={() => onRemove(cat.id, a)}
               onHeart={() => onHeart(cat.id, a)}
@@ -1274,22 +1264,6 @@ function MobileLayout({ visibleCats, activities, removed, onCal, onRemove, onHea
             />
           ))
         )}
-      </div>
-
-      {/* ── Swipe indicator dots ── */}
-      <div style={{
-        padding: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4,
-        background: 'var(--bg2)', borderTop: '0.5px solid var(--border)', flexShrink: 0,
-      }}>
-        {visibleCats.map(c => (
-          <div key={c.id} onClick={() => setActiveCat(c.id)} style={{
-            width: c.id === activeCat ? 20 : 6,
-            height: 6, borderRadius: 99,
-            background: c.id === activeCat ? 'var(--text)' : 'var(--border)',
-            cursor: 'pointer', transition: 'all .25s',
-            flexShrink: 0,
-          }} />
-        ))}
       </div>
     </div>
   );
@@ -1365,10 +1339,9 @@ function useIsMobile() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilter='all' }) {
   const [removed,      setRemoved]      = useState({});
   const [activeCat,    setActiveCat]    = useState('all');
-  const [timeFilter,   setTimeFilter]   = useState('all');   // 'all' | 'morning' | 'midday' | 'night'
   const [aiPrompt,     setAiPrompt]     = useState(null);
   const [reserveAct,   setReserveAct]   = useState(null);
   const [colPage,      setColPage]      = useState(0);
@@ -1453,8 +1426,14 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       {/* ── Header ── */}
       <div style={{background:'var(--header-bg)',padding:'9px 18px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <span style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',fontFamily:'var(--font-display)'}}>Locale</span>
-          <span style={{fontSize:11,color:'rgba(255,255,255,.28)',fontFamily:'var(--font-body)'}}>{settings.city}</span>
+          <div>
+            <span style={{fontSize:20,color:'rgba(255,255,255,.9)',fontWeight:300,letterSpacing:'.06em',fontFamily:'var(--font-display)'}}>Locale</span>
+            {!isMobile && <div style={{fontSize:10,color:'rgba(255,255,255,.25)',fontFamily:'var(--font-body)',letterSpacing:'.02em',marginTop:-2}}>your personal weekend planner</div>}
+          </div>
+          <button onClick={()=>onSettings()} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 8px',borderRadius:8,cursor:'pointer',background:'rgba(255,255,255,.06)',border:'0.5px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.45)',fontSize:11,fontFamily:'var(--font-body)'}}>
+            <span>{settings.city}</span>
+            <span style={{fontSize:9,opacity:.7}}>▾</span>
+          </button>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           {/* Ask -- always shown */}
@@ -1491,8 +1470,9 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
       {/* ── Quick prompts ── */}
       <div style={{background:'var(--header-bg2)',padding:isMobile?'5px 10px':'7px 18px',display:'flex',alignItems:'center',gap:8}}>
+        {!isMobile && <span style={{fontSize:11,color:'rgba(255,255,255,.28)',whiteSpace:'nowrap',flexShrink:0,fontFamily:'DM Sans,sans-serif'}}>Pick a plan for me...</span>}
         <div style={{display:'flex',gap:5,overflowX:'auto',flex:1}} className="no-scroll">
-          {(isMobile ? QUICK_PROMPTS.slice(0,3) : QUICK_PROMPTS).map(p=>(
+          {QUICK_PROMPTS.map(p=>(
             <button key={p.label} onClick={()=>setAiPrompt(p)} style={{
               fontSize:isMobile?10:11,padding:isMobile?'4px 9px':'5px 12px',borderRadius:99,whiteSpace:'nowrap',
               background:'rgba(255,255,255,.09)',border:'0.5px solid rgba(255,255,255,.14)',
@@ -1502,11 +1482,11 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
               onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';e.currentTarget.style.color='rgba(255,255,255,.7)';}}
             >{p.label}</button>
           ))}
-          {!isMobile && <button onClick={()=>setShowAsk(true)} style={{
-            fontSize:11,padding:'5px 12px',borderRadius:99,whiteSpace:'nowrap',
+          <button onClick={()=>setShowAsk(true)} style={{
+            fontSize:isMobile?10:11,padding:isMobile?'4px 9px':'5px 12px',borderRadius:99,whiteSpace:'nowrap',
             background:'rgba(201,168,76,.1)',border:'0.5px solid rgba(201,168,76,.2)',
             color:'rgba(201,168,76,.7)',cursor:'pointer',fontFamily:'DM Sans,sans-serif',fontWeight:500,flexShrink:0,
-          }}>✏️ Ask anything...</button>}
+          }}>✏️ Ask Anything</button>
         </div>
       </div>
 
@@ -1579,19 +1559,6 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
       }
       </ColumnErrorBoundary>
 
-      {/* ── Footer: time filter only ── */}
-      <div style={{background:'var(--bg2)',borderTop:'0.5px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:4,overflowX:'auto'}} className="no-scroll">
-        <span style={{fontSize:11,color:'var(--muted)',marginRight:4,flexShrink:0}}>Time:</span>
-        {[{id:'all',label:'Any time'},{id:'morning',label:'🌅 Morning'},{id:'midday',label:'☀️ Midday'},{id:'night',label:'🌙 Evening'}].map(t=>(
-          <button key={t.id} onClick={()=>setTimeFilter(t.id)} style={{
-            fontSize:11,padding:'4px 12px',borderRadius:'var(--radius-pill)',cursor:'pointer',whiteSpace:'nowrap',
-            background:timeFilter===t.id?'var(--dark)':'transparent',
-            color:timeFilter===t.id?'rgba(255,255,255,.85)':'var(--muted)',
-            border:timeFilter===t.id?'none':'0.5px solid var(--border)',
-            fontFamily:'var(--font-body)',transition:'all .15s',flexShrink:0,
-          }}>{t.label}</button>
-        ))}
-      </div>
 
       {/* ── Overlays ── */}
       {spotlightMode==='overlay'&&!overlayShown&&Object.values(activities).flat().length>0&&(
