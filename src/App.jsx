@@ -148,7 +148,7 @@ export default function App() {
   const [calQueue,      setCalQueue]      = useState([]);
   const [transitioning, setTransitioning] = useState(false);
 
-  const calendar = useCalendar(activeProfile);
+  const calendar = useCalendar(activeProfile, user);
 
   useEffect(() => {
     if (!calendar.events?.length) return;

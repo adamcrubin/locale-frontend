@@ -1,13 +1,12 @@
 // ── useCalendar.js ────────────────────────────────────────────────────────────
 //
-// Google Calendar integration, now unified with Google Sign-In.
+// Google Calendar integration, unified with Google Sign-In (Option A).
 //
-// When user signs in with Google via Supabase, we get a provider_token (Google
-// OAuth access token) stored in sessionStorage as 'locale-gcal-token'.
-// We send this to the backend as the userId for calendar operations.
+// When user signs in with Google via Supabase, useAuth stores the provider_token
+// in the backend google_tokens table under user.id. useCalendar uses user.id as
+// the storage key so status checks and API calls find those tokens.
 //
-// Fallback: if no provider_token, fall back to the old deviceId-based flow
-// (for users who connected calendar separately before auth was added).
+// Fallback: gcalToken (ya29.xxx passthrough) for legacy connections, then deviceId.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchCalendarEvents, addCalendarEvent } from '../lib/api';
@@ -27,13 +26,17 @@ function getGcalToken() {
   try { return sessionStorage.getItem('locale-gcal-token'); } catch { return null; }
 }
 
-export function useCalendar(activeProfile) {
+export function useCalendar(activeProfile, user) {
   const profileId = activeProfile?.id || 'default';
   const BASE      = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-  // Prefer Google OAuth token from sign-in; fall back to deviceId
+  // Priority order for userId sent to backend:
+  //   1. Supabase user.id — matches what store-tokens saved (correct path)
+  //   2. gcalToken (ya29.xxx) — legacy passthrough for fetching but not status lookup
+  //   3. deviceId — anonymous fallback
   const gcalToken = getGcalToken();
-  const deviceId  = gcalToken || getDeviceId();
+  const userId    = user?.id || null;
+  const deviceId  = userId || gcalToken || getDeviceId();
 
   const [connected, setConnected] = useState(false);
   const [events,    setEvents]    = useState([]);
@@ -41,36 +44,7 @@ export function useCalendar(activeProfile) {
   const [email,     setEmail]     = useState(null);
   const pollRef = useRef(null);
 
-  // Check connection on mount / profile change
-  useEffect(() => {
-    checkStatus();
-  }, [profileId, gcalToken]);
-
-  // Listen for postMessage from OAuth popup (legacy flow)
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.data?.type === 'gcal_connected' && e.data?.profileId === profileId) {
-        setConnected(true);
-        setEmail(e.data.email);
-        loadEvents();
-        if (pollRef.current) clearInterval(pollRef.current);
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [profileId]);
-
-  const checkStatus = useCallback(async () => {
-    try {
-      const res  = await fetch(`${BASE}/auth/google/status?userId=${encodeURIComponent(deviceId)}&profileId=${profileId}`);
-      const data = await res.json();
-      setConnected(data.connected);
-      if (data.email) setEmail(data.email);
-      if (data.connected) loadEvents();
-    } catch (e) {
-      console.warn('[calendar] Status check failed:', e.message);
-    }
-  }, [deviceId, profileId]);
+  // ── Define callbacks first so useEffects below can reference them ────────────
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -84,7 +58,49 @@ export function useCalendar(activeProfile) {
     setLoading(false);
   }, [profileId, deviceId]);
 
-  // connect() — for users without Google Sign-In (legacy popup flow)
+  const checkStatus = useCallback(async () => {
+    try {
+      const res  = await fetch(`${BASE}/auth/google/status?userId=${encodeURIComponent(deviceId)}&profileId=${profileId}`);
+      const data = await res.json();
+      setConnected(data.connected);
+      if (data.email) setEmail(data.email);
+      if (data.connected) loadEvents();
+    } catch (e) {
+      console.warn('[calendar] Status check failed:', e.message);
+    }
+  }, [deviceId, profileId, loadEvents]);
+
+  // ── Effects ───────────────────────────────────────────────────────────────────
+
+  // Check connection on mount / profile change / user sign-in
+  useEffect(() => {
+    checkStatus();
+  }, [profileId, userId]);
+
+  // Re-check once store-tokens POST completes (useAuth dispatches this event)
+  useEffect(() => {
+    const handler = () => checkStatus();
+    window.addEventListener('gcal-tokens-stored', handler);
+    return () => window.removeEventListener('gcal-tokens-stored', handler);
+  }, [checkStatus]);
+
+  // Listen for postMessage from OAuth popup (legacy flow)
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === 'gcal_connected' && e.data?.profileId === profileId) {
+        setConnected(true);
+        setEmail(e.data.email);
+        loadEvents();
+        if (pollRef.current) clearInterval(pollRef.current);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [profileId, loadEvents]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+
+  // connect() — legacy popup flow for users without Google Sign-In
   const connect = useCallback(() => {
     const popup = window.open(
       `${BASE}/auth/google?userId=${encodeURIComponent(deviceId)}&profileId=${profileId}`,

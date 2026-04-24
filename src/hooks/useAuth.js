@@ -57,7 +57,9 @@ export function useAuth() {
             userId,
             profileId,
           }),
-        }).catch(() => {}); // fire-and-forget — never block the auth flow
+        })
+          .then(r => r.ok && window.dispatchEvent(new CustomEvent('gcal-tokens-stored', { detail: { userId } })))
+          .catch(() => {});
       }
     });
 
