@@ -13,6 +13,7 @@ import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
 import PostEventFeedback    from './components/PostEventFeedback';
 import LoginPromptModal     from './components/LoginPromptModal';
+import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -31,29 +32,8 @@ function markVisited() {
   try { localStorage.setItem('locale-visited', 'true'); } catch {}
 }
 
-// ── Loading splash ────────────────────────────────────────────────────────────
-function LoadingSplash() {
-  return (
-    <div style={{
-      width:'100vw', height:'100vh', background:'#0f0d0b',
-      display:'flex', flexDirection:'column',
-      alignItems:'center', justifyContent:'center', gap:14,
-    }}>
-      <div style={{ fontFamily:'Cormorant Garamond, serif', fontSize:32, color:'rgba(255,255,255,.25)', fontWeight:300, letterSpacing:'.06em' }}>
-        Locale
-      </div>
-      <div style={{ display:'flex', gap:6 }}>
-        {[0,1,2].map(i => (
-          <div key={i} style={{
-            width:6, height:6, borderRadius:'50%',
-            background:'rgba(201,168,76,.4)',
-            animation:`blink 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }} />
-        ))}
-      </div>
-    </div>
-  );
-}
+// (LoadingSplash now lives in ./components/LoadingSplash.jsx with the
+//  branded wordmark + slideshow + rotating tagline per LOADING_UX.md.)
 
 // ── Dev data source indicator ─────────────────────────────────────────────────
 function DataBadge({ activitiesSource, weatherSource }) {
@@ -139,7 +119,7 @@ export default function App() {
 
   // ── Live data hooks ───────────────────────────────────────────────────────
   const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
-  const { activities,         source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride);
+  const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user);
   const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
   const { weather,            source: weatherSource    } = useWeather(settings.city);
   const { photos }                                       = usePhotos(settings.city);
@@ -305,6 +285,18 @@ export default function App() {
 
   // ── Auth loading splash ───────────────────────────────────────────────────
   if (authLoading && !demoMode) return <LoadingSplash />;
+
+  // ── Cold-start feed splash ────────────────────────────────────────────────
+  // Shown once per session when: (a) we have no cache (source='mock'), and
+  // (b) the first feed fetch is still in flight. Prevents the "mock→live"
+  // content jolt that rattles the whole layout.
+  if (activitiesSource === 'mock' && activitiesLoading && !hasSplashBeenShown() && !isDemo) {
+    return <LoadingSplash />;
+  }
+  // Mark shown once real data arrives so subsequent navigation doesn't re-splash.
+  if ((activitiesSource === 'live' || activitiesSource === 'cached') && !hasSplashBeenShown()) {
+    markSplashShown();
+  }
 
   // ── Welcome screen ────────────────────────────────────────────────────────
   // Show when: no user logged in AND not in demo mode AND onboarding is done

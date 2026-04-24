@@ -59,6 +59,7 @@ function transformFeed(feed) {
       base_score:   e.base_score,
       final_score:  e.final_score,
       confidence:   e.confidence,
+      friends_interested: e.friends_interested || [],
     }));
 
     // Map always-available evergreen venues from the `evergreen_events` table.
@@ -133,12 +134,13 @@ function writeCache(zip, profileId, data) {
   } catch {} // storage full or unavailable — silently ignore
 }
 
-export function useActivities(city, profile, locationOverride = null) {
+export function useActivities(city, profile, locationOverride = null, user = null) {
   // All event queries use the metro-wide zip — specific location used only for distance scoring
   const zip       = 'dc-metro';
   const profileId = profile?.id || 'default';
   const userLat   = locationOverride?.lat ?? null;
   const userLng   = locationOverride?.lng ?? null;
+  const userId    = user?.id || null;
 
   // Seed state from cache immediately so UI renders real data without waiting for the API.
   // Falls back to mock ACTIVITIES if nothing cached yet.
@@ -161,7 +163,7 @@ export function useActivities(city, profile, locationOverride = null) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchEventFeed(zip, profileId, city, { profile, userLat, userLng });
+      const data = await fetchEventFeed(zip, profileId, city, { profile, userLat, userLng, userId });
       const transformed = transformFeed(data);
       if (transformed && Object.keys(transformed).length > 0) {
         const hasEvents = Object.values(transformed).some(acts => acts.length > 0);
@@ -178,7 +180,7 @@ export function useActivities(city, profile, locationOverride = null) {
     } finally {
       setLoading(false);
     }
-  }, [city, profileId]);
+  }, [city, profileId, userId]);
 
   useEffect(() => { load(); }, [load]);
 

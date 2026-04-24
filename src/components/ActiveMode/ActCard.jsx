@@ -3,6 +3,26 @@ import { postFeedback } from '../../lib/api';
 import { formatMusicGenre, formatSportsEmoji, formatWhen, formatVenue, formatCost } from './utils';
 import ActionBar from './ActionBar';
 
+// Stable per-name colors for friend avatars. Hash first char to index.
+const AVATAR_COLORS = ['#C9A84C', '#818CF8', '#34D399', '#F472B6', '#60A5FA', '#FBA74E', '#A78BFA'];
+function avatarColor(name) {
+  const code = (name || '').trim().charCodeAt(0) || 0;
+  return AVATAR_COLORS[code % AVATAR_COLORS.length];
+}
+function firstInitial(name) {
+  return (name || '?').trim().charAt(0).toUpperCase() || '?';
+}
+function firstName(name) {
+  return (name || '').split(/\s+/)[0] || 'Someone';
+}
+function formatInterestedLine(friends) {
+  if (!friends?.length) return null;
+  const names = friends.map(f => firstName(f.name));
+  if (names.length === 1) return `${names[0]} is interested in this event`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are interested in this event`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length > 3 ? 's' : ''} are interested in this event`;
+}
+
 export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
   const [expanded,      setExpanded]      = useState(false);
   const [thumbFeedback, setThumbFeedback] = useState(null);
@@ -83,6 +103,27 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
+        {/* Friend interest avatars — compact mode only. Up to 3 initials + "+N" overflow. */}
+        {isCompact && act.friends_interested?.length > 0 && (
+          <div style={{ display:'flex', alignItems:'center', flexShrink:0, marginLeft:2 }}
+            title={act.friends_interested.map(f => f.name).join(', ') + ' interested'}>
+            {act.friends_interested.slice(0, 3).map((f, i) => (
+              <div key={f.user_id || i} style={{
+                width: 18, height: 18, borderRadius: '50%',
+                background: avatarColor(f.name),
+                color: 'white', fontSize: 9, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '1.5px solid #fff', marginLeft: i === 0 ? 0 : -6,
+                flexShrink: 0,
+              }}>{firstInitial(f.name)}</div>
+            ))}
+            {act.friends_interested.length > 3 && (
+              <span style={{ fontSize: 9, color: '#6B6560', marginLeft: 3, fontWeight: 600 }}>
+                +{act.friends_interested.length - 3}
+              </span>
+            )}
+          </div>
+        )}
         <span style={{
           fontSize: 10, color: 'var(--subtle)', flexShrink: 0,
           transition: 'transform .2s',
@@ -93,6 +134,28 @@ export default function ActCard({ act, catId, cardBg, onCal, onRemove, onHeart, 
 
       {isExpanded && (
         <div style={{ padding: '0 12px 10px' }}>
+          {act.friends_interested?.length > 0 && (
+            <div style={{
+              fontSize: 11, color: '#8B6D2D', fontStyle: 'italic', lineHeight: 1.5,
+              padding: '5px 8px', marginBottom: 6,
+              background: 'rgba(201,168,76,.10)', border: '0.5px solid rgba(201,168,76,.25)',
+              borderRadius: 6,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <div style={{ display:'flex', alignItems:'center', flexShrink:0 }}>
+                {act.friends_interested.slice(0, 3).map((f, i) => (
+                  <div key={f.user_id || i} style={{
+                    width: 16, height: 16, borderRadius: '50%',
+                    background: avatarColor(f.name),
+                    color: 'white', fontSize: 8, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1.5px solid #fff', marginLeft: i === 0 ? 0 : -5,
+                  }}>{firstInitial(f.name)}</div>
+                ))}
+              </div>
+              <span>{formatInterestedLine(act.friends_interested)}</span>
+            </div>
+          )}
           {act.why && (
             <div style={{ fontSize: 11, color: '#6B6560', fontStyle: 'italic', lineHeight: 1.5, marginBottom: 6 }}>
               {act.why}

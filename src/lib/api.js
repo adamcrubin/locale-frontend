@@ -28,12 +28,13 @@ export async function fetchWeather(city) {
 // Also now sends a trimmed profile JSON so the backend scoring engine can apply
 // preference matching. Without this, profile.prefs had no effect on final_score.
 export async function fetchEventFeed(zip, profileId, city, options = {}) {
-  const { category, weekday = false, limit = 100, offset = 0, profile = null, userLat = null, userLng = null } = options;
+  const { category, weekday = false, limit = 100, offset = 0, profile = null, userLat = null, userLng = null, userId = null } = options;
   const params = new URLSearchParams({ zip, profileId, city, limit, offset });
   if (category) params.set('category', category);
   if (weekday) params.set('weekday', 'true');
   if (userLat != null) params.set('userLat', userLat);
   if (userLng != null) params.set('userLng', userLng);
+  if (userId)   params.set('userId', userId);
   if (profile) {
     params.set('profile', encodeURIComponent(JSON.stringify({
       id:      profile.id,
@@ -109,6 +110,16 @@ export async function fetchAmbientPhotos(city) {
 export async function fetchCategoryPhotos(category, city, count = 8) {
   const data = await apiFetch(`/photos/category/${encodeURIComponent(category)}?city=${encodeURIComponent(city)}&count=${count}`);
   return data.photos || [];
+}
+
+// ── Friends ───────────────────────────────────────────────────────────────────
+// In auto-all mode, this returns every other Supabase user so the
+// friends_interested indicator has signal without an invite flow.
+export async function fetchFriends(userId) {
+  const params = new URLSearchParams();
+  if (userId) params.set('userId', userId);
+  const data = await apiFetch(`/friends?${params}`);
+  return data.friends || [];
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
