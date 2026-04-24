@@ -73,7 +73,12 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const thumbDown  = (catId,act) => { setRemoved(r=>({...r,[`${catId}::${act.title}`]:true})); onThumbDown?.(catId,act); };
 
   const catStates    = activeProfile?.categoryStates||{};
-  const alwaysCats   = ALL_CATEGORIES.filter(c=>catStates[c.id]==='always');
+  // Missing categoryStates entry => treat as 'always'. This matches the
+  // per-category preference editor (which renders missing entries as
+  // 'always' selected) AND means new categories added to ALL_CATEGORIES
+  // show up automatically for existing users instead of silently vanishing
+  // because their profile predates the new bucket.
+  const alwaysCats   = ALL_CATEGORIES.filter(c=>catStates[c.id]===undefined || catStates[c.id]==='always');
   const sometimesCats= ALL_CATEGORIES.filter(c=>catStates[c.id]==='sometimes');
   const defaultCats  = ALL_CATEGORIES.slice(0,9);
   const curatedCat   = ALL_CATEGORIES.find(c=>c.id==='curated');
