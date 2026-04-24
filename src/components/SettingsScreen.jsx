@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ALL_CATEGORIES, PREFERENCES, BUDGET_LEVELS, PROFILE_COLORS, DEFAULT_PROFILE } from '../data/content';
 import ThemeToggle, { useTheme } from './ThemeToggle';
+import NeighborhoodPicker from './NeighborhoodPicker';
 
 function Section({ title, desc, children }) {
   return (
@@ -187,13 +188,15 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
 export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources, calendar }) {
   const [city,          setCity]        = useState(settings.city);
   const [homeAddress,   setHomeAddress] = useState(settings.homeAddress || '');
+  const [neighborhood,  setNeighborhood] = useState(settings.neighborhood || null);
+  const [showNeighborhoodPicker, setShowNeighborhoodPicker] = useState(false);
   const [curatedMode,   setCuratedMode] = useState(settings.curatedMode || false);
   const [testMode,      setTestMode]    = useState(settings.testMode || false);
   const [adminExpanded, setAdminExpanded] = useState(false);
   const { themeId, setTheme, currentTheme } = useTheme();
 
   const save = () => {
-    onSave({ city, homeAddress, curatedMode, testMode });
+    onSave({ city, homeAddress, neighborhood, curatedMode, testMode });
     onClose();
   };
 
@@ -231,12 +234,51 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             <input value="Falls Church, VA" readOnly style={{ ...inpStyle, opacity:.5, cursor:'not-allowed' }} />
             <div style={{ fontSize:10, color:'rgba(201,168,76,.55)', marginTop:4 }}>🚧 New cities coming soon!</div>
           </div>
+          <div style={{ marginBottom:8 }}>
+            <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>Neighborhood <span style={{ color:'rgba(255,255,255,.25)' }}>(optional)</span></label>
+            <button
+              onClick={() => setShowNeighborhoodPicker(true)}
+              style={{
+                ...inpStyle,
+                display:'flex', alignItems:'center', justifyContent:'space-between',
+                cursor:'pointer', textAlign:'left', background:'rgba(255,255,255,.06)',
+                color: neighborhood ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.3)',
+              }}
+            >
+              <span>{neighborhood ? neighborhood.label : 'Pick your neighborhood…'}</span>
+              <span style={{ fontSize:10, color:'rgba(255,255,255,.3)' }}>▾</span>
+            </button>
+            {neighborhood && (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:4 }}>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.25)' }}>
+                  {neighborhood.area} · ZIP {neighborhood.zip}
+                </div>
+                <button
+                  onClick={() => setNeighborhood(null)}
+                  style={{ fontSize:10, color:'rgba(255,255,255,.3)', background:'none', border:'none', cursor:'pointer', fontFamily:'DM Sans, sans-serif', padding:'0 2px' }}
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:4 }}>
+              Used for distance-based sorting when no exact address is set.
+            </div>
+          </div>
           <div>
             <label style={{ fontSize:11, color:'rgba(255,255,255,.4)', display:'block', marginBottom:3 }}>Home address <span style={{ color:'rgba(255,255,255,.25)' }}>(optional)</span></label>
             <input value={homeAddress} onChange={e => setHomeAddress(e.target.value)} placeholder="123 Main St, Falls Church, VA 22046" style={inpStyle} />
-            <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:4 }}>Used for directions and distance-based sorting.</div>
+            <div style={{ fontSize:10, color:'rgba(255,255,255,.25)', marginTop:4 }}>Overrides neighborhood for exact distance calculations.</div>
           </div>
         </Section>
+
+        {showNeighborhoodPicker && (
+          <NeighborhoodPicker
+            current={neighborhood?.label || null}
+            onSelect={(n) => setNeighborhood(n)}
+            onClose={() => setShowNeighborhoodPicker(false)}
+          />
+        )}
 
         {/* ── Profiles ── */}
         <Section title="Profiles" desc="Up to 5 profiles — each has their own preferences, categories, and saved items.">
