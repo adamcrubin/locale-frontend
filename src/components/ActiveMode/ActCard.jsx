@@ -36,7 +36,6 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
   const [expanded,      setExpanded]      = useState(initialExpanded);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
-  const [sourceOpen,    setSourceOpen]    = useState(false);
   // Image rendering is intentionally disabled for now — og:image often
   // returns site logos rather than event photos, which render as giant
   // icons on cards. `image_url` is still captured in the DB so we can
@@ -217,39 +216,11 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
               <span>{formatInterestedLine(act.friends_interested)}</span>
             </div>
           )}
-          {/* Source transparency — collapsed by default behind a tiny ⓘ.
-              Most users don't care; reveal on click for the curious ones. */}
-          {(act.source_name || act.confidence) && (
-            <div style={{ marginTop: 6, display:'flex', justifyContent:'flex-end' }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); setSourceOpen(o => !o); }}
-                title="Where this came from"
-                style={{
-                  display:'flex', alignItems:'center', gap:5,
-                  fontSize: 10, color: '#8A847D',
-                  background: sourceOpen ? 'rgba(0,0,0,.04)' : 'transparent',
-                  border: 'none', padding: '2px 6px', borderRadius: 99,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                <span style={{ opacity: 0.6 }}>ⓘ</span>
-                {sourceOpen && (
-                  <>
-                    {act.source_name && (
-                      <span>From <span style={{ fontWeight: 500, color: '#6B6560' }}>{act.source_name}</span></span>
-                    )}
-                    {act.confidence && (
-                      <span style={{
-                        padding: '0 6px', borderRadius: 99, fontSize: 9,
-                        background: act.confidence === 'confirmed' ? 'rgba(34,197,94,.12)' : 'rgba(201,168,76,.15)',
-                        color:      act.confidence === 'confirmed' ? '#16A34A'              : '#8B6D2D',
-                      }}>{act.confidence === 'confirmed' ? '✓ confirmed' : '~ inferred'}</span>
-                    )}
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+          {/* Source transparency intentionally hidden for now. Even
+              collapsed-behind-ⓘ it added a vertical row that users didn't
+              care about. source_name + confidence still flow through the
+              data layer for ranking; just not surfaced in the card UI.
+              Bring back later as a tiny pill in the title row if needed. */}
         </div>
       )}
     </div>
