@@ -71,23 +71,39 @@ export default function MobileLayout({
     return weekendDays.slice(0, 3).map((w, i) => ({ ...w, dateStr: dates[i] ? fmt(dates[i]) : '' }));
   })();
 
-  const allActs = dedupeActivities(
-    (activities[cat.id]?.length > 0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id] || [])
-      .filter(a => !removed[`${cat.id}::${a.title}`])
-      .filter(a => !isPastEvent(a))
-      .filter(a => !isFrontendBlocked(a))
-      .filter(a => {
-        if (!timeFilters.length) return true;
-        const tod = getTimeOfDay(a);
-        return timeFilters.includes(tod) || tod === 'any';
-      })
-      .filter(a => {
-        if (!priceFilters.length) return true;
-        const tier = getPriceTier(a);
-        if (tier === 'unknown') return false;
-        return priceFilters.includes(tier);
-      })
-  );
+  const allActs = (() => {
+    const base = dedupeActivities(
+      (activities[cat.id]?.length > 0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id] || [])
+        .filter(a => !removed[`${cat.id}::${a.title}`])
+        .filter(a => !isPastEvent(a))
+        .filter(a => !isFrontendBlocked(a))
+        .filter(a => {
+          if (!timeFilters.length) return true;
+          const tod = getTimeOfDay(a);
+          return timeFilters.includes(tod) || tod === 'any';
+        })
+        .filter(a => {
+          if (!priceFilters.length) return true;
+          const tier = getPriceTier(a);
+          if (tier === 'unknown') return false;
+          return priceFilters.includes(tier);
+        })
+    );
+    // Mobile-only: there's no WeekendSidebar to host the sponsored hero, so
+    // splice the top sponsored event into Curated's #2 slot. Spotlight stays
+    // at #1, sponsored at #2 — together they're the loudest cards in the feed.
+    if (cat.id === 'curated') {
+      const sponsored = Object.values(activities).flat()
+        .filter(a => a?.is_sponsored && !removed[`${cat.id}::${a.title}`] && !isPastEvent(a))
+        .sort((a, b) => (b.final_score||b.base_score||0) - (a.final_score||a.base_score||0));
+      const top = sponsored[0];
+      if (top && !base.some(a => a.id === top.id)) {
+        const insertAt = Math.min(1, base.length);
+        base.splice(insertAt, 0, top);
+      }
+    }
+    return base;
+  })();
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -185,8 +201,10 @@ export default function MobileLayout({
             </div>
           </div>
         ) : (
-          allActs.map(a => (
+          allActs.map((a, idx) => (
             <ActCard key={`${cat.id}-${a.title}`} act={a} catId={cat.id}
+              // First card in Curated column = Spotlight (matches desktop CatColumn).
+              isSpotlight={cat.id === 'curated' && idx === 0}
               onCal={onCal}
               onRemove={() => onRemove(cat.id, a)}
               onHeart={() => onHeart(cat.id, a)}
