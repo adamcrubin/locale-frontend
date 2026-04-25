@@ -38,8 +38,11 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
       : `https://www.google.com/maps/search/?api=1&query=${dest}`, '_blank');
   };
 
-  const searchQ = `${(act.title||'')} ${(act.venue || act.where || 'DC')} tickets -pinterest -facebook`;
-  const eventUrl = act.url || `https://www.google.com/search?btnI=1&q=${encodeURIComponent(searchQ)}`;
+  // Event URL: ONLY a real URL we have. The previous Google "I'm Feeling
+  // Lucky" fallback was a major user-trust killer — clicking "Open" on an
+  // event would land on a Google results page. If we don't have a direct
+  // link, we hide the Open button entirely (handled below).
+  const eventUrl = act.url || null;
 
   const hasSpecificTicketUrl = (() => {
     if (!act.ticket_url) return false;
@@ -56,10 +59,18 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
 
   const handleShare = async (e) => {
     e.stopPropagation();
+    // Share text-only when we don't have a URL (no Google search shim).
     if (navigator.share) {
-      try { await navigator.share({ title: act.title, text: shareText, url: eventUrl }); return; } catch {}
+      try {
+        const payload = eventUrl
+          ? { title: act.title, text: shareText, url: eventUrl }
+          : { title: act.title, text: shareText };
+        await navigator.share(payload);
+        return;
+      } catch {}
     }
-    try { await navigator.clipboard.writeText(eventUrl); } catch { prompt('Copy this link:', eventUrl); }
+    const toCopy = eventUrl || shareText;
+    try { await navigator.clipboard.writeText(toCopy); } catch { prompt('Copy this:', toCopy); }
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -73,13 +84,13 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
           1. Reservation (Resy/OpenTable) for restaurants
           2. Specific ticket URL when the extractor found one
           3. Event page on the venue/source
-          4. Falls back to a Google search if we have nothing direct */}
+          If we have NONE of those, we render nothing — never a Google search
+          fallback that lands users on a results page. */}
       {(() => {
         let href = null, label = 'Open', icon = '🔗',
             ring = 'rgba(0,0,0,.12)', bg = 'transparent', color = '#6B6560';
         if (act.reservation_url) {
           href = act.reservation_url;
-          const platform = act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable';
           label = act.reservation_is_search ? 'Find a table' : 'Reserve';
           icon  = '🍽'; ring = 'rgba(34,197,94,.4)'; bg = 'rgba(34,197,94,.12)'; color = '#16A34A';
         } else if (hasSpecificTicketUrl) {
@@ -90,11 +101,8 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
           href = act.url;
           label = 'Open page'; icon = '🔗';
           ring = 'rgba(37,99,235,.35)'; bg = 'rgba(37,99,235,.10)'; color = '#2563EB';
-        } else {
-          href = eventUrl; // Google search fallback
-          label = 'Search'; icon = '🔎';
-          ring = 'rgba(0,0,0,.12)'; bg = 'transparent'; color = '#6B6560';
         }
+        if (!href) return null;
         return (
           <a href={href} target="_blank" rel="noopener noreferrer"
             onClick={e => e.stopPropagation()} title={label}

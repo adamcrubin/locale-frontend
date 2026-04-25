@@ -106,15 +106,14 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
     visibleCats = [curatedCat, ...visibleCats.filter(c => c.id !== 'curated')];
   }
 
-  // ── Merge thin columns into a synthetic "Other" bucket ─────────────────
+  // ── Merge thin columns + drop empty ones ───────────────────────────────
   // Any non-tail category with < THIN_THRESHOLD events this weekend gets
-  // pulled out and its items rolled into activities.other with the source
-  // category preserved for emoji-prefixed titles.
+  // rolled into a synthetic "Other" bucket. Categories with ZERO events are
+  // hidden entirely — empty columns were a major UX killer per user testing.
   //
-  // Final ordering: curated → populated columns (sorted) → Other (always
-  // second-to-last) → zero-entry columns (always last). Users can hide
-  // normal categories via settings; Other is always present when it has
-  // content (not in the toggle list).
+  // Final ordering: curated → populated columns (sorted) → Other.
+  // No zero-count tail. Users still control which categories CAN appear via
+  // Settings; this just suppresses ones that have no live content right now.
   const THIN_THRESHOLD = 3;
   let effectiveActivities = activities;
   if (activeCat === 'all') {
@@ -132,19 +131,17 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         }
       }
     }
-    // Remove thin categories from visibleCats. They're merged into Other.
     visibleCats = visibleCats.filter(c => !thinIds.includes(c.id));
     if (otherBucket.length > 0 && otherCat) {
       effectiveActivities = { ...activities, other: otherBucket };
     }
 
-    // Rebuild ordering: curated → populated → other → zeros.
+    // Rebuild ordering: curated → populated → other. Empty columns dropped.
     const curated = visibleCats.filter(c => c.id === 'curated');
     const rest    = visibleCats.filter(c => c.id !== 'curated' && c.id !== 'other');
     const populated = rest.filter(c => (effectiveActivities[c.id] || []).length > 0);
-    const zeros     = rest.filter(c => (effectiveActivities[c.id] || []).length === 0);
     const otherSlot = (otherBucket.length > 0 && otherCat) ? [otherCat] : [];
-    visibleCats = [...curated, ...populated, ...otherSlot, ...zeros];
+    visibleCats = [...curated, ...populated, ...otherSlot];
   }
 
   const COLS_PER_PAGE = isMobile ? 1 : 4;

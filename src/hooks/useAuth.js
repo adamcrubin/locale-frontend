@@ -79,8 +79,13 @@ export function useAuth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // Request Calendar scope at sign-in time — no second popup ever
-          scopes: 'https://www.googleapis.com/auth/calendar',
+          // SCOPE — narrowed from full /auth/calendar to /auth/calendar.events.
+          // The full scope's consent screen says "see, edit, share, and
+          // permanently delete ALL your calendars" which made early users
+          // bail. /calendar.events still lets us add events on the user's
+          // behalf, but the consent screen is dramatically less alarming
+          // ("View and edit events on your calendars").
+          scopes: 'https://www.googleapis.com/auth/calendar.events',
           redirectTo: window.location.origin,
           queryParams: { access_type: 'offline' },
         },
