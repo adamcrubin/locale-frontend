@@ -23,11 +23,20 @@ function formatInterestedLine(friends) {
   return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length > 3 ? 's' : ''} are interested in this event`;
 }
 
-export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId }) {
-  // Spotlight cards land expanded by default; user can collapse them.
-  const [expanded,      setExpanded]      = useState(isSpotlight);
+export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, viewMode = 'standard' }) {
+  // Default-expand depends on view mode:
+  // - magazine: every card expanded
+  // - compact:  every card collapsed
+  // - standard: only Spotlight expanded (current behavior)
+  const initialExpanded = viewMode === 'magazine'
+    ? true
+    : viewMode === 'compact'
+    ? false
+    : isSpotlight;
+  const [expanded,      setExpanded]      = useState(initialExpanded);
   const [thumbFeedback, setThumbFeedback] = useState(null);
   const [exiting,       setExiting]       = useState(false);
+  const [sourceOpen,    setSourceOpen]    = useState(false);
   // Image rendering is intentionally disabled for now — og:image often
   // returns site logos rather than event photos, which render as giant
   // icons on cards. `image_url` is still captured in the DB so we can
@@ -134,25 +143,31 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
           </div>
         </div>
         {act._conflict && <span title="Conflicts with existing calendar event" style={{ fontSize: 9, padding: '1px 5px', borderRadius: 99, background: '#FEE2E2', color: '#DC2626', flexShrink: 0 }}>⚠ conflict</span>}
-        {/* Friend interest avatars — compact mode only. Up to 3 initials + "+N" overflow. */}
+        {/* Friend interest pill — compact mode only. Stronger than a bare
+            avatar stack: amber-tinted pill with stacked avatars + "N going"
+            so the social signal jumps out at a glance without taking a row. */}
         {isCompact && act.friends_interested?.length > 0 && (
-          <div style={{ display:'flex', alignItems:'center', flexShrink:0, marginLeft:2 }}
+          <div style={{
+            display:'flex', alignItems:'center', flexShrink:0, gap:5, marginLeft:2,
+            padding:'2px 7px 2px 4px', borderRadius:99,
+            background:'rgba(201,168,76,.16)', border:'0.5px solid rgba(201,168,76,.4)',
+          }}
             title={act.friends_interested.map(f => f.name).join(', ') + ' interested'}>
-            {act.friends_interested.slice(0, 3).map((f, i) => (
-              <div key={f.user_id || i} style={{
-                width: 18, height: 18, borderRadius: '50%',
-                background: avatarColor(f.name),
-                color: 'white', fontSize: 9, fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '1.5px solid #fff', marginLeft: i === 0 ? 0 : -6,
-                flexShrink: 0,
-              }}>{firstInitial(f.name)}</div>
-            ))}
-            {act.friends_interested.length > 3 && (
-              <span style={{ fontSize: 9, color: '#6B6560', marginLeft: 3, fontWeight: 600 }}>
-                +{act.friends_interested.length - 3}
-              </span>
-            )}
+            <div style={{ display:'flex', alignItems:'center' }}>
+              {act.friends_interested.slice(0, 2).map((f, i) => (
+                <div key={f.user_id || i} style={{
+                  width: 16, height: 16, borderRadius: '50%',
+                  background: avatarColor(f.name),
+                  color: 'white', fontSize: 8, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: '1.5px solid rgba(248,242,228,1)', marginLeft: i === 0 ? 0 : -5,
+                  flexShrink: 0,
+                }}>{firstInitial(f.name)}</div>
+              ))}
+            </div>
+            <span style={{ fontSize:10, fontWeight:700, color:'#8B6D2D', whiteSpace:'nowrap' }}>
+              {act.friends_interested.length} going
+            </span>
           </div>
         )}
         <span style={{
@@ -202,24 +217,37 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
               <span>{formatInterestedLine(act.friends_interested)}</span>
             </div>
           )}
-          {/* Source transparency — quiet footer, no score number. */}
+          {/* Source transparency — collapsed by default behind a tiny ⓘ.
+              Most users don't care; reveal on click for the curious ones. */}
           {(act.source_name || act.confidence) && (
-            <div style={{
-              fontSize: 10, color: '#8A847D', marginTop: 8, paddingTop: 8,
-              borderTop: '0.5px solid rgba(0,0,0,.08)',
-              display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
-            }} title="Why this showed up in your feed">
-              <span style={{ opacity: 0.6 }}>ℹ</span>
-              {act.source_name && (
-                <span>From <span style={{ fontWeight: 500, color: '#6B6560' }}>{act.source_name}</span></span>
-              )}
-              {act.confidence && (
-                <span style={{
-                  padding: '0 6px', borderRadius: 99, fontSize: 9,
-                  background: act.confidence === 'confirmed' ? 'rgba(34,197,94,.12)' : 'rgba(201,168,76,.15)',
-                  color:      act.confidence === 'confirmed' ? '#16A34A'              : '#8B6D2D',
-                }}>{act.confidence === 'confirmed' ? '✓ confirmed' : '~ inferred'}</span>
-              )}
+            <div style={{ marginTop: 6, display:'flex', justifyContent:'flex-end' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setSourceOpen(o => !o); }}
+                title="Where this came from"
+                style={{
+                  display:'flex', alignItems:'center', gap:5,
+                  fontSize: 10, color: '#8A847D',
+                  background: sourceOpen ? 'rgba(0,0,0,.04)' : 'transparent',
+                  border: 'none', padding: '2px 6px', borderRadius: 99,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                <span style={{ opacity: 0.6 }}>ⓘ</span>
+                {sourceOpen && (
+                  <>
+                    {act.source_name && (
+                      <span>From <span style={{ fontWeight: 500, color: '#6B6560' }}>{act.source_name}</span></span>
+                    )}
+                    {act.confidence && (
+                      <span style={{
+                        padding: '0 6px', borderRadius: 99, fontSize: 9,
+                        background: act.confidence === 'confirmed' ? 'rgba(34,197,94,.12)' : 'rgba(201,168,76,.15)',
+                        color:      act.confidence === 'confirmed' ? '#16A34A'              : '#8B6D2D',
+                      }}>{act.confidence === 'confirmed' ? '✓ confirmed' : '~ inferred'}</span>
+                    )}
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>

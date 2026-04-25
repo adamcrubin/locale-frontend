@@ -14,6 +14,7 @@ import { CatColumn, StackedColumn } from './ActiveMode/CatColumn';
 import { SpotlightOverlay } from './ActiveMode/Spotlight';
 import WeekendSidebar from './ActiveMode/WeekendSidebar';
 import MobileLayout from './ActiveMode/MobileLayout';
+import { STATIC_PAGE_LINKS } from './StaticPage';
 
 class ColumnErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -41,7 +42,7 @@ const QUICK_PROMPTS = [
   { label:'✏️ Ask Anything', canned: true },
 ];
 
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, isDemo=false, onLoginPrompt }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, onShowPage, isDemo=false, onLoginPrompt }) {
   const gateDemo = (feature, fn) => (...args) => {
     if (isDemo) { onLoginPrompt?.(feature); return; }
     return fn?.(...args);
@@ -53,6 +54,15 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const [colPage,      setColPage]      = useState(0);
   const [showAsk,      setShowAsk]      = useState(false);
   const [overlayShown, setOverlayShown] = useState(false);
+  const [infoOpen,     setInfoOpen]     = useState(false);
+  // View mode: compact | standard | magazine. Persists per browser.
+  // - compact:   denser cards, all collapsed by default
+  // - standard:  current behavior (Spotlight expanded, rest collapsed)
+  // - magazine:  every card expanded, more breathing room per item
+  const [viewMode,     setViewMode]     = useState(() => {
+    try { return localStorage.getItem('locale.viewMode') || 'standard'; } catch { return 'standard'; }
+  });
+  useEffect(() => { try { localStorage.setItem('locale.viewMode', viewMode); } catch {} }, [viewMode]);
 
   const { themeId, setTheme, currentTheme } = useTheme();
   const { active: pipelineActive, label: pipelineLabel } = usePipelineStatus();
@@ -151,7 +161,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather, viewMode };
 
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>
@@ -196,6 +206,32 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
               <span style={{fontSize:10,color:'#C9A84C',fontWeight:500,whiteSpace:'nowrap'}}>{pipelineLabel}</span>
             </div>
           )}
+          {onShowPage && (
+            <div style={{position:'relative'}}>
+              <button onClick={()=>setInfoOpen(o=>!o)} title="About Locale" style={{fontSize:isMobile?14:11,padding:isMobile?'4px 7px':'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>ⓘ</button>
+              {infoOpen && (
+                <>
+                  <div onClick={()=>setInfoOpen(false)} style={{position:'fixed',inset:0,zIndex:39}}/>
+                  <div style={{position:'absolute',top:'calc(100% + 6px)',right:0,zIndex:40,background:'#1C1A17',border:'0.5px solid rgba(255,255,255,.12)',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,.4)',padding:6,minWidth:200}}>
+                    {STATIC_PAGE_LINKS.map(link => (
+                      <button key={link.id} onClick={()=>{setInfoOpen(false); onShowPage(link.id);}} style={{
+                        display:'flex',alignItems:'center',gap:9,width:'100%',
+                        padding:'7px 10px',borderRadius:7,background:'transparent',border:'none',
+                        color:'rgba(255,255,255,.75)',fontSize:12,fontFamily:'var(--font-body)',
+                        cursor:'pointer',textAlign:'left',transition:'background .12s',
+                      }}
+                        onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,.06)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                      >
+                        <span style={{fontSize:12,width:14,textAlign:'center'}}>{link.icon}</span>
+                        <span>{link.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button onClick={() => onSettings()} style={{fontSize:isMobile?14:11,padding:isMobile?'4px 7px':'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>⚙</button>
           {!isMobile && (
             <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ambient</button>
@@ -216,6 +252,24 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
               onMouseEnter={e=>{e.currentTarget.style.background='rgba(201,168,76,.2)';e.currentTarget.style.color='#C9A84C';}}
               onMouseLeave={e=>{e.currentTarget.style.background='rgba(255,255,255,.09)';e.currentTarget.style.color='rgba(255,255,255,.7)';}}
             >{p.label}</button>
+          ))}
+        </div>
+        {/* View mode toggle — right edge of the prompts bar. */}
+        <div style={{display:'flex',background:'rgba(255,255,255,.06)',border:'0.5px solid rgba(255,255,255,.12)',borderRadius:99,overflow:'hidden',flexShrink:0,marginLeft:6}}>
+          {[
+            {id:'compact',  label:'Compact',  icon:'☰', tip:'Dense — titles only, more per column'},
+            {id:'standard', label:'Standard', icon:'▦', tip:'Balanced (default)'},
+            {id:'magazine', label:'Magazine', icon:'❏', tip:'Spacious — every card expanded'},
+          ].map(m => (
+            <button key={m.id} onClick={()=>setViewMode(m.id)} title={m.tip} style={{
+              padding:'4px 10px',fontSize:11,fontWeight:500,cursor:'pointer',
+              background: viewMode===m.id ? 'rgba(201,168,76,.22)' : 'transparent',
+              color:      viewMode===m.id ? '#C9A84C'              : 'rgba(255,255,255,.4)',
+              border:'none',fontFamily:'DM Sans,sans-serif',transition:'all .15s',
+              display:'flex',alignItems:'center',gap:4,
+            }}>
+              <span style={{fontSize:10}}>{m.icon}</span>{m.label}
+            </button>
           ))}
         </div>
       </div>}

@@ -3,7 +3,6 @@ import { ALL_CATEGORIES, PREFERENCES, BUDGET_LEVELS, PROFILE_COLORS, DEFAULT_PRO
 import ThemeToggle, { useTheme } from './ThemeToggle';
 import NeighborhoodPicker from './NeighborhoodPicker';
 import { useFriends } from '../hooks/useFriends';
-import { STATIC_PAGE_LINKS } from './StaticPage';
 
 // Admin is determined by email membership. Keep in sync with the list in
 // SourcesScreen.jsx — both files gate the same audience.
@@ -396,33 +395,6 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             }}>
               📡 <span>Manage sources</span>
             </button>
-          </Section>
-        )}
-
-        {/* ── About Locale ── */}
-        {onShowPage && (
-          <Section title="About Locale">
-            <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-              {STATIC_PAGE_LINKS.map(link => (
-                <button key={link.id} onClick={() => { onClose(); onShowPage(link.id); }}
-                  style={{
-                    display:'flex', alignItems:'center', gap:10,
-                    padding:'9px 10px', borderRadius:8,
-                    background:'transparent', border:'none',
-                    color:'rgba(255,255,255,.7)', fontSize:12,
-                    fontFamily:'DM Sans, sans-serif', cursor:'pointer',
-                    textAlign:'left', width:'100%',
-                    transition:'background .15s',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <span style={{ fontSize:13, width:16, textAlign:'center' }}>{link.icon}</span>
-                  <span style={{ flex:1 }}>{link.label}</span>
-                  <span style={{ color:'rgba(255,255,255,.3)', fontSize:11 }}>›</span>
-                </button>
-              ))}
-            </div>
           </Section>
         )}
 

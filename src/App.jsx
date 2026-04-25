@@ -331,6 +331,7 @@ export default function App() {
     priceFilters,
     setPriceFilters,
     onOpenFilter: () => setFilterOpen(true),
+    onShowPage: setStaticPageId,
     user, onSignOut: signOut,
   };
 

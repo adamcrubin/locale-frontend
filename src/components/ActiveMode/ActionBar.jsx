@@ -69,52 +69,47 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
       <ABtn icon="📅" title="Add to calendar" onClick={()=>onCal(act)} />
       <ABtn isMap title="Directions" onClick={handleDirections} />
 
-      {/* Reservation button — shown when the server attached a Resy/OpenTable
-          link (either direct or a synthesized search URL for restaurants). Takes
-          precedence over the generic ticket button so restaurants get the clear
-          "find a table" affordance. */}
-      {act.reservation_url && (
-        <a href={act.reservation_url} target="_blank" rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          title={act.reservation_is_search
-            ? `Find a table on ${act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable'}`
-            : `Reserve on ${act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable'}`}
-          style={{ textDecoration:'none' }}>
-          <button style={{
-            width:28, height:28, borderRadius:8,
-            border:'0.5px solid rgba(34,197,94,.35)',
-            background:'rgba(34,197,94,.12)',
-            cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#16A34A',
-          }}>🍽</button>
-        </a>
-      )}
-
-      {hasSpecificTicketUrl && !act.reservation_url && (
-        <a href={act.ticket_url} target="_blank" rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()} title="Buy tickets"
-          style={{ textDecoration:'none' }}>
-          <button style={{
-            width:28, height:28, borderRadius:8,
-            border:'0.5px solid rgba(201,168,76,.35)',
-            background:'rgba(201,168,76,.12)',
-            cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
-            color:'#C9A84C',
-          }}>🎟</button>
-        </a>
-      )}
-
-      <a href={eventUrl} target="_blank" rel="noopener noreferrer"
-        onClick={e => e.stopPropagation()} title={act.url ? 'Open event page' : 'Search for this event'}
-        style={{ textDecoration:'none' }}>
-        <button style={{
-          width:28, height:28, borderRadius:8,
-          border:`0.5px solid ${act.url ? 'rgba(37,99,235,.3)' : 'rgba(0,0,0,.12)'}`,
-          background: act.url ? 'rgba(37,99,235,.08)' : 'transparent',
-          cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', justifyContent:'center',
-          color: act.url ? '#2563EB' : '#aaa', opacity: act.url ? 1 : 0.5,
-        }}>🔗</button>
-      </a>
+      {/* Smart Open — single button that resolves to the most useful link:
+          1. Reservation (Resy/OpenTable) for restaurants
+          2. Specific ticket URL when the extractor found one
+          3. Event page on the venue/source
+          4. Falls back to a Google search if we have nothing direct */}
+      {(() => {
+        let href = null, label = 'Open', icon = '🔗',
+            ring = 'rgba(0,0,0,.12)', bg = 'transparent', color = '#6B6560';
+        if (act.reservation_url) {
+          href = act.reservation_url;
+          const platform = act.reservation_platform === 'resy' ? 'Resy' : 'OpenTable';
+          label = act.reservation_is_search ? 'Find a table' : 'Reserve';
+          icon  = '🍽'; ring = 'rgba(34,197,94,.4)'; bg = 'rgba(34,197,94,.12)'; color = '#16A34A';
+        } else if (hasSpecificTicketUrl) {
+          href = act.ticket_url;
+          label = 'Tickets'; icon = '🎟';
+          ring = 'rgba(201,168,76,.4)'; bg = 'rgba(201,168,76,.14)'; color = '#A6822A';
+        } else if (act.url) {
+          href = act.url;
+          label = 'Open page'; icon = '🔗';
+          ring = 'rgba(37,99,235,.35)'; bg = 'rgba(37,99,235,.10)'; color = '#2563EB';
+        } else {
+          href = eventUrl; // Google search fallback
+          label = 'Search'; icon = '🔎';
+          ring = 'rgba(0,0,0,.12)'; bg = 'transparent'; color = '#6B6560';
+        }
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()} title={label}
+            style={{ textDecoration:'none' }}>
+            <button style={{
+              height:28, padding:'0 10px', borderRadius:8,
+              border:`0.5px solid ${ring}`, background:bg, color,
+              cursor:'pointer', fontSize:11, fontWeight:600,
+              display:'flex', alignItems:'center', gap:5, fontFamily:'DM Sans, sans-serif',
+            }}>
+              <span style={{ fontSize:12 }}>{icon}</span>{label}
+            </button>
+          </a>
+        );
+      })()}
 
       <button
         onClick={handleShare}
@@ -131,7 +126,9 @@ export default function ActionBar({ act, catId, onCal, onRemove, onHeart, onThum
       >{copied ? '✓' : '↗'}</button>
 
       <div style={{flex:1}}/>
-      <ABtn icon="♥" title="Save" onClick={()=>onHeart(act)} hoverBg="#FFF1F2" hoverColor="#E53E3E" color="#E53E3E" />
+      {/* Save (heart) intentionally removed — thumbs-up already signals "I like this"
+          and the calendar add covers "I want this." Two separate save flows
+          made the bar busier without adding signal. */}
       <ABtn icon="👍" title={thumbed==='up'?"Undo":"More like this"} onClick={()=>{setThumbed(t=>t==='up'?null:'up');onThumbUp(act);}} active={thumbed==='up'} activeBg="#E8F5EC" activeColor="#1A6332" />
       <ABtn icon="👎" title={thumbed==='down'?"Undo":"Less like this"} onClick={()=>{setThumbed(t=>t==='down'?null:'down');onThumbDown(act);}} active={thumbed==='down'} activeBg="#FFF1F2" activeColor="#9A3412" />
     </div>

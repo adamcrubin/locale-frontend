@@ -19,7 +19,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard' }) {
   const allActsUnsliced = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
@@ -109,6 +109,7 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                 onReserve={onReserve}
                 homeAddress={homeAddress}
                 profileId={profileId}
+                viewMode={viewMode}
               />
               );
             })

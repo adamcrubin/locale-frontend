@@ -11,7 +11,7 @@ export default function MobileLayout({
   timeFilters = [], setTimeFilters,
   priceFilters = [], setPriceFilters,
   onOpenFilter,
-  curatedMode, weather, onWeather,
+  curatedMode, weather, onWeather, viewMode = 'standard',
 }) {
   const activeFilterCount = timeFilters.length + priceFilters.length;
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
@@ -195,6 +195,7 @@ export default function MobileLayout({
               onReserve={onReserve}
               homeAddress={homeAddress}
               profileId={profileId}
+              viewMode={viewMode}
             />
           ))
         )}

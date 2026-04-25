@@ -22,21 +22,27 @@ const PHOTOS = [
 ];
 const bg = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1600&h=900&q=70`;
 
-// Mix of progress-y lines and quick how-to-use tips. Rotates every ~2.2s,
-// so a 10-item list is ~22 seconds end-to-end — enough for most cold loads
-// to finish before it wraps.
-const TAGLINES = [
+// Two separate streams:
+//   PROGRESS_LINES rotate fast (1.4s) so you always feel work happening.
+//   TIPS rotate slowly (5s) so users have a chance to actually read one.
+// Rendering them on different rows means the tip stays put while the
+// progress text underneath churns.
+const PROGRESS_LINES = [
   'Curating a great weekend…',
-  '💡 Tap 👍 on events you like — your feed learns fast',
   'Reading the local press so you don\'t have to…',
-  '💡 ⚑ Filter button up top — by time, price, or category',
   'Cross-checking the weather…',
-  '💡 ♥ Save events for later with the heart button',
   'Ranking what\'s actually worth your weekend…',
-  '💡 📅 One tap adds any event to your Google Calendar',
   'Tuning picks to your neighborhood…',
-  '💡 Invite friends in Settings — their saves bubble up in your feed',
   'Almost there — loading your picks…',
+];
+
+const TIPS = [
+  '👍 Tap thumbs-up on events you like — your feed learns fast',
+  '⚑ Filter by time, price, or category from the top bar',
+  '♥ Save events for later with the heart button',
+  '📅 One tap adds any event to your Google Calendar',
+  'Invite friends in Settings — their saves bubble up in your feed',
+  'Click ⓘ on a card to see where the event came from',
 ];
 
 export const SPLASH_SESSION_KEY = 'locale.splashShown';
@@ -50,7 +56,8 @@ export function hasSplashBeenShown() {
 
 export default function LoadingSplash() {
   const [photoIdx, setPhotoIdx] = useState(0);
-  const [taglineIdx, setTaglineIdx] = useState(0);
+  const [progressIdx, setProgressIdx] = useState(0);
+  const [tipIdx, setTipIdx] = useState(() => Math.floor(Math.random() * TIPS.length));
 
   // Crossfade photos every 4s.
   useEffect(() => {
@@ -58,9 +65,15 @@ export default function LoadingSplash() {
     return () => clearInterval(t);
   }, []);
 
-  // Rotate taglines every 2.2s.
+  // Progress lines churn fast — keeps a sense of activity.
   useEffect(() => {
-    const t = setInterval(() => setTaglineIdx(i => (i + 1) % TAGLINES.length), 2200);
+    const t = setInterval(() => setProgressIdx(i => (i + 1) % PROGRESS_LINES.length), 1400);
+    return () => clearInterval(t);
+  }, []);
+
+  // Tips dwell — 5s gives users actual time to read.
+  useEffect(() => {
+    const t = setInterval(() => setTipIdx(i => (i + 1) % TIPS.length), 5000);
     return () => clearInterval(t);
   }, []);
 
@@ -126,17 +139,33 @@ export default function LoadingSplash() {
           }} />
         </div>
 
-        {/* Rotating tagline */}
+        {/* Progress line — short, rotates quickly. */}
         <div style={{
           marginTop: 18, fontSize: 13,
           color: 'rgba(255,255,255,.55)',
           minHeight: 18,
           fontStyle: 'italic',
-          transition: 'opacity .3s',
         }}
-          key={taglineIdx /* re-mount per change to retrigger fadeIn */}
+          key={`p-${progressIdx}`}
         >
-          <span style={{ animation: 'fadeIn 400ms ease both' }}>{TAGLINES[taglineIdx]}</span>
+          <span style={{ animation: 'fadeIn 350ms ease both' }}>{PROGRESS_LINES[progressIdx]}</span>
+        </div>
+
+        {/* Tip — separated, dwells longer so users can read. */}
+        <div style={{
+          marginTop: 28, padding: '10px 16px',
+          maxWidth: 360, marginLeft:'auto', marginRight:'auto',
+          fontSize: 12,
+          color: 'rgba(255,255,255,.7)',
+          background: 'rgba(255,255,255,.05)',
+          border: '0.5px solid rgba(255,255,255,.10)',
+          borderRadius: 10,
+          minHeight: 36, lineHeight: 1.4,
+        }}
+          key={`t-${tipIdx}`}
+        >
+          <div style={{ fontSize:9, letterSpacing:'.16em', textTransform:'uppercase', color:'rgba(201,168,76,.7)', marginBottom:4 }}>Tip</div>
+          <span style={{ animation: 'fadeIn 500ms ease both' }}>{TIPS[tipIdx]}</span>
         </div>
       </div>
 
