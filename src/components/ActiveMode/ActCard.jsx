@@ -67,21 +67,25 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
       borderRadius: 8,
       minHeight:    44,
       flexShrink:   0,
-      boxShadow:    isSpotlight ? '0 4px 14px rgba(139,92,246,.18)' : '0 1px 3px rgba(0,0,0,0.06)',
+      boxShadow:    isSpotlight ? '0 4px 14px rgba(139,92,246,.25)' : '0 1px 3px rgba(0,0,0,0.06)',
       animation:    exiting ? 'cardOut 200ms ease both' : 'fadeIn 220ms ease both',
       transition:   'box-shadow .15s',
       position:     'relative',
+      overflow:     'hidden',  // contain the inset badge cleanly
     }}>
       {(isSpotlight || isSponsored) && (
+        // Inline strip at the very top — was an overhanging pill which got
+        // clipped by the column's overflow:auto. Strip across full width so
+        // the badge is always visible.
         <div style={{
-          position: 'absolute', top: -8, left: 10,
-          padding: '2px 8px', borderRadius: 99,
-          fontSize: 9, fontWeight: 700, letterSpacing: '.10em', textTransform: 'uppercase',
+          padding: '4px 12px',
+          fontSize: 9, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase',
           background: isSpotlight ? '#8B5CF6' : '#C9A84C',
           color: 'white',
-          boxShadow: '0 1px 4px rgba(0,0,0,.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
-          {isSpotlight ? '✨ Spotlight' : '⚡ Sponsored'}
+          <span>{isSpotlight ? '✨ Spotlight' : '⚡ Sponsored'}</span>
+          {isSpotlight && <span style={{ fontSize: 8, opacity: .8, fontWeight: 500 }}>top pick this weekend</span>}
         </div>
       )}
       {thumbFeedback && (
