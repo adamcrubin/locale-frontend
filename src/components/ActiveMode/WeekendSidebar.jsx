@@ -1,7 +1,7 @@
 import WeatherIcon from '../WeatherIcon';
 import { WEATHER as MOCK_WEATHER } from '../../data/content';
 
-export default function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calendar, onEditCal }) {
+export default function WeekendSidebar({ activities, calQueue, weather, onCal, onWeather, calendar, onEditCal, isGuest = false, onGuestSignIn }) {
   // Sidebar's headline card is now a sponsored event — falls back to the
   // top-scored regular event when no sponsor exists for this weekend.
   const allEvents = Object.values(activities).flat().filter(a => a?.title);
@@ -137,10 +137,28 @@ export default function WeekendSidebar({ activities, calQueue, weather, onCal, o
           );
         })}
 
-        {!calConnected && (
+        {!calConnected && isGuest && (
+          <button
+            onClick={() => onGuestSignIn?.('calendar')}
+            style={{
+              margin:'8px', padding:'12px 14px', borderRadius:10,
+              background:'rgba(201,168,76,.12)',
+              border:'0.5px dashed rgba(201,168,76,.45)',
+              color:'#C9A84C', fontSize:11, fontWeight:600, cursor:'pointer',
+              fontFamily:'DM Sans, sans-serif', textAlign:'left', lineHeight:1.5,
+              width:'calc(100% - 16px)',
+            }}
+          >
+            ✦ Sign in to sync your calendar
+            <div style={{ fontSize:10, color:'rgba(201,168,76,.7)', fontWeight:400, marginTop:4 }}>
+              See your existing weekend plans here, plus add events with one tap.
+            </div>
+          </button>
+        )}
+        {!calConnected && !isGuest && (
           <div style={{margin:'8px',padding:'10px 12px',borderRadius:8,background:'rgba(255,255,255,.03)',border:'0.5px solid rgba(255,255,255,.07)'}}>
             <div style={{fontSize:9,color:'rgba(255,255,255,.25)',lineHeight:1.4}}>
-              📅 Calendar connects automatically when you sign in with Google
+              📅 Click any 📅 button on an event to connect your calendar
             </div>
           </div>
         )}

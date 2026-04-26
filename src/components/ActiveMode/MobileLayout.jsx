@@ -12,6 +12,7 @@ export default function MobileLayout({
   priceFilters = [], setPriceFilters,
   onOpenFilter,
   curatedMode, weather, onWeather, viewMode = 'standard',
+  isGuest = false, onGuestSignIn,
 }) {
   const activeFilterCount = timeFilters.length + priceFilters.length;
   const [activeCat, setActiveCat] = useState(visibleCats[0]?.id || 'outdoors');
@@ -105,6 +106,17 @@ export default function MobileLayout({
     return base;
   })();
 
+  // Guest cap: 5 events per category, no relevancy ranking. For guests we
+  // also re-sort by raw base_score — the per-profile relevancy modifiers
+  // need an account to mean anything.
+  const orderedActs = isGuest
+    ? [...allActs].sort((a, b) => (b.base_score || 0) - (a.base_score || 0))
+    : allActs;
+  const guestCap = isGuest ? 5 : null;
+  const totalAvailable = orderedActs.length;
+  const visibleActs = guestCap ? orderedActs.slice(0, guestCap) : orderedActs;
+  const hiddenCount = guestCap ? Math.max(0, totalAvailable - guestCap) : 0;
+
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
 
@@ -190,7 +202,7 @@ export default function MobileLayout({
         }}
         className="no-scroll"
       >
-        {allActs.length === 0 ? (
+        {visibleActs.length === 0 ? (
           <div style={{
             padding: '40px 20px', textAlign: 'center',
             fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', lineHeight: 1.6,
@@ -201,7 +213,7 @@ export default function MobileLayout({
             </div>
           </div>
         ) : (
-          allActs.map((a, idx) => (
+          visibleActs.map((a, idx) => (
             <ActCard key={`${cat.id}-${a.title}`} act={a} catId={cat.id}
               // First card in Curated column = Spotlight (matches desktop CatColumn).
               isSpotlight={cat.id === 'curated' && idx === 0}
@@ -216,6 +228,22 @@ export default function MobileLayout({
               viewMode={viewMode}
             />
           ))
+        )}
+        {/* Guest sign-in CTA — shown at the bottom of each category in
+            mobile guest mode when there are events past the 5-cap. */}
+        {isGuest && hiddenCount > 0 && (
+          <button
+            onClick={() => onGuestSignIn?.('see-more')}
+            style={{
+              marginTop: 4, padding: '12px 14px', borderRadius: 10,
+              background: 'rgba(201,168,76,.12)',
+              border: '0.5px dashed rgba(201,168,76,.45)',
+              color: '#8B6D2D', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'DM Sans, sans-serif', textAlign: 'center', lineHeight: 1.4,
+            }}
+          >
+            ✦ Sign in to see {hiddenCount} more {cat.label.toLowerCase()} {hiddenCount === 1 ? 'event' : 'events'}
+          </button>
         )}
       </div>
 

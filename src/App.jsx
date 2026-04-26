@@ -114,14 +114,24 @@ function ChipRow({ value, onChange, options, anyLabel = 'Any' }) {
 
 export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
-  const { user, loading: authLoading, error: authError, signInWithGoogle, signOut, isEnabled: authEnabled } = useAuth();
+  const { user, loading: authLoading, error: authError, signInWithGoogle, signOut, connectCalendar, hasCalendarScope, isEnabled: authEnabled } = useAuth();
 
-  // ── Demo mode (no login) ──────────────────────────────────────────────────
+  // ── Browse-without-account mode ────────────────────────────────────────────
+  // Was originally "demo mode"; now framed as the default-no-account
+  // browsing experience. State variable name kept to minimize churn.
   const [demoMode, setDemoMode] = useState(false);
   const [loginPrompt, setLoginPrompt] = useState(null); // null | { feature }
   const isDemo = !user && demoMode;
   const gate = (feature, fn) => (...args) => {
     if (isDemo) { setLoginPrompt({ feature }); return; }
+    // Logged in but trying to use a calendar feature without the scope yet:
+    // pop the same login modal but framed as "connect calendar". User clicks
+    // the primary button → connectCalendar() runs the OAuth round-trip with
+    // the calendar scope added.
+    if (user && feature === 'calendar' && !hasCalendarScope) {
+      setLoginPrompt({ feature: 'calendar', mode: 'calendar-connect' });
+      return;
+    }
     return fn?.(...args);
   };
 
@@ -579,12 +589,22 @@ export default function App() {
       {/* ── Post-event feedback toast ── */}
       <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
 
-      {/* ── Demo-mode login prompt ── */}
+      {/* ── Login / connect-calendar prompt ── */}
       <LoginPromptModal
         open={!!loginPrompt}
         feature={loginPrompt?.feature}
+        mode={loginPrompt?.mode}
         onClose={() => setLoginPrompt(null)}
-        onSignIn={() => { setLoginPrompt(null); signInWithGoogle?.(); }}
+        onSignIn={() => {
+          // Two flows through the same modal:
+          //   - 'calendar-connect': user is signed in but the calendar scope
+          //     wasn't granted yet. Trigger incremental scope.
+          //   - everything else: standard sign-in (no calendar).
+          const mode = loginPrompt?.mode;
+          setLoginPrompt(null);
+          if (mode === 'calendar-connect') connectCalendar?.();
+          else signInWithGoogle?.();
+        }}
       />
     </div>
   );

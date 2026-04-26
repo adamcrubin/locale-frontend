@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-export default function LoginPromptModal({ open, feature, onClose, onSignIn }) {
+export default function LoginPromptModal({ open, feature, mode, onClose, onSignIn }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === 'Escape' && onClose?.();
@@ -10,18 +10,28 @@ export default function LoginPromptModal({ open, feature, onClose, onSignIn }) {
 
   if (!open) return null;
 
+  // Two-mode messaging:
+  //   mode='calendar-connect' → user is signed in, just needs the calendar
+  //   scope. Different framing: "Connect your calendar" rather than "Sign in".
+  //   default → user is unsigned-in (browsing without account).
+  const isCalendarConnect = mode === 'calendar-connect';
   const messages = {
-    save:      'Save events to revisit them later.',
-    thumbs:    'Rate events to personalize your feed.',
-    calendar:  'Add events to your calendar.',
-    settings:  'Customize your preferences.',
-    profile:   'Create and switch between profiles.',
-    saved:     'See everything you\'ve saved.',
-    ai:        'Ask Locale to tailor your recommendations.',
-    reserve:   'Book and reserve with one tap.',
-    default:   'Sign in to use this feature.',
+    save:        'Save events to revisit them later.',
+    thumbs:      'Rate events to personalize your feed.',
+    calendar:    isCalendarConnect
+                   ? 'Locale needs permission to add events to your calendar. We only ask for calendar access when you actually use it.'
+                   : 'Sign in or create an account to sync events with your calendar.',
+    'see-more':  'Sign in or create an account to see more events. Locale ranks them by your tastes when you sign in.',
+    settings:    'Customize your preferences.',
+    profile:     'Create and switch between profiles.',
+    saved:       'See everything you\'ve saved.',
+    ai:          'Sign in to ask Locale to tailor your recommendations.',
+    reserve:     'Book and reserve with one tap.',
+    default:     'Sign in or create an account to use this feature.',
   };
   const copy = messages[feature] || messages.default;
+  const title    = isCalendarConnect ? 'Connect your calendar' : 'Sign in to continue';
+  const ctaLabel = isCalendarConnect ? 'Allow calendar access' : 'Continue with Google';
 
   return (
     <div
@@ -45,7 +55,7 @@ export default function LoginPromptModal({ open, feature, onClose, onSignIn }) {
           fontFamily:'Cormorant Garamond, serif', fontSize:26, fontWeight:400,
           color:'#C9A84C', marginBottom:8, letterSpacing:'.02em',
         }}>
-          Sign in to continue
+          {title}
         </div>
         <div style={{ fontSize:14, color:'rgba(255,255,255,.62)', lineHeight:1.45, marginBottom:22 }}>
           {copy}
@@ -59,7 +69,7 @@ export default function LoginPromptModal({ open, feature, onClose, onSignIn }) {
             fontFamily:'DM Sans, sans-serif',
           }}
         >
-          Continue with Google
+          {ctaLabel}
         </button>
         <button
           onClick={onClose}
@@ -70,7 +80,7 @@ export default function LoginPromptModal({ open, feature, onClose, onSignIn }) {
             fontSize:13, cursor:'pointer', fontFamily:'DM Sans, sans-serif',
           }}
         >
-          Keep browsing demo
+          Keep browsing without an account
         </button>
       </div>
     </div>

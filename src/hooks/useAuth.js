@@ -40,9 +40,23 @@ export function useAuth() {
         try { sessionStorage.removeItem('locale-gcal-token'); } catch {}
       }
 
-      // On sign-in, automatically store Calendar tokens in backend so the
-      // Calendar API works without a separate "Connect Calendar" popup.
+      // On sign-in, store provider_token in backend.
+      // - If this SIGNED_IN was triggered by connectCalendar() (the user
+      //   clicked something calendar-related), the token includes calendar
+      //   scope and we mark `gcal-scope-granted` so the rest of the app
+      //   knows calendar API calls will work.
+      // - Otherwise it's a plain sign-in: token only has openid/email/profile.
+      //   Calendar features will prompt the user to connect later.
       if (event === 'SIGNED_IN' && session?.provider_token) {
+        const wasCalendarFlow = (() => {
+          try { return localStorage.getItem('locale-gcal-pending') === '1'; } catch { return false; }
+        })();
+        if (wasCalendarFlow) {
+          try {
+            localStorage.setItem('locale-gcal-scope-granted', 'true');
+            localStorage.removeItem('locale-gcal-pending');
+          } catch {}
+        }
         const email     = session.user?.email || null;
         const profileId = (() => { try { return localStorage.getItem('locale-active-profile') || 'default'; } catch { return 'default'; } })();
         const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -57,9 +71,10 @@ export function useAuth() {
             refresh_token: session.provider_refresh_token || null,
             email,
             profileId,
+            scopes_include_calendar: wasCalendarFlow,
           }),
         })
-          .then(r => r.ok && window.dispatchEvent(new CustomEvent('gcal-tokens-stored', { detail: { userId } })))
+          .then(r => r.ok && window.dispatchEvent(new CustomEvent('gcal-tokens-stored', { detail: { userId: session.user?.id } })))
           .catch(() => {});
       }
     });
@@ -67,7 +82,18 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Google OAuth — redirects to Google then back to app
+  // Google OAuth — redirects to Google then back to app.
+  //
+  // SCOPE POLICY (May 2026):
+  //   Sign-in itself only requests `openid email profile` — the bare minimum
+  //   Google needs to identify the user. NO calendar scope here. Users have
+  //   said the calendar consent on first sign-in is a trust-killer; many
+  //   bail rather than grant it before they've even seen the app.
+  //
+  //   When the user actually clicks an "Add to calendar" button we trigger
+  //   `connectCalendar()` below, which re-runs the OAuth flow with the
+  //   calendar scope added. Same Google account, same Supabase session;
+  //   Google just shows an incremental consent for the new scope.
   const signInWithGoogle = useCallback(async () => {
     if (!isSupabaseEnabled) {
       setError('Auth not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify env vars.');
@@ -79,15 +105,9 @@ export function useAuth() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          // SCOPE — narrowed from full /auth/calendar to /auth/calendar.events.
-          // The full scope's consent screen says "see, edit, share, and
-          // permanently delete ALL your calendars" which made early users
-          // bail. /calendar.events still lets us add events on the user's
-          // behalf, but the consent screen is dramatically less alarming
-          // ("View and edit events on your calendars").
-          scopes: 'https://www.googleapis.com/auth/calendar.events',
+          // Bare minimum — no calendar.
+          scopes: 'openid email profile',
           redirectTo: window.location.origin,
-          queryParams: { access_type: 'offline' },
         },
       });
       if (error) { setError(error.message); setLoading(false); return false; }
@@ -97,11 +117,40 @@ export function useAuth() {
     }
   }, []);
 
+  // Incremental scope grant — called when the user wants to use a calendar
+  // feature for the first time. Triggers a fresh OAuth round-trip with the
+  // calendar.events scope appended. Google will show an incremental consent
+  // screen ("Locale also wants permission to view and edit your calendar
+  // events") and on success the new provider_token includes the scope.
+  const connectCalendar = useCallback(async () => {
+    if (!isSupabaseEnabled) return false;
+    try {
+      // Pending flag — the auth state listener watches for this and marks
+      // scope granted on the next SIGNED_IN. localStorage survives the
+      // OAuth redirect; sessionStorage doesn't.
+      try { localStorage.setItem('locale-gcal-pending', '1'); } catch {}
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          scopes: 'openid email profile https://www.googleapis.com/auth/calendar.events',
+          redirectTo: window.location.origin,
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        },
+      });
+      if (error) { setError(error.message); return false; }
+      return true;
+    } catch (e) {
+      setError(e.message); return false;
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     if (!isSupabaseEnabled) return;
     await supabase.auth.signOut();
     try {
       localStorage.removeItem('locale-remember-me');
+      localStorage.removeItem('locale-gcal-scope-granted');
+      localStorage.removeItem('locale-gcal-pending');
       sessionStorage.removeItem('locale-gcal-token');
     } catch {}
     setUser(null);
@@ -115,5 +164,17 @@ export function useAuth() {
     try { return localStorage.getItem('locale-remember-me') === 'true'; } catch { return false; }
   })();
 
-  return { user, loading, error, signInWithGoogle, signOut, getCalendarToken, isRemembered, isEnabled: isSupabaseEnabled };
+  // Does the current session's provider_token include calendar scope?
+  // We can't introspect Google scopes from the token alone, so we keep a
+  // simple flag in localStorage that connectCalendar() sets after success.
+  const hasCalendarScope = (() => {
+    try { return localStorage.getItem('locale-gcal-scope-granted') === 'true'; } catch { return false; }
+  })();
+
+  return {
+    user, loading, error,
+    signInWithGoogle, signOut, getCalendarToken,
+    connectCalendar, hasCalendarScope,
+    isRemembered, isEnabled: isSupabaseEnabled,
+  };
 }

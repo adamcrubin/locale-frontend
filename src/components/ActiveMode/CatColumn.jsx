@@ -19,7 +19,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard' }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn }) {
   const allActsUnsliced = dedupeActivities(
     (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
       .filter(a => !removed[`${cat.id}::${a.title}`])
@@ -46,7 +46,19 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
         return priceFilters.includes(tier);
       })
   );
-  const allActs = curatedMode ? allActsUnsliced.slice(0, 5) : allActsUnsliced;
+  // Guest cap: 5 events per category, no relevancy ranking. The unsigned-in
+  // experience is intentionally limited so users see the value before
+  // committing to an account. Curated mode (a separate setting) also caps at 5.
+  // For guests, re-sort by raw base_score (drop the per-profile relevancy
+  // modifiers) — relevancy needs an account to learn from.
+  const orderedActs = isGuest
+    ? [...allActsUnsliced].sort((a, b) => (b.base_score || 0) - (a.base_score || 0))
+    : allActsUnsliced;
+  const guestCap = isGuest ? 5 : null;
+  const cap = guestCap ?? (curatedMode ? 5 : null);
+  const totalAvailable = orderedActs.length;
+  const allActs = cap ? orderedActs.slice(0, cap) : orderedActs;
+  const hiddenCount = cap ? Math.max(0, totalAvailable - cap) : 0;
 
   const isDimmed  = weatherDim.includes(cat.id);
   const isBoosted = weatherBoost.includes(cat.id);
@@ -114,6 +126,25 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
               );
             })
         }
+        {/* Guest sign-in CTA — only in browse-without-account mode AND only
+            when there's actually more content the guest isn't seeing.
+            Persistent at the bottom of each column so any scroll lands on it. */}
+        {isGuest && hiddenCount > 0 && (
+          <button
+            onClick={() => onGuestSignIn?.('see-more')}
+            style={{
+              marginTop: 4, padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(201,168,76,.10)',
+              border: '0.5px dashed rgba(201,168,76,.45)',
+              color: '#8B6D2D', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'DM Sans, sans-serif', textAlign: 'center', lineHeight: 1.4,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(201,168,76,.18)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(201,168,76,.10)'; }}
+          >
+            ✦ Sign in to see {hiddenCount} more {cat.label.toLowerCase()} {hiddenCount === 1 ? 'event' : 'events'}
+          </button>
+        )}
       </div>
     </div>
   );
