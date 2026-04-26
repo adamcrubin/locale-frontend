@@ -3,6 +3,7 @@ import WeatherIcon from '../WeatherIcon';
 import { ACTIVITIES as MOCK_ACTIVITIES } from '../../data/content';
 import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier, getWeekendWeather } from './utils';
 import ActCard from './ActCard';
+import { FunnelIcon } from '../icons';
 
 export default function MobileLayout({
   visibleCats, activities, removed,
@@ -151,7 +152,7 @@ export default function MobileLayout({
       </div>
 
       {/* Category header with L/R arrows */}
-      <div className={cat.cls} style={{
+      <div className={cat.cls} data-tour="mobile-cat-header" style={{
         padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minWidth: 0,
       }}>
         <button onClick={goPrev} style={{
@@ -171,15 +172,15 @@ export default function MobileLayout({
           </div>
         </div>
 
-        <button onClick={() => onOpenFilter?.()} title="Filters" style={{
+        <button onClick={() => onOpenFilter?.()} title="Filters" data-tour="mobile-filter" style={{
           height: 32, padding: '0 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
           background: activeFilterCount > 0 ? 'rgba(201,168,76,.25)' : 'rgba(0,0,0,.15)',
           color: activeFilterCount > 0 ? '#C9A84C' : 'currentColor',
           fontSize: 12, fontFamily: 'DM Sans, sans-serif', fontWeight: 600,
-          display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
           minHeight: 40,
         }}>
-          ⚑{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
+          <FunnelIcon size={13} />{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
         </button>
 
         <button onClick={goNext} style={{
@@ -209,7 +210,7 @@ export default function MobileLayout({
           }}>
             Nothing here yet{activeFilterCount > 0 ? ' matching your filters' : ''}
             <div style={{ fontSize: 11, marginTop: 8, opacity: .6 }}>
-              {activeFilterCount > 0 ? 'Try clearing filters from the ⚑ button.' : 'Check back Thursday for weekend picks'}
+              {activeFilterCount > 0 ? 'Try clearing filters from the filter button.' : 'Check back Thursday for weekend picks'}
             </div>
           </div>
         ) : (

@@ -199,7 +199,7 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
   );
 }
 
-export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources, onShowPage, calendar }) {
+export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources, onShowPage, calendar, onRestartTour }) {
   const isAdmin = isAdminUser(user);
   const [city,          setCity]        = useState(settings.city);
   const [homeAddress,   setHomeAddress] = useState(settings.homeAddress || '');
@@ -371,13 +371,26 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
             <div style={{ fontSize:11, color:'rgba(255,255,255,.4)', marginBottom:8 }}>Theme</div>
             <ThemeToggle themeId={themeId} setTheme={setTheme} currentTheme={currentTheme} />
           </div>
-          <div style={{ ...row, borderBottom:'none' }}>
+          <div style={{ ...row }}>
             <div>
               <div>Curated mode</div>
               <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:1 }}>Limit to max 5 activities per category</div>
             </div>
             <Toggle checked={curatedMode} onChange={e => setCuratedMode(e.target.checked)} />
           </div>
+          {onRestartTour && (
+            <div style={{ ...row, borderBottom:'none' }}>
+              <div>
+                <div>Replay welcome tour</div>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,.3)', marginTop:1 }}>The 30-second walkthrough you saw on first sign-in</div>
+              </div>
+              <button onClick={() => { onClose(); onRestartTour(); }} style={{
+                fontSize:11, padding:'5px 12px', borderRadius:8,
+                background:'rgba(201,168,76,.18)', border:'0.5px solid rgba(201,168,76,.35)',
+                color:'#C9A84C', cursor:'pointer', fontFamily:'DM Sans, sans-serif',
+              }}>Replay</button>
+            </div>
+          )}
         </Section>
 
         {/* ── Friends ── */}

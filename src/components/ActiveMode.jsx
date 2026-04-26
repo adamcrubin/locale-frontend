@@ -229,7 +229,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
               )}
             </div>
           )}
-          <button onClick={() => onSettings()} style={{fontSize:isMobile?14:11,padding:isMobile?'4px 7px':'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>⚙</button>
+          <button onClick={() => onSettings()} data-tour="settings" style={{fontSize:isMobile?14:11,padding:isMobile?'4px 7px':'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'rgba(255,255,255,.07)',border:'0.5px solid rgba(255,255,255,.12)',color:'rgba(255,255,255,.55)',fontFamily:'var(--font-body)'}}>⚙</button>
           {!isMobile && (
             <button onClick={onAmbient} style={{fontSize:11,padding:'5px 10px',borderRadius:'var(--radius-btn)',cursor:'pointer',background:'var(--accent-bg)',border:'0.5px solid var(--accent-border)',color:'var(--accent)',fontFamily:'var(--font-body)'}}>Ambient</button>
           )}
@@ -306,6 +306,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                   }
                   return (
                     <div onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}
+                      data-tour="categories"
                       style={{flex:1,display:'grid',gridTemplateColumns:`repeat(${slots.length},1fr)`,minHeight:0,overflow:'hidden'}}
                     >
                       {slots.map(slot =>

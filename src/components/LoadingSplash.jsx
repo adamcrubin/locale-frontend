@@ -38,7 +38,7 @@ const PROGRESS_LINES = [
 
 const TIPS = [
   '👍 Tap thumbs-up on events you like — your feed learns fast',
-  '⚑ Filter by time, price, or category from the top bar',
+  'Filter by time, price, or category from the top bar',
   '♥ Save events for later with the heart button',
   '📅 One tap adds any event to your Google Calendar',
   'Invite friends in Settings — their saves bubble up in your feed',

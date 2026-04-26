@@ -17,6 +17,8 @@ import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components
 import FriendRequestsToast from './components/FriendRequestsToast';
 import StaticPage from './components/StaticPage';
 import FilterSheet from './components/FilterSheet';
+import GuidedTour, { hasSeenTour, markTourSeen, resetTour } from './components/GuidedTour';
+import { FunnelIcon } from './components/icons';
 import { useAuth }          from './hooks/useAuth';
 import { useSettings }      from './hooks/useSettings';
 import { useActivities }    from './hooks/useActivities';
@@ -137,6 +139,21 @@ export default function App() {
 
   // ── First-visit flag ──────────────────────────────────────────────────────
   const [firstVisit] = useState(() => !hasVisitedBefore());
+
+  // ── Guided tour ───────────────────────────────────────────────────────────
+  // Fires once after a signed-in user lands on the active feed, only when
+  // we haven't shown it before. Guests don't get the tour (they're being
+  // pitched, not onboarded). Settings has a "Restart tour" button that
+  // calls resetTour() → setTourOpen(true).
+  const [tourOpen, setTourOpen] = useState(false);
+  useEffect(() => {
+    if (!user) return;                        // signed-in only
+    if (!settings.onboardingDone) return;     // wait until past onboarding
+    if (hasSeenTour()) return;                // one-shot
+    // Wait a beat so the feed paints + targets are mounted
+    const t = setTimeout(() => setTourOpen(true), 700);
+    return () => clearTimeout(t);
+  }, [user, settings.onboardingDone]);
 
   // ── Settings (keyed to user.id when logged in, localStorage otherwise) ──
   const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(user);
@@ -442,7 +459,7 @@ export default function App() {
           gap:12, flexWrap:'wrap',
         }}>
           {screen === 'active' && (
-            <button onClick={() => setFilterOpen(true)} title="Filters" style={{
+            <button onClick={() => setFilterOpen(true)} title="Filters" data-tour="filter" style={{
               display:'flex', alignItems:'center', gap:6,
               padding:'4px 12px', fontSize:11, fontWeight:600, cursor:'pointer',
               background: (timeFilters.length + priceFilters.length) > 0 ? 'rgba(201,168,76,.22)' : 'rgba(255,255,255,.06)',
@@ -451,7 +468,7 @@ export default function App() {
               color: (timeFilters.length + priceFilters.length) > 0 ? '#C9A84C' : 'rgba(255,255,255,.7)',
               fontFamily:'DM Sans, sans-serif',
             }}>
-              ⚑ Filter{(timeFilters.length + priceFilters.length) > 0 ? ` · ${timeFilters.length + priceFilters.length}` : ''}
+              <FunnelIcon size={11} /> Filter{(timeFilters.length + priceFilters.length) > 0 ? ` · ${timeFilters.length + priceFilters.length}` : ''}
             </button>
           )}
 
@@ -543,6 +560,7 @@ export default function App() {
           onShowSources={() => setShowSources(true)}
           onShowPage={setStaticPageId}
           calendar={calendar}
+          onRestartTour={() => { resetTour(); setTourOpen(true); }}
         />
       )}
 
@@ -605,6 +623,14 @@ export default function App() {
           if (mode === 'calendar-connect') connectCalendar?.();
           else signInWithGoogle?.();
         }}
+      />
+
+      {/* Guided tour — first-time signed-in users get a 5-7 step coachmark
+          walkthrough. localStorage-gated; replay from Settings. */}
+      <GuidedTour
+        open={tourOpen}
+        onClose={() => { markTourSeen(); setTourOpen(false); }}
+        isMobile={isMobileInit}
       />
     </div>
   );

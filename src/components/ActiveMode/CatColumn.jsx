@@ -104,7 +104,8 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
               // Renders with violet styling and starts expanded.
               const isSpotlightCard = isCurated && idx === 0;
               return (
-              <ActCard key={a.title}
+              <div key={a.title} data-tour={isSpotlightCard ? 'spotlight' : undefined}>
+              <ActCard
                 act={{
                   ...a,
                   _conflict: hasConflict?.(a),
@@ -123,6 +124,7 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                 profileId={profileId}
                 viewMode={viewMode}
               />
+              </div>
               );
             })
         }

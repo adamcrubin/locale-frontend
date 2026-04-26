@@ -41,7 +41,7 @@ export default function WeekendSidebar({ activities, calQueue, weather, onCal, o
   const calConnected = calendar?.connected || false;
 
   return (
-    <div style={{
+    <div data-tour="sidebar" style={{
       width: 220, background: '#1A1815', borderLeft: '0.5px solid rgba(255,255,255,.07)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0,
     }}>
