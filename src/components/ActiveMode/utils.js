@@ -130,6 +130,13 @@ export function formatWhen(act) {
     if (combined.includes('morning') || combined.includes('breakfast') || combined.includes('brunch')) timeStr = 'Morning';
     else if (combined.includes('evening') || combined.includes('night') || combined.includes('dinner') || combined.includes('music') || combined.includes('concert') || combined.includes('show')) timeStr = 'Evening';
     else if (combined.includes('afternoon') || combined.includes('lunch') || combined.includes('midday')) timeStr = 'Afternoon';
+    else if (act.ticket_url && act.start_date) {
+      // Time-bound event whose specific time we couldn't extract — but it
+      // clearly has one (a specific date AND a ticketing page). Don't lie
+      // with "Anytime"; the user can click the ticket button to see when.
+      // Evergreens (no start_date) keep "Anytime" because they really are.
+      timeStr = 'Time on ticket';
+    }
     else timeStr = 'Anytime';
   }
 
