@@ -221,6 +221,21 @@ Not the focus, but options:
 
 ---
 
+## Shipped 2026-04-25 (later session)
+
+- **MLB Nationals schedule sync** — new `src/services/sports.js` pulls home games from the public MLB Stats API, dedupes via `content_hash`, upserts to `events` with proper `start_date`/`start_time`/category. Wired into nightly 3am cron via `syncAllSports()`. Admin trigger: `POST /admin/sync-sports`. (Capitals + DC United coming next — same scaffold.)
+- **Bad evergreen cleanup** — deleted "Nationals game" / "Capitals + Wizards" / "DC United" entries from `evergreen_events` (sports games are time-bound, not evergreen).
+- **User feedback collection** — new `user_feedback` Postgres table + `POST /api/feedback` (rate-limited, 4000-char cap, validated category) + `GET /admin/feedback` for triage. Frontend `SendFeedback.jsx` floating 💬 button + modal lands here. Categories: bug / idea / data / praise / other.
+- **PostEventFeedback "Didn't go"** — added 4th option for users who skipped the event. Mapped to `down` server-side for now; could split later if signal warrants. Mobile layout uses `safe-area-inset-bottom` + flex-wrap to avoid being hidden by iOS chrome on narrow screens.
+- **Sunday "next weekend" banner fix** — was firing Monday morning while "this weekend" had already auto-shifted, so it pointed users to a weekend they were already viewing. Now Sunday ≥3pm only.
+- **Per-column ErrorBoundary** — new `SingleColumnBoundary` wraps each `<CatColumn>` / `<StackedColumn>` so a single bad event doesn't blank the entire feed. Outer boundary kept as catastrophic fallback.
+- **Admin auth hardening** — replaced `req.headers !== secret` with `crypto.timingSafeEqual()` + per-IP rate limit (10 failed attempts/hour, 1-hour window). Successful requests don't count.
+- **Performance**:
+  - `CatColumn` filter chain wrapped in `useMemo` — was re-running `dedupe + 4 filters` on every keystroke in any sibling column.
+  - `useWeekdayActivities` is now lazy — only fetches when `screen === 'weekday'`. Saves a 60-event payload for users who never open Weekday mode.
+- **ESLint `no-use-before-define`** — added with `variables: true` to catch the temporal-dead-zone footgun (useEffect dep array referencing `const` declared further down in the same component → ReferenceError → blank screen). We hit this twice; now it's lint-blocked.
+- **Auth path console.log strip** — gated the OAuth token log behind `NODE_ENV !== 'production'`.
+
 ## Shipped 2026-04-25
 
 - **Demo-mode gating** — `LoginPromptModal` blocks writes/personalization for unauthenticated users; keeps browsing open. Profile avatar hidden; "Sign in" CTA shown in header.
@@ -236,7 +251,7 @@ Not the focus, but options:
 
 ## Still open (ordered)
 
-1. **Admin auth** — shared-secret `X-Admin-Token` middleware + `ADMIN_SECRET` env var. Apply to `/api/admin/*`.
+1. ~~**Admin auth**~~ ✅ Shipped 2026-04-25 (later session) — `crypto.timingSafeEqual` + per-IP rate limit on `/api/admin/*`.
 2. **Supabase RLS** — SQL migration to lock tables to `auth.uid()`; swap service-role key for user JWT in hot paths.
 3. **Per-event zip + travel time** — add `event_zip`, `event_lat`, `event_lng`, `drive_minutes_from_user`. Phase 1: extract zip from address via Claude during extraction. Phase 2: static zip→zip drive-time table. Phase 3: Google Distance Matrix + cache.
 4. **Evergreens seed table** — ~100 manually curated DC metro anytime options (museums, theaters, bowling, escape rooms, trails, etc.). Merge into feed at `base_score≈0.45`, filtered by weather (indoor/outdoor).

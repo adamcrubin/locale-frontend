@@ -43,10 +43,18 @@ function transformFeed(feed) {
 
 // `profile` is the full profile object — passed through to fetchEventFeed
 // so the backend scoring engine can apply preference matching.
-export function useWeekdayActivities(city, profile) {
+//
+// `enabled` (default true) gates the fetch — when the user is on the
+// weekend feed we don't need weekday activities, so callers pass
+// `enabled: screen === 'weekday'` to skip the request entirely. Saves a
+// 60-event payload per session for users who never open Weekday mode.
+// First call after enabling will hit the network; subsequent screen
+// toggles within the session reuse the already-loaded state.
+export function useWeekdayActivities(city, profile, enabled = true) {
   const [activities, setActivities] = useState(WEEKDAY_ACTIVITIES);
   const [loading,    setLoading]    = useState(false);
   const [source,     setSource]     = useState('mock');
+  const [hasLoaded,  setHasLoaded]  = useState(false);
 
   const zip       = city?.match(/\b(\d{5})\b/)?.[1] || '22046';
   const profileId = profile?.id || 'default';
@@ -63,6 +71,7 @@ export function useWeekdayActivities(city, profile) {
         setActivities(transformed);
         setSource('live');
       }
+      setHasLoaded(true);
     } catch (e) {
       console.warn('[weekday] Using mock data:', e.message);
       setSource('mock');
@@ -71,7 +80,11 @@ export function useWeekdayActivities(city, profile) {
     }
   }, [city, profileId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Only fetch when caller has enabled the hook AND we haven't already
+    // loaded. Avoids re-fetching on every screen flip back to Weekday.
+    if (enabled && !hasLoaded) load();
+  }, [enabled, hasLoaded, load]);
 
   return { activities, loading, source, reload: load };
 }

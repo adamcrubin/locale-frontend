@@ -164,6 +164,33 @@ Sources are also updated: `last_checked`, `last_ok`, and `last_error` fields.
 
 ---
 
+## Stage 1b: Direct API Sources (`src/services/sports.js`)
+
+Some sources don't need scraping at all — they expose a structured API. Sports schedules are the cleanest example: dates, times, opponent, venue, all in JSON.
+
+`sports.js` bypasses Stages 1–2 (scrape + Haiku extract) and writes directly to `events`:
+
+| Source | API | Status |
+|---|---|---|
+| Washington Nationals home games | `https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=120` (free, no auth) | Live |
+| Washington Capitals | NHL public API | Coming next |
+| DC United home games | MLS public API | Coming next |
+
+**Flow** (`syncNationalsSchedule(daysAhead=30)`):
+1. Fetch schedule from MLB Stats API.
+2. Filter to home games (`teams.home.team.id === 120`); skip postponed/cancelled.
+3. Build event row: title (`Nationals vs <opponent>`), `start_date` / `start_time` (ET), `venue: 'Nationals Park'`, `category: 'sports'`, `source: 'MLB Stats API'`.
+4. Compute `content_hash = md5(normalized_title + start_date)` (matches extractor's dedup pattern).
+5. Upsert with `ON CONFLICT (content_hash) DO UPDATE` so re-runs are idempotent.
+
+**Triggers:**
+- Manual: `POST /api/admin/sync-sports`
+- Scheduled: nightly 3am cron (see Cron Schedule below) calls `syncAllSports()`
+
+**Why not evergreen?** Sports games have specific dates and sell tickets per-game — they belong in `events`, not `evergreen_events`. Earlier "Nationals game" / "Capitals + Wizards" rows in `evergreen_events` with vague "Check schedule" copy were misleading; they were deleted in 2026-04-25.
+
+---
+
 ## Stage 2: Extraction (`src/services/extractor.js`)
 
 ### Trigger
@@ -403,6 +430,7 @@ Polls `GET /api/pipeline-status` every **8 seconds**. Shows an amber pulsing ind
 |---|---|---|
 | Weather refresh | Every 3 hours | Clears weather cache, re-fetches |
 | Scrape + extract | Daily at 5am | Skips scrape if ≥5 sources fresh within 6h; always runs extraction |
+| **Sports sync** | **Daily at 3am** | `syncAllSports()` — pulls schedules from MLB Stats API (Nationals home games); Capitals + DC United coming next |
 | Evergreen verification | Every Monday 4am | `runVerificationPass(zip)` |
 | Health check | 1st of each month at 3am | `checkSourceHealth` + `runAutoValidator` + `runVerificationPass` |
 | **DB cleanup** | **Every Sunday at 2am** | Deletes expired `scraped_content`, `generated_activities`, and inactive `events` older than 30 days |

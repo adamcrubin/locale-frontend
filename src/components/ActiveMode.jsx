@@ -16,6 +16,7 @@ import WeekendSidebar from './ActiveMode/WeekendSidebar';
 import MobileLayout from './ActiveMode/MobileLayout';
 import { STATIC_PAGE_LINKS } from './StaticPage';
 
+// Outer boundary — catches catastrophic layout-level failures (whole feed crashes).
 class ColumnErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
@@ -28,6 +29,30 @@ class ColumnErrorBoundary extends Component {
           <div style={{ fontSize:14 }}>Something went wrong rendering the feed.</div>
           <button onClick={() => this.setState({ error: null })} style={{ fontSize:12, padding:'6px 16px', borderRadius:8, cursor:'pointer', background:'var(--accent-bg)', border:'0.5px solid var(--accent-border)', color:'var(--accent)', fontFamily:'var(--font-body)' }}>Try again</button>
           <details style={{ fontSize:10, color:'var(--muted)', maxWidth:400 }}><summary>Details</summary>{this.state.error?.message}</details>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Per-column boundary — isolates a single bad card so one render error
+// doesn't blank the entire feed. Renders a minimal in-column fallback that
+// preserves the column shell (so the grid keeps its layout) while signaling
+// to the user that this lane misbehaved.
+class SingleColumnBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) {
+    console.error('[SingleColumnBoundary]', this.props.label || '', e, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ flex:1, display:'flex', flexDirection:'column', borderRight:'0.5px solid var(--border)', minWidth:0, minHeight:0, overflow:'hidden', alignItems:'center', justifyContent:'center', gap:8, padding:'18px 12px', color:'var(--muted)', fontFamily:'var(--font-body)', fontSize:11, textAlign:'center' }}>
+          <div style={{ fontSize:20 }}>⚠️</div>
+          <div>{this.props.label || 'This column'} hit an error.</div>
+          <button onClick={() => this.setState({ error: null })} style={{ fontSize:10, padding:'4px 10px', borderRadius:6, cursor:'pointer', background:'var(--accent-bg)', border:'0.5px solid var(--accent-border)', color:'var(--accent)', fontFamily:'var(--font-body)' }}>Retry</button>
         </div>
       );
     }
@@ -236,17 +261,21 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
         </div>
       </div>
 
-      {/* Sunday-evening / Monday-morning banner — when this weekend is mostly
-          gone, nudge the user to peek at next weekend instead. Only shows
-          when timeWindow='this-weekend' (don't pester them if they're
-          already viewing next weekend or weeknights). */}
+      {/* Sunday-afternoon banner — when this weekend is mostly gone, nudge
+          the user to peek at next weekend instead. Only shows when
+          timeWindow='this-weekend' AND it's actually Sunday afternoon/
+          evening. Previously included Monday <noon, but by Monday morning
+          'this weekend' has already auto-rolled forward to the upcoming
+          Fri-Sun — clicking 'Show next weekend' would then jump TWO
+          weekends out, which beta testers found confusing. */}
       {(() => {
         if (timeWindow !== 'this-weekend') return null;
         const now = new Date();
         const day = now.getDay();
         const hr  = now.getHours();
-        // Sun after 5pm OR Mon before noon = "weekend's over" zone
-        const isWindingDown = (day === 0 && hr >= 17) || (day === 1 && hr < 12);
+        // Sun ≥3pm only — once it's Mon, 'this weekend' already points
+        // to the upcoming weekend so the banner is redundant.
+        const isWindingDown = day === 0 && hr >= 15;
         if (!isWindingDown) return null;
         return (
           <div style={{
@@ -349,8 +378,12 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
                     >
                       {slots.map(slot =>
                         slot.type === 'stacked'
-                          ? <StackedColumn key={slot.cats.map(c=>c.id).join('+')} cats={slot.cats} {...colProps} />
-                          : <CatColumn key={slot.cat.id} cat={slot.cat} {...colProps} />
+                          ? <SingleColumnBoundary key={slot.cats.map(c=>c.id).join('+')} label={slot.cats.map(c=>c.label).join(' / ')}>
+                              <StackedColumn cats={slot.cats} {...colProps} />
+                            </SingleColumnBoundary>
+                          : <SingleColumnBoundary key={slot.cat.id} label={slot.cat.label}>
+                              <CatColumn cat={slot.cat} {...colProps} />
+                            </SingleColumnBoundary>
                       )}
                     </div>
                   );

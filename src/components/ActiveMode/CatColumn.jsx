@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ACTIVITIES as MOCK_ACTIVITIES, ALL_CATEGORIES } from '../../data/content';
 import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier } from './utils';
 import { titlePrefixForCategory } from '../../lib/eventEmoji';
@@ -20,31 +21,34 @@ function sourceCatIcon(act) {
 }
 
 export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn }) {
-  const allActsUnsliced = dedupeActivities(
-    (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
-      .filter(a => !removed[`${cat.id}::${a.title}`])
-      .filter(a => !isPastEvent(a))
-      .filter(a => !isFrontendBlocked(a))
-      // Cross-cat dedup intentionally removed — if Haiku tagged an event for
-      // multiple categories, the user should see it in each of those columns
-      // (previously it only appeared in whichever column rendered first).
-      .filter(() => true)
-      .filter(a => {
-        // Multi-select time filter. Empty array = show all.
-        // "any"-tagged events (no time info) surface regardless of selection.
-        if (!timeFilters?.length) return true;
-        const tod = getTimeOfDay(a);
-        return timeFilters.includes(tod) || tod === 'any';
-      })
-      .filter(a => {
-        // Multi-select price filter. Empty array = show all.
-        // When any specific tier is selected, unknowns are hidden — matches
-        // desktop behavior so "Free only" doesn't surface mystery-priced items.
-        if (!priceFilters?.length) return true;
-        const tier = getPriceTier(a);
-        if (tier === 'unknown') return false;
-        return priceFilters.includes(tier);
-      })
+  // Memoize the filter chain — runs on every render of any sibling
+  // column (e.g. when a user toggles a chip in another column). Without
+  // memo, dedupeActivities + 4 filters re-run for every column on every
+  // keystroke. Now only re-runs when actual inputs change.
+  const allActsUnsliced = useMemo(() =>
+    dedupeActivities(
+      (activities[cat.id]?.length>0 ? activities[cat.id] : MOCK_ACTIVITIES[cat.id]||[])
+        .filter(a => !removed[`${cat.id}::${a.title}`])
+        .filter(a => !isPastEvent(a))
+        .filter(a => !isFrontendBlocked(a))
+        .filter(a => {
+          // Multi-select time filter. Empty array = show all.
+          // "any"-tagged events (no time info) surface regardless of selection.
+          if (!timeFilters?.length) return true;
+          const tod = getTimeOfDay(a);
+          return timeFilters.includes(tod) || tod === 'any';
+        })
+        .filter(a => {
+          // Multi-select price filter. Empty array = show all.
+          // When any specific tier is selected, unknowns are hidden — matches
+          // desktop behavior so "Free only" doesn't surface mystery-priced items.
+          if (!priceFilters?.length) return true;
+          const tier = getPriceTier(a);
+          if (tier === 'unknown') return false;
+          return priceFilters.includes(tier);
+        })
+    ),
+    [activities, cat.id, removed, timeFilters, priceFilters]
   );
   // Guest cap: 5 events per category, no relevancy ranking. The unsigned-in
   // experience is intentionally limited so users see the value before

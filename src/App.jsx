@@ -13,6 +13,7 @@ import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
 import PostEventFeedback    from './components/PostEventFeedback';
 import LoginPromptModal     from './components/LoginPromptModal';
+import SendFeedback         from './components/SendFeedback';
 import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
 import FriendRequestsToast from './components/FriendRequestsToast';
 import StaticPage from './components/StaticPage';
@@ -204,7 +205,10 @@ export default function App() {
   // ── Live data hooks ───────────────────────────────────────────────────────
   const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
   const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user, timeWindow);
-  const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
+  // Lazy-fetch — only hits the backend once the user actually opens
+  // Weekday mode. Most sessions are weekend-only, so this saves a 60-event
+  // payload per visit. Once loaded, the result is cached for the session.
+  const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile, screen === 'weekday');
   // Prefer the user's selected neighborhood (has lat/lng) for weather —
   // backend uses those directly; city string is fallback.
   const { weather,            source: weatherSource    } = useWeather(settings.neighborhood || settings.city);
@@ -252,6 +256,16 @@ export default function App() {
     if (screen === 'ambient') ambientEnteredAt.current = Date.now();
   }, [screen]);
 
+  // transitionTo MUST be declared before resetIdleTimer because the latter
+  // references it inside a setTimeout closure. Lint rule no-use-before-define
+  // catches this even though the timeout fires after render — same flavor of
+  // TDZ-trap that's bitten us before.
+  const transitionTo = (nextScreen) => {
+    if (transitioning) return;
+    setTransitioning(true);
+    setTimeout(() => { setScreen(nextScreen); setTransitioning(false); }, 50);
+  };
+
   const resetIdleTimer = () => {
     clearTimeout(idleTimer.current);
     if (screen !== 'ambient') {
@@ -263,12 +277,6 @@ export default function App() {
     resetIdleTimer();
     return () => clearTimeout(idleTimer.current);
   }, [screen, settings.ambientTimeoutMinutes]);
-
-  const transitionTo = (nextScreen) => {
-    if (transitioning) return;
-    setTransitioning(true);
-    setTimeout(() => { setScreen(nextScreen); setTransitioning(false); }, 50);
-  };
 
   const exitAmbient = () => {
     const inAmbientMs = Date.now() - (ambientEnteredAt.current || 0);
@@ -655,6 +663,14 @@ export default function App() {
           with a feedback ask is jarring) and during onboarding/welcome flows. */}
       {screen !== 'ambient' && (
         <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
+      )}
+
+      {/* ── Floating Send Feedback button ──
+          Free-text feedback drop. Hidden on ambient + during onboarding/welcome
+          (those have their own primary CTAs and a feedback button competing
+          would be noise). */}
+      {screen !== 'ambient' && settings.onboardingDone && (
+        <SendFeedback user={user} profileId={activeProfile?.id} />
       )}
 
       {/* ── Login / connect-calendar prompt ── */}

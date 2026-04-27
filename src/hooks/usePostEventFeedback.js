@@ -76,9 +76,17 @@ export function usePostEventFeedback(profileId, zipCode = '22046') {
   const respond = async (response) => {
     if (!prompt) return;
 
-    // Record feedback
+    // Record feedback. "didn't-go" is a real signal (slight negative —
+    // we showed something the user wasn't compelled to attend) but not
+    // as strong as a thumbs-down (where they went and disliked it).
     if (prompt.activityId && response !== 'skip') {
-      const feedbackMap = { loved:'up', ok:'up', meh:'down', skip:null };
+      const feedbackMap = {
+        loved:      'up',
+        ok:         'up',
+        meh:        'down',
+        'didnt-go': 'down',     // backend treats as down; could split later
+        skip:       null,
+      };
       const fb = feedbackMap[response];
       if (fb) {
         await postFeedback(profileId, prompt.activityId, prompt.activityType, fb, zipCode)

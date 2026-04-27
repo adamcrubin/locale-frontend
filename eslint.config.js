@@ -24,6 +24,15 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Catches the temporal-dead-zone footgun we hit twice — useEffect
+      // dep array referencing state declared further down in the same
+      // component, throwing ReferenceError → blank screen.
+      'no-use-before-define': ['error', {
+        functions: false,        // function declarations are hoisted, OK
+        classes: true,
+        variables: true,         // const/let → must declare before use
+        allowNamedExports: false,
+      }],
     },
   },
 ])

@@ -304,3 +304,32 @@ Key endpoints consumed by frontend:
 - Tier D (-0.05): bare listing feeds
 
 Pattern match on `sources.name`; see `getSourceAuthorityBoost` in `extractor.js`.
+
+---
+
+## Changes 2026-04-25 (later session)
+
+**Sports as time-bound events, not evergreens.** `Nationals game` / `Capitals + Wizards` / `DC United` were sitting in `evergreen_events` with vague "Check schedule" copy — they're not evergreen, they have specific dates. Deleted those rows. New `src/services/sports.js` pulls Nationals home games from MLB Stats API (`statsapi.mlb.com`), filters to `teamId=120` home games, skips postponed/cancelled, dedupes via `content_hash` (`md5(normalized title + start_date)`), and upserts into `events`. Wired into the nightly 3am cron via `syncAllSports()`. Capitals + DC United next on the same scaffold.
+
+**User feedback collection.** New `user_feedback` table (id, body, category, profile_id, email, user_id, context jsonb, status, created_at). Backend exposes:
+- `POST /api/feedback` — public, validates category against whitelist (bug/idea/data/praise/other), caps body at 4000 chars, validates `userId` shape with regex.
+- `GET /admin/feedback` — admin, lists by status (default `new`).
+- `POST /admin/feedback/:id/status` — admin, triage to `triaged`/`shipped`/`wont-fix`.
+
+Frontend `SendFeedback.jsx` floating 💬 button (bottom-right, safe-area aware) opens a modal with category pills + free-text textarea. Mounted in `App.jsx` only when `screen !== 'ambient' && settings.onboardingDone`.
+
+**PostEventFeedback "Didn't go" option.** 4th choice alongside Loved / Was OK / Meh. Mapped to `down` server-side via `feedbackMap` in `usePostEventFeedback.js` — could split later if we want to weight skip-signal differently from dislike. Mobile positioning fixed: `bottom: calc(env(safe-area-inset-bottom, 0px) + 16px)` so the toast doesn't tuck under iOS chrome; `flex: '1 1 80px'` on buttons so 4 options drop to 2x2 on narrow widths.
+
+**Sunday banner** (`day === 0 && hr >= 17 || day === 1 && hr < 12`) → (`day === 0 && hr >= 15`). The Monday-morning case was firing while "this weekend" had already auto-shifted to upcoming Fri-Sun, telling users to "look at next weekend" while they were already looking at it. Sunday afternoon is the only time the banner adds signal.
+
+**Per-column ErrorBoundary.** New `SingleColumnBoundary` class component wraps each `<CatColumn>` / `<StackedColumn>` in `ActiveMode.jsx`. One bad event now kills its column (with a small in-column retry button) instead of the entire feed. Outer `ColumnErrorBoundary` kept as a catch-all for layout-level crashes.
+
+**Admin auth hardening.** `req.headers !== secret` was vulnerable to timing attacks (early-return on first byte mismatch). Replaced with `crypto.timingSafeEqual` + per-IP failure tracker (`Map` keyed by `req.ip`, 10 attempts/hour, 1-hour rolling window, 429 response on lockout). Successful requests don't count against the limit. See top of `src/routes/api.js`.
+
+**Performance**:
+- `CatColumn` filter chain (`dedupeActivities` + 4 `.filter()` calls) is now `useMemo`'d on `[activities, cat.id, removed, timeFilters, priceFilters]`. Without it, every column re-ran the chain on any sibling's keystroke.
+- `useWeekdayActivities(city, profile, enabled)` — added `enabled` param; only fetches when `screen === 'weekday'`. Most sessions are weekend-only, so this saves a 60-event payload per visit.
+
+**ESLint TDZ rule.** `eslint.config.js` adds `no-use-before-define` with `variables: true, functions: false, classes: true`. Catches the temporal-dead-zone footgun where a `useEffect` dep array references a `const` declared further down in the same component (throws ReferenceError → blank screen). We hit this twice; now lint-blocked. Fixed one existing violation in `App.jsx` (`transitionTo` declared after `resetIdleTimer` referenced it).
+
+**Auth path console.log strip.** Wrapped the OAuth token-storage log in `if (process.env.NODE_ENV !== 'production')` so we don't spew profile IDs in Render logs.
