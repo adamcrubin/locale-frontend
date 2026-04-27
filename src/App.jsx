@@ -456,7 +456,12 @@ export default function App() {
             the container with filters left-aligned */}
       {(screen === 'active' || screen === 'weekday') && !isMobileInit && (
         <div style={{
-          position:'fixed', top:9, left:320, right:230,
+          // right-clearance was 230 but the header cluster grew (ⓘ menu,
+          // pipeline status pill, profile pill, ♥, ⚙, Ambient, Ask). The
+          // pipeline status pill alone is ~140px when active. Bumped to
+          // 540 to reliably clear it. flexWrap lets the toggle drop to a
+          // second row on narrower laptops if everything still doesn't fit.
+          position:'fixed', top:9, left:320, right:540,
           zIndex:30, display:'flex', alignItems:'center',
           gap:12, flexWrap:'wrap',
         }}>
