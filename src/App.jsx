@@ -181,18 +181,10 @@ export default function App() {
     if ((user || demoMode) && firstVisit) markVisited();
   }, [user, demoMode]);
 
-  // ── Live data hooks ───────────────────────────────────────────────────────
-  const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
-  const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user, timeWindow);
-  const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
-  // Prefer the user's selected neighborhood (has lat/lng) for weather —
-  // backend uses those directly; city string is fallback.
-  const { weather,            source: weatherSource    } = useWeather(settings.neighborhood || settings.city);
-  const { photos }                                       = usePhotos(settings.city);
-
-  const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
-
   // ── Screen state ──────────────────────────────────────────────────────────
+  // (Declared BEFORE the data hooks so timeWindow is in scope when
+  // useActivities reads it. Putting useActivities above this triggers a
+  // temporal-dead-zone ReferenceError → blank screen.)
   const isMobileInit = typeof window !== 'undefined' && window.innerWidth < 768;
   // Land on active mode (the feed) regardless of device — ambient is a
   // screensaver, not a useful first impression. Idle timer still transitions
@@ -208,6 +200,18 @@ export default function App() {
   useEffect(() => {
     try { localStorage.setItem('locale-time-window', timeWindow); } catch {}
   }, [timeWindow]);
+
+  // ── Live data hooks ───────────────────────────────────────────────────────
+  const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
+  const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user, timeWindow);
+  const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
+  // Prefer the user's selected neighborhood (has lat/lng) for weather —
+  // backend uses those directly; city string is fallback.
+  const { weather,            source: weatherSource    } = useWeather(settings.neighborhood || settings.city);
+  const { photos }                                       = usePhotos(settings.city);
+
+  const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
+
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
