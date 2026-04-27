@@ -140,11 +140,16 @@ export default function App() {
   // ── First-visit flag ──────────────────────────────────────────────────────
   const [firstVisit] = useState(() => !hasVisitedBefore());
 
+  // ── Settings (keyed to user.id when logged in, localStorage otherwise) ──
+  const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(user);
+
   // ── Guided tour ───────────────────────────────────────────────────────────
   // Fires once after a signed-in user lands on the active feed, only when
   // we haven't shown it before. Guests don't get the tour (they're being
   // pitched, not onboarded). Settings has a "Restart tour" button that
   // calls resetTour() → setTourOpen(true).
+  // NOTE: must be declared AFTER useSettings — its dep array reads
+  // settings.onboardingDone, which would otherwise hit the const TDZ.
   const [tourOpen, setTourOpen] = useState(false);
   useEffect(() => {
     if (!user) return;                        // signed-in only
@@ -154,9 +159,6 @@ export default function App() {
     const t = setTimeout(() => setTourOpen(true), 700);
     return () => clearTimeout(t);
   }, [user, settings.onboardingDone]);
-
-  // ── Settings (keyed to user.id when logged in, localStorage otherwise) ──
-  const { settings, update, activeProfile, updateProfile, addProfile, removeProfile, switchProfile } = useSettings(user);
 
   // ── Profile select screen (shown after login when 2+ profiles exist) ──────
   const [showProfileSelect, setShowProfileSelect] = useState(false);
