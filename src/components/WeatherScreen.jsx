@@ -55,17 +55,20 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
   const WEATHER = (weather && weather.length > 0) ? weather : MOCK_WEATHER;
   const d = WEATHER[idx] || WEATHER[0];
 
-  // Scroll hourly panel to 7am whenever the selected day changes
+  // Scroll hourly panel: to the current 2-hour bucket on today, else 7am.
+  // The grid renders 12 even-hour slots; row height is ~33px.
   useEffect(() => {
     const el = hourlyRef.current;
-    if (!el || !d.hours?.length) return;
-    const target = d.hours.findIndex(h => {
-      const t = (h.t || '').toLowerCase().replace(/\s/g, '');
-      return t === '7am';
-    });
-    if (target > 0) el.scrollTop = target * 33;
-    else el.scrollTop = 0;
-  }, [idx]);
+    if (!el) return;
+    const todayFull = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const isToday   = d.full === todayFull;
+    if (isToday) {
+      const nowSlotIdx = Math.min(11, Math.floor(new Date().getHours() / 2));
+      el.scrollTop = Math.max(0, (nowSlotIdx - 1) * 33);
+    } else {
+      el.scrollTop = 3 * 33; // 6 AM-ish anchor for non-today panels
+    }
+  }, [idx, d.full]);
 
   return (
     <div className="fade-enter" style={{
@@ -102,12 +105,23 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
           borderBottom:'0.5px solid rgba(255,255,255,.08)', flexShrink:0,
         }}>
           {(() => {
+            // Format High/Low: hide an unknown field gracefully (late-evening
+            // loads have hi=null because today's daytime period is over).
+            const hiLo = d.hi != null && d.lo != null ? `${d.hi}° / ${d.lo}°`
+                       : d.hi != null                 ? `${d.hi}°`
+                       : d.lo != null                 ? `Low ${d.lo}°`
+                       : '—';
             const stats = [
-              { l:'High / Low', v:`${d.hi}° / ${d.lo}°` },
-              { l:'Feels like',  v: d.feel != null ? `${d.feel}°` : null },
-              { l:'Wind',        v: d.wind || '—' },
-              { l:'Precip',      v:`${d.precip ?? 0}%` },
-            ].filter(s => s.v !== null);
+              { l:'High / Low', v: hiLo },
+              { l:'Wind',       v: d.wind || '—' },
+              { l:'Precip',     v: `${d.precip ?? 0}%` },
+              // 4th cell: humidity if we got it from hourly, else feels-like
+              // if backend computed it, else fall back to dewpoint placeholder.
+              { l: d.humidity != null ? 'Humidity' : 'Feels like',
+                v: d.humidity != null ? `${d.humidity}%`
+                 : d.feel != null     ? `${d.feel}°`
+                 : '—' },
+            ];
             const perRow = isMobile ? 2 : stats.length;
             return stats.map((s,i)=>{
               const isLastInRow = (i + 1) % perRow === 0;
@@ -187,17 +201,40 @@ export default function WeatherScreen({ initialDay, city, weather, onClose }) {
               const hoursMap = {};
               (d.hours||[]).forEach(h => { hoursMap[normalize(h.t)] = h; });
               const rows = SLOTS.map(slot => hoursMap[normalize(slot)] || { t: slot, temp: null, desc: null, icon: null, p: null });
-              return rows.map((h, i) => (
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:i<rows.length-1?'0.5px solid rgba(255,255,255,.06)':'none', fontSize:12 }}>
-                  <span style={{ width:40, color:'rgba(255,255,255,.35)', flexShrink:0, fontSize:11 }}>{h.t}</span>
-                  <span style={{ width:22, textAlign:'center', flexShrink:0 }}>
-                    {h.icon || h.desc ? <WeatherIcon icon={h.icon} desc={h.desc||''} size={14} /> : <span style={{color:'rgba(255,255,255,.2)',fontSize:12}}>—</span>}
-                  </span>
-                  <span style={{ flex:1, color:'rgba(255,255,255,.42)', fontSize:11 }}>{h.desc || <span style={{color:'rgba(255,255,255,.2)'}}>n/a</span>}</span>
-                  <span style={{ fontWeight:600, color: h.temp != null ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.2)', width:28, textAlign:'right' }}>{h.temp != null ? `${h.temp}°` : '—'}</span>
-                  <span style={{ fontSize:10, color:'#60A5FA', width:26, textAlign:'right' }}>{h.p != null ? `${h.p}%` : ''}</span>
-                </div>
-              ));
+
+              // Highlight the current 2-hour bucket only when looking at TODAY.
+              // d.full has the form "Monday, April 27" — match against today's
+              // formatted date to know we're on today's panel.
+              const todayFull = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+              const isToday = d.full === todayFull;
+              const nowHour = new Date().getHours(); // 0-23
+              const nowSlotIdx = isToday ? Math.min(11, Math.floor(nowHour / 2)) : -1;
+
+              return rows.map((h, i) => {
+                const isNow = i === nowSlotIdx;
+                return (
+                  <div key={i} style={{
+                    display:'flex', alignItems:'center', gap:8,
+                    padding: isNow ? '7px 8px' : '6px 0',
+                    margin: isNow ? '2px -8px' : 0,
+                    borderRadius: isNow ? 6 : 0,
+                    background: isNow ? 'rgba(201,168,76,.12)' : 'transparent',
+                    border: isNow ? '0.5px solid rgba(201,168,76,.35)' : 'none',
+                    borderBottom: isNow ? '0.5px solid rgba(201,168,76,.35)' : (i<rows.length-1?'0.5px solid rgba(255,255,255,.06)':'none'),
+                    fontSize:12,
+                  }}>
+                    <span style={{ width:40, color: isNow ? '#C9A84C' : 'rgba(255,255,255,.35)', flexShrink:0, fontSize:11, fontWeight: isNow ? 600 : 400 }}>
+                      {isNow ? 'NOW' : h.t}
+                    </span>
+                    <span style={{ width:22, textAlign:'center', flexShrink:0 }}>
+                      {h.icon || h.desc ? <WeatherIcon icon={h.icon} desc={h.desc||''} size={14} /> : <span style={{color:'rgba(255,255,255,.2)',fontSize:12}}>—</span>}
+                    </span>
+                    <span style={{ flex:1, color: isNow ? 'rgba(255,255,255,.7)' : 'rgba(255,255,255,.42)', fontSize:11 }}>{h.desc || <span style={{color:'rgba(255,255,255,.2)'}}>n/a</span>}</span>
+                    <span style={{ fontWeight:600, color: isNow ? '#C9A84C' : (h.temp != null ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.2)'), width:28, textAlign:'right' }}>{h.temp != null ? `${h.temp}°` : '—'}</span>
+                    <span style={{ fontSize:10, color: isNow ? '#93C5FD' : '#60A5FA', width:26, textAlign:'right' }}>{h.p != null ? `${h.p}%` : ''}</span>
+                  </div>
+                );
+              });
             })()}
           </div>
         </div>
