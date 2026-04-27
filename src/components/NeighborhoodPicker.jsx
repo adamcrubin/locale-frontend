@@ -19,36 +19,56 @@ function groupByArea(list) {
   return groups;
 }
 
+const isZipQuery = (q) => /^\d{1,5}$/.test(q.trim());
+
 export default function NeighborhoodPicker({ onSelect, onClose, current }) {
   const [query, setQuery] = useState('');
+  // Areas are collapsed by default. Clicking an area header toggles it open.
+  // Typing in the search box auto-expands matching areas.
+  const [expandedAreas, setExpandedAreas] = useState(() => new Set());
   const inputRef = useRef(null);
 
-  // Focus search on mount
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  // Keyboard: Escape closes
+  useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const filtered = query.trim()
-    ? DC_NEIGHBORHOODS.filter(n =>
-        n.label.toLowerCase().includes(query.toLowerCase()) ||
-        n.area.toLowerCase().includes(query.toLowerCase()) ||
-        n.zip.includes(query)
-      )
-    : DC_NEIGHBORHOODS;
+  const trimmed = query.trim();
+  const isSearchingZip = trimmed.length >= 3 && isZipQuery(trimmed);
+  const isSearching = trimmed.length > 0;
+
+  // ZIP queries match exact-prefix on .zip; everything else fuzzy-matches name+area
+  const filtered = !isSearching
+    ? DC_NEIGHBORHOODS
+    : isSearchingZip
+      ? DC_NEIGHBORHOODS.filter(n => n.zip.startsWith(trimmed))
+      : DC_NEIGHBORHOODS.filter(n =>
+          n.label.toLowerCase().includes(trimmed.toLowerCase()) ||
+          n.area.toLowerCase().includes(trimmed.toLowerCase())
+        );
 
   const groups = groupByArea(filtered);
+  // While searching, auto-expand any area that has matches so results are visible.
+  // When not searching, use the user's manually-toggled expansion state.
+  const isAreaOpen = (area) => isSearching || expandedAreas.has(area);
+  const toggleArea = (area) => {
+    setExpandedAreas(prev => {
+      const next = new Set(prev);
+      if (next.has(area)) next.delete(area); else next.add(area);
+      return next;
+    });
+  };
 
   const handleSelect = (neighborhood) => {
     onSelect(neighborhood);
     onClose();
   };
+
+  // Find matching neighborhoods for a typed ZIP (could be multiple — that's
+  // the whole point of separating ZIP lookup from name lookup).
+  const zipMatches = isSearchingZip ? filtered : [];
 
   return (
     <div
@@ -93,25 +113,23 @@ export default function NeighborhoodPicker({ onSelect, onClose, current }) {
                 fontSize: 18, color: '#9B9590', lineHeight: 1, padding: '2px 4px',
               }}
               aria-label="Close"
-            >
-              ×
-            </button>
+            >×</button>
           </div>
 
-          {/* Search */}
+          {/* Search — auto-detects ZIP vs name. The placeholder hints at both. */}
           <div style={{ position: 'relative' }}>
             <span style={{
               position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
               fontSize: 14, color: '#B0AAA5', pointerEvents: 'none',
             }}>
-              ⌕
+              {isSearchingZip ? '#' : '⌕'}
             </span>
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search neighborhoods..."
+              placeholder="Search by name or ZIP…"
               style={{
                 width: '100%',
                 padding: '8px 10px 8px 30px',
@@ -126,76 +144,98 @@ export default function NeighborhoodPicker({ onSelect, onClose, current }) {
               }}
             />
           </div>
+
+          {/* ZIP search hint — surfaces when 3+ digits typed */}
+          {isSearchingZip && (
+            <div style={{ marginTop: 8, fontSize: 11, color: '#8B6D2D' }}>
+              {zipMatches.length === 0
+                ? `No neighborhoods match ZIP ${trimmed}`
+                : zipMatches.length === 1
+                  ? `1 neighborhood matches ZIP ${trimmed}`
+                  : `${zipMatches.length} neighborhoods share ZIP ${trimmed.slice(0, 5)} — pick yours`}
+            </div>
+          )}
         </div>
 
         {/* List */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
-          {AREA_ORDER.filter(a => groups[a]?.length).map(area => (
-            <div key={area}>
-              {/* Area header */}
-              <div style={{
-                padding: '8px 18px 4px',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '.08em',
-                textTransform: 'uppercase',
-                color: '#B0AAA5',
-              }}>
-                {AREA_LABELS[area]}
-              </div>
-
-              {/* Neighborhoods */}
-              {groups[area].map(n => {
-                const isSelected = n.label === current;
-                return (
-                  <button
-                    key={n.label}
-                    onClick={() => handleSelect(n)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      width: '100%',
-                      padding: '9px 18px',
-                      background: isSelected ? 'rgba(201,168,76,.08)' : 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontFamily: 'DM Sans, sans-serif',
-                      textAlign: 'left',
-                      transition: 'background .1s',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isSelected) e.currentTarget.style.background = 'rgba(0,0,0,.04)';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.background = isSelected ? 'rgba(201,168,76,.08)' : 'transparent';
-                    }}
-                  >
+        <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+          {AREA_ORDER.filter(a => groups[a]?.length).map(area => {
+            const open = isAreaOpen(area);
+            const count = groups[area].length;
+            return (
+              <div key={area}>
+                {/* Area header — collapsible button */}
+                <button
+                  onClick={() => toggleArea(area)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    width: '100%',
+                    padding: '11px 18px',
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontFamily: 'DM Sans, sans-serif', textAlign: 'left',
+                    borderTop: '0.5px solid rgba(0,0,0,.05)',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,.025)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap: 8 }}>
                     <span style={{
-                      fontSize: 13,
-                      color: isSelected ? '#8B6914' : '#1C1A17',
-                      fontWeight: isSelected ? 600 : 400,
-                    }}>
-                      {n.label}
-                    </span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11, color: '#B0AAA5' }}>{n.zip}</span>
-                      {isSelected && (
-                        <span style={{ fontSize: 13, color: '#C9A84C' }}>✓</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+                      fontSize: 11, color: '#9B9590', width: 10, display:'inline-block',
+                      transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+                      transition: 'transform .12s',
+                    }}>▸</span>
+                    <span style={{
+                      fontSize: 12, fontWeight: 700, letterSpacing: '.08em',
+                      textTransform: 'uppercase', color: open ? '#1C1A17' : '#5A5550',
+                    }}>{AREA_LABELS[area]}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#B0AAA5' }}>{count}</span>
+                </button>
+
+                {/* Neighborhoods — only when area is open */}
+                {open && groups[area].map(n => {
+                  const isSelected = n.label === current;
+                  return (
+                    <button
+                      key={n.label}
+                      onClick={() => handleSelect(n)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        width: '100%', padding: '8px 18px 8px 36px',
+                        background: isSelected ? 'rgba(201,168,76,.08)' : 'transparent',
+                        border: 'none', cursor: 'pointer',
+                        fontFamily: 'DM Sans, sans-serif', textAlign: 'left',
+                        transition: 'background .1s',
+                      }}
+                      onMouseEnter={e => {
+                        if (!isSelected) e.currentTarget.style.background = 'rgba(0,0,0,.04)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = isSelected ? 'rgba(201,168,76,.08)' : 'transparent';
+                      }}
+                    >
+                      <span style={{
+                        fontSize: 13,
+                        color: isSelected ? '#8B6914' : '#1C1A17',
+                        fontWeight: isSelected ? 600 : 400,
+                      }}>{n.label}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, color: '#B0AAA5' }}>{n.zip}</span>
+                        {isSelected && (
+                          <span style={{ fontSize: 13, color: '#C9A84C' }}>✓</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
 
           {filtered.length === 0 && (
             <div style={{
-              padding: '32px 18px',
-              textAlign: 'center',
-              fontSize: 13,
-              color: '#B0AAA5',
+              padding: '32px 18px', textAlign: 'center',
+              fontSize: 13, color: '#B0AAA5',
             }}>
               No neighborhoods match &ldquo;{query}&rdquo;
             </div>

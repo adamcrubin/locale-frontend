@@ -183,7 +183,7 @@ export default function App() {
 
   // ── Live data hooks ───────────────────────────────────────────────────────
   const locationOverride = settings.neighborhoodLat ? { lat: settings.neighborhoodLat, lng: settings.neighborhoodLng } : null;
-  const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user);
+  const { activities, loading: activitiesLoading, source: activitiesSource } = useActivities(settings.city, activeProfile, locationOverride, user, timeWindow);
   const { activities: weekdayActivities }                = useWeekdayActivities(settings.city, activeProfile);
   // Prefer the user's selected neighborhood (has lat/lng) for weather —
   // backend uses those directly; city string is fallback.
@@ -198,6 +198,16 @@ export default function App() {
   // screensaver, not a useful first impression. Idle timer still transitions
   // to ambient after inactivity.
   const [screen,        setScreen]        = useState('active');
+  // Time window for the active feed: this-weekend (default) | next-weekend |
+  // this-month. Weeknights still flips screen='weekday' so the existing
+  // weeknight feed code path stays untouched. Persists in localStorage.
+  const [timeWindow,    setTimeWindow]    = useState(() => {
+    try { return localStorage.getItem('locale-time-window') || 'this-weekend'; }
+    catch { return 'this-weekend'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('locale-time-window', timeWindow); } catch {}
+  }, [timeWindow]);
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
@@ -361,6 +371,8 @@ export default function App() {
     setPriceFilters,
     onOpenFilter: () => setFilterOpen(true),
     onShowPage: setStaticPageId,
+    timeWindow,
+    onSwitchTimeWindow: (w) => { transitionTo('active'); setTimeWindow(w); },
     user, onSignOut: signOut,
   };
 
@@ -479,41 +491,64 @@ export default function App() {
             </button>
           )}
 
-          {/* Planner: This weekend / Weeknights / Look ahead — pushed to right edge */}
-          <div style={{
-            display:'flex', background:'rgba(255,255,255,.06)',
-            border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
-            marginLeft:'auto', flexShrink:0,
-          }}>
-            <button
-              onClick={() => transitionTo('active')}
-              style={{
-                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'pointer',
-                background: screen==='active' ? 'rgba(255,255,255,.15)' : 'transparent',
-                color:      screen==='active' ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.4)',
-                border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
-              }}
-            >This weekend</button>
-            <button
-              onClick={() => transitionTo('weekday')}
-              style={{
-                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'pointer',
-                background: screen==='weekday' ? 'rgba(147,124,215,0.3)' : 'transparent',
-                color:      screen==='weekday' ? '#C4B5FD' : 'rgba(255,255,255,.4)',
-                border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
-              }}
-            >Weeknights</button>
-            <button
-              onClick={() => alert('Look ahead — coming soon! This will let you plan future weekends.')}
-              title="Coming soon"
-              style={{
-                padding:'4px 14px', fontSize:11, fontWeight:500, cursor:'not-allowed',
-                background: 'transparent',
-                color: 'rgba(255,255,255,.2)',
-                border:'none', fontFamily:'DM Sans, sans-serif',
-              }}
-            >Look ahead</button>
-          </div>
+          {/* Planner: time-window pills — pushed to right edge.
+              4 windows: this-weekend | next-weekend | weeknights | this-month.
+              Each pill shows a compact label + mm/dd range tooltip. */}
+          {(() => {
+            const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
+            const today = new Date();
+            const dow = today.getDay();
+            const thisFri = new Date(today); thisFri.setDate(today.getDate() + ((5 - dow + 7) % 7));
+            const thisSun = new Date(thisFri); thisSun.setDate(thisFri.getDate() + 2);
+            const nextFri = new Date(thisFri); nextFri.setDate(thisFri.getDate() + 7);
+            const nextSun = new Date(nextFri); nextSun.setDate(nextFri.getDate() + 2);
+            const monthName = today.toLocaleDateString('en-US', { month: 'short' });
+            const windows = [
+              { id: 'this-weekend', label: 'This weekend', range: `${fmt(thisFri)}–${fmt(thisSun)}` },
+              { id: 'next-weekend', label: 'Next weekend', range: `${fmt(nextFri)}–${fmt(nextSun)}` },
+              { id: 'weeknights',   label: 'Weeknights',   range: 'Mon–Thu' },
+              { id: 'this-month',   label: monthName,      range: 'all month' },
+            ];
+            const goTo = (id) => {
+              if (id === 'weeknights') transitionTo('weekday');
+              else { transitionTo('active'); setTimeWindow(id); }
+            };
+            const activeId = screen === 'weekday' ? 'weeknights' : timeWindow;
+            return (
+              <div style={{
+                display:'flex', background:'rgba(255,255,255,.06)',
+                border:'0.5px solid rgba(255,255,255,.12)', borderRadius:99, overflow:'hidden',
+                marginLeft:'auto', flexShrink:0,
+              }}>
+                {windows.map(w => {
+                  const isActive = w.id === activeId;
+                  const accent = w.id === 'weeknights' ? '#C4B5FD'
+                              : w.id === 'next-weekend' ? '#7DD3FC'
+                              : w.id === 'this-month'   ? '#FBA74E'
+                              : 'rgba(255,255,255,.9)';
+                  const accentBg = w.id === 'weeknights' ? 'rgba(147,124,215,0.3)'
+                                : w.id === 'next-weekend' ? 'rgba(56,189,248,0.22)'
+                                : w.id === 'this-month'   ? 'rgba(251,167,78,0.22)'
+                                : 'rgba(255,255,255,.15)';
+                  return (
+                    <button key={w.id}
+                      onClick={() => goTo(w.id)}
+                      title={`${w.label} · ${w.range}`}
+                      style={{
+                        padding:'4px 12px', fontSize:11, fontWeight:500, cursor:'pointer',
+                        background: isActive ? accentBg : 'transparent',
+                        color:      isActive ? accent : 'rgba(255,255,255,.4)',
+                        border:'none', fontFamily:'DM Sans, sans-serif', transition:'all .15s',
+                        display:'flex', flexDirection:'column', alignItems:'center', lineHeight:1.1,
+                      }}>
+                      <span>{w.label}</span>
+                      <span style={{ fontSize:8, opacity:.7, fontWeight:400, marginTop:1 }}>{w.range}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

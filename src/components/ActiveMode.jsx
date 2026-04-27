@@ -42,7 +42,7 @@ const QUICK_PROMPTS = [
   { label:'✏️ Ask Anything', canned: true },
 ];
 
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, onShowPage, isDemo=false, onLoginPrompt }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, onShowPage, isDemo=false, onLoginPrompt, timeWindow='this-weekend', onSwitchTimeWindow }) {
   const gateDemo = (feature, fn) => (...args) => {
     if (isDemo) { onLoginPrompt?.(feature); return; }
     return fn?.(...args);
@@ -235,6 +235,44 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
           )}
         </div>
       </div>
+
+      {/* Sunday-evening / Monday-morning banner — when this weekend is mostly
+          gone, nudge the user to peek at next weekend instead. Only shows
+          when timeWindow='this-weekend' (don't pester them if they're
+          already viewing next weekend or weeknights). */}
+      {(() => {
+        if (timeWindow !== 'this-weekend') return null;
+        const now = new Date();
+        const day = now.getDay();
+        const hr  = now.getHours();
+        // Sun after 5pm OR Mon before noon = "weekend's over" zone
+        const isWindingDown = (day === 0 && hr >= 17) || (day === 1 && hr < 12);
+        if (!isWindingDown) return null;
+        return (
+          <div style={{
+            background: 'linear-gradient(90deg, rgba(125,211,252,.16), rgba(125,211,252,.06))',
+            borderBottom: '0.5px solid rgba(125,211,252,.25)',
+            padding: '8px 18px',
+            display:'flex', alignItems:'center', justifyContent:'space-between', gap: 12,
+            fontSize: 12, fontFamily:'DM Sans, sans-serif',
+          }}>
+            <span style={{ color:'rgba(125,211,252,.95)' }}>
+              <span style={{ marginRight: 6 }}>🌙</span>
+              This weekend's winding down — peek at next weekend?
+            </span>
+            <button
+              onClick={() => onSwitchTimeWindow?.('next-weekend')}
+              style={{
+                fontSize:11, fontWeight:600, padding:'4px 12px', borderRadius:99,
+                background:'rgba(125,211,252,.22)', color:'#7DD3FC',
+                border:'0.5px solid rgba(125,211,252,.45)',
+                cursor:'pointer', fontFamily:'DM Sans, sans-serif',
+                whiteSpace:'nowrap',
+              }}
+            >Show next weekend →</button>
+          </div>
+        );
+      })()}
 
       {/* Quick prompts — desktop only */}
       {!isMobile && <div style={{background:'var(--header-bg2)',padding:'7px 18px',display:'flex',alignItems:'center',gap:8}}>

@@ -42,6 +42,14 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
   // re-enable once we have a filter for "is this actually an event photo".
 
   const isRec      = act.content_type === 'recommendation';
+  // Evergreens = always-available activities (a venue, a trail, a museum)
+  // not tied to a specific event date. Includes the dedicated content_type
+  // 'evergreen' from the backend AND time-bound entries that flag evergreen.
+  // Day-trip / weekend-away cards that are activities (not specific events)
+  // also count — heuristic: no start_time AND not is_pinned AND not isRec.
+  const isEvergreen = act.content_type === 'evergreen'
+    || (!act.start_time && !act.is_sponsored && !isRec
+        && (act.categories || []).some(c => ['trips','away','outdoors'].includes(c)));
   const isSponsored = !!act.is_sponsored;
   const isExpanded = expanded;
   const isCompact  = !isExpanded;
@@ -117,7 +125,13 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
           userSelect: 'none',
         }}
       >
-        {isRec && <span style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
+        {isRec && <span title="Recommendation" style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
+        {/* Evergreen marker — distinguishes always-available activities (a
+            trail, a venue, a museum) from time-specific events. Quietly tucked
+            in the title row so users don't expect "what time?" detail. */}
+        {!isRec && isEvergreen && (
+          <span title="Always available — no specific date" style={{ fontSize: 9, flexShrink: 0, color: '#6B7280', letterSpacing: '.04em' }}>∞</span>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A17', lineHeight: 1.3,
             overflow: isCompact ? 'hidden' : 'visible',

@@ -38,13 +38,14 @@ export async function fetchWeather(input) {
 // Also now sends a trimmed profile JSON so the backend scoring engine can apply
 // preference matching. Without this, profile.prefs had no effect on final_score.
 export async function fetchEventFeed(zip, profileId, city, options = {}) {
-  const { category, weekday = false, limit = 100, offset = 0, profile = null, userLat = null, userLng = null, userId = null } = options;
+  const { category, weekday = false, limit = 100, offset = 0, profile = null, userLat = null, userLng = null, userId = null, timeWindow = null } = options;
   const params = new URLSearchParams({ zip, profileId, city, limit, offset });
   if (category) params.set('category', category);
   if (weekday) params.set('weekday', 'true');
   if (userLat != null) params.set('userLat', userLat);
   if (userLng != null) params.set('userLng', userLng);
   if (userId)   params.set('userId', userId);
+  if (timeWindow) params.set('timeWindow', timeWindow);
   if (profile) {
     params.set('profile', encodeURIComponent(JSON.stringify({
       id:      profile.id,

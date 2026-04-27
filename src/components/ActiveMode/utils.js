@@ -266,17 +266,54 @@ export function getWeekendDateStr() {
   return { satStr:fmtShort(sat), sunStr:fmtShort(sun), sat, sun };
 }
 
+// Past-event detection.
+//
+// Old version compared day-of-week names — buggy because dayOrder was
+// sun-first, so a Saturday event on Sunday had eventIdx(6) NOT < todayIdx(0)
+// and stayed visible all of Sunday and Monday.
+//
+// New version: prefer start_date / end_date comparison — that's the actual
+// event date the extractor pinned. Falls back to the day-of-week heuristic
+// only when no date is present (recurring evergreens, undated activities).
 export function isPastEvent(act) {
+  // 1. Date-based check (most reliable). An event "ends" at the end of its
+  //    end_date (or start_date if no end). Anything before "now" is past.
+  if (act.start_date) {
+    const dateStr = act.end_date || act.start_date;
+    // Compare by treating the event as "current" through 11:59pm of its end day
+    const eventEnd = new Date(`${dateStr}T23:59:59`);
+    if (!isNaN(eventEnd) && eventEnd.getTime() < Date.now()) return true;
+    return false;
+  }
+  // 2. Fallback: day-of-week heuristic for events without a real date.
+  //    weekend window only — if event mentions a past weekend day we already
+  //    passed this week, mark past. Doesn't trigger for recurring evergreens
+  //    that just say "Sat" with no specific date — those are caught above
+  //    when start_date is filled in by the recurring-occurrence logic.
   const when = (act.when || '').toLowerCase();
-  const now = new Date();
-  const today = now.toLocaleDateString('en-US', { weekday:'short' }).toLowerCase().slice(0,3);
-  const dayOrder = ['sun','mon','tue','wed','thu','fri','sat'];
-  const todayIdx = dayOrder.indexOf(today);
-  for (const d of dayOrder) {
-    if (when.includes(d)) {
-      const eventIdx = dayOrder.indexOf(d);
-      if (eventIdx < todayIdx && todayIdx - eventIdx < 4) return true;
+  if (!when) return false;
+  const today = new Date().getDay(); // 0=Sun..6=Sat
+  const dayMatches = {
+    fri: when.includes('fri'),
+    sat: when.includes('sat'),
+    sun: when.includes('sun'),
+  };
+  // weekend ordering: Fri(5) < Sat(6) < Sun(0). We're past a weekend day if
+  // today is later in the same weekend OR it's Mon-Thu (weekend over).
+  if (today === 0 /* Sun */) {
+    // Past Fri or Sat means the event already happened this weekend
+    if (dayMatches.fri || dayMatches.sat) {
+      // Only past if event ONLY mentions those days — not "Fri-Sun"
+      if (!dayMatches.sun) return true;
     }
+    return false;
+  }
+  if (today >= 1 && today <= 4 /* Mon-Thu */) {
+    // Whole weekend is over (no clear "next weekend" cue in the day-name string)
+    if (dayMatches.fri || dayMatches.sat || dayMatches.sun) return true;
+  }
+  if (today === 6 /* Sat */) {
+    if (dayMatches.fri && !dayMatches.sat && !dayMatches.sun) return true;
   }
   return false;
 }

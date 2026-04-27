@@ -139,61 +139,64 @@ function transformFeed(feed) {
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — show cached data instantly, refresh behind the scenes
 
-function cacheKey(zip, profileId) { return `locale_feed_${zip}_${profileId}`; }
+function cacheKey(zip, profileId, windowKey = 'this-weekend') {
+  return `locale_feed_${zip}_${profileId}_${windowKey}`;
+}
 
-function readCache(zip, profileId) {
+function readCache(zip, profileId, windowKey) {
   try {
-    const raw = localStorage.getItem(cacheKey(zip, profileId));
+    const raw = localStorage.getItem(cacheKey(zip, profileId, windowKey));
     if (!raw) return null;
     const { ts, data } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL_MS) return null; // expired
+    if (Date.now() - ts > CACHE_TTL_MS) return null;
     return data;
   } catch { return null; }
 }
 
-function writeCache(zip, profileId, data) {
+function writeCache(zip, profileId, data, windowKey) {
   try {
-    localStorage.setItem(cacheKey(zip, profileId), JSON.stringify({ ts: Date.now(), data }));
-  } catch {} // storage full or unavailable — silently ignore
+    localStorage.setItem(cacheKey(zip, profileId, windowKey), JSON.stringify({ ts: Date.now(), data }));
+  } catch {}
 }
 
-export function useActivities(city, profile, locationOverride = null, user = null) {
+export function useActivities(city, profile, locationOverride = null, user = null, timeWindow = 'this-weekend') {
   // All event queries use the metro-wide zip — specific location used only for distance scoring
   const zip       = 'dc-metro';
   const profileId = profile?.id || 'default';
   const userLat   = locationOverride?.lat ?? null;
   const userLng   = locationOverride?.lng ?? null;
   const userId    = user?.id || null;
+  // Cache key includes the time window so switching this-weekend → next-weekend
+  // doesn't show stale cached results from the wrong window
+  const windowKey = timeWindow || 'this-weekend';
 
   // Seed state from cache immediately so UI renders real data without waiting for the API.
   // Falls back to mock ACTIVITIES if nothing cached yet.
   const [activities, setActivities] = useState(() => {
-    const cached = readCache(zip, profileId);
+    const cached = readCache(zip, profileId, windowKey);
     return cached || ACTIVITIES;
   });
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
-  const [source,  setSource]  = useState(() => readCache(zip, profileId) ? 'cached' : 'mock');
+  const [source,  setSource]  = useState(() => readCache(zip, profileId, windowKey) ? 'cached' : 'mock');
 
   const load = useCallback(async (force = false) => {
     if (!city) return;
-    // If cache is fresh and this isn't a forced reload, skip the API call
-    if (!force && readCache(zip, profileId)) {
-      // Still refresh in background after a short delay so data stays current
+    if (!force && readCache(zip, profileId, windowKey)) {
       setTimeout(() => load(true), 3000);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchEventFeed(zip, profileId, city, { profile, userLat, userLng, userId });
+      const data = await fetchEventFeed(zip, profileId, city, { profile, userLat, userLng, userId, timeWindow: windowKey });
       const transformed = transformFeed(data);
       if (transformed && Object.keys(transformed).length > 0) {
         const hasEvents = Object.values(transformed).some(acts => acts.length > 0);
         if (hasEvents) {
           setActivities(transformed);
           setSource('live');
-          writeCache(zip, profileId, transformed);
+          writeCache(zip, profileId, transformed, windowKey);
         }
       }
     } catch (e) {
@@ -203,7 +206,7 @@ export function useActivities(city, profile, locationOverride = null, user = nul
     } finally {
       setLoading(false);
     }
-  }, [city, profileId, userId]);
+  }, [city, profileId, userId, windowKey]);
 
   useEffect(() => { load(); }, [load]);
 
