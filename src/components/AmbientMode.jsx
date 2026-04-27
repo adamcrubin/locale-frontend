@@ -188,6 +188,28 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         for (const e of (calQueue || [])) {
           if (e.date) { if (!eventsByDate[e.date]) eventsByDate[e.date] = []; eventsByDate[e.date].push(e); }
         }
+        // Helper: bucket an event into Morning/Afternoon/Evening based on its
+        // displayed time string. Anything before noon = morning; noon-5pm =
+        // afternoon; 5pm+ = evening; no time = treated as anytime (drops into
+        // afternoon by default since that's the most common all-day slot).
+        const partOfDay = (timeStr) => {
+          if (!timeStr) return 'aft';
+          const m = String(timeStr).toLowerCase().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+          if (!m) return 'aft';
+          let h = parseInt(m[1], 10);
+          const mer = m[3];
+          if (mer === 'pm' && h !== 12) h += 12;
+          if (mer === 'am' && h === 12) h = 0;
+          if (h < 12) return 'mor';
+          if (h < 17) return 'aft';
+          return 'eve';
+        };
+        const bucket = (evts) => {
+          const out = { mor: [], aft: [], eve: [] };
+          for (const e of evts) out[partOfDay(e.time)].push(e);
+          return out;
+        };
+        const PART_LABELS = { mor: 'Morning', aft: 'Afternoon', eve: 'Evening' };
         return (
           <div onClick={e => e.stopPropagation()} style={{
             position:'absolute', top:0, left:0, right:0, zIndex:4,
@@ -225,16 +247,40 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
                     <span style={{ fontSize:13, color:'rgba(255,255,255,.85)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
                     {w.precip > 20 && <span style={{ fontSize:11, color:'#93C5FD' }}>{w.precip}%</span>}
                   </div>
-                  {/* Row 3: calendar events */}
-                  {evts.slice(0, 3).map((e, j) => (
-                    <div key={j} style={{ fontSize:12, color:'rgba(255,255,255,.7)', lineHeight:1.35, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
-                      <span style={{ color:'rgba(255,255,255,.4)', flexShrink:0 }}>•</span>
-                      <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
-                        {e.time ? <span style={{ color:'rgba(255,255,255,.4)', marginRight:3, fontSize:10 }}>{e.time}</span> : null}
-                        {e.title || e.name}
-                      </span>
-                    </div>
-                  ))}
+                  {/* Row 3: calendar events bucketed by Morning/Afternoon/
+                      Evening so the strip reads like an actual calendar
+                      timeline rather than a flat event list. We always show
+                      all three day-part labels in dim type — empty parts
+                      get a thin "—" placeholder so columns visually align
+                      across days. */}
+                  {(() => {
+                    const buckets = bucket(evts);
+                    return (['mor','aft','eve']).map(part => {
+                      const list = buckets[part];
+                      const hasAny = list.length > 0;
+                      return (
+                        <div key={part} style={{ marginTop: 2 }}>
+                          <div style={{
+                            fontSize: 9, color: hasAny ? 'rgba(201,168,76,.7)' : 'rgba(255,255,255,.18)',
+                            fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase',
+                            marginBottom: 1,
+                          }}>{PART_LABELS[part]}</div>
+                          {hasAny
+                            ? list.slice(0, 2).map((e, j) => (
+                                <div key={j} style={{ fontSize:11, color:'rgba(255,255,255,.7)', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
+                                  <span style={{ color:'rgba(255,255,255,.4)', flexShrink:0 }}>•</span>
+                                  <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
+                                    {e.time ? <span style={{ color:'rgba(255,255,255,.4)', marginRight:3, fontSize:10 }}>{e.time}</span> : null}
+                                    {e.title || e.name}
+                                  </span>
+                                </div>
+                              ))
+                            : <div style={{ fontSize:10, color:'rgba(255,255,255,.18)', lineHeight:1.3, paddingLeft:8 }}>—</div>
+                          }
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               );
             })}
@@ -247,36 +293,9 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', letterSpacing:'.12em', textTransform:'uppercase', fontWeight:500 }}>{city}</div>
       </div>
 
-      {/* ── Today's weather — top left (glass backdrop) ── */}
-      <div style={{ position:'absolute', top:110, left:30, zIndex:3 }}>
-        <div style={{
-          display:'inline-flex', flexDirection:'column', alignItems:'flex-start',
-          background:'rgba(0,0,0,.42)', backdropFilter:'blur(12px)',
-          WebkitBackdropFilter:'blur(12px)',
-          borderRadius:14, padding:'12px 18px',
-          border:'0.5px solid rgba(255,255,255,.1)',
-          minWidth:200,
-        }}>
-          {/* Icon + temp inline */}
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={52} />
-            <div>
-              <div style={{ display:'flex', alignItems:'baseline', gap:3 }}>
-                <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:56, fontWeight:300, color:'#fff', lineHeight:1 }}>
-                  {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
-                </span>
-                <span style={{ fontSize:14, color:'rgba(255,255,255,.4)', paddingBottom:4 }}>F</span>
-              </div>
-              <div style={{ fontSize:13, color:'rgba(255,255,255,.65)', letterSpacing:'.03em', marginTop:2 }}>{currentHourData?.desc || today.desc}</div>
-            </div>
-          </div>
-          {/* Bottom stats row */}
-          <div style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'rgba(255,255,255,.38)', marginTop:4 }}>
-            <WeatherIcon icon={today.icon} desc={today.desc} size={12} />
-            <span>H:{today.hi}° · L:{today.lo}° · Rain:{today.precip}%</span>
-          </div>
-        </div>
-      </div>
+      {/* Today's weather card moved into the chart panel (right side) so the
+          current temp + chart read as one cohesive weather block. The
+          previous top-left placement felt orphaned. See the chart code below. */}
 
       {/* ── Big hourly weather chart — right side, vertically centered.
           Fixed axes (0-100°F, 0-100%) so visual height of the lines reads
@@ -299,8 +318,10 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         }
 
         // Fixed axes: 0-100 for both temp (°F) and precip (%).
-        const W = 480, H = 320;
-        const padL = 38, padR = 14, padT = 16, padB = 28;
+        // padR bumped from 14 → 32 so the right-side precip-% labels (100%)
+        // don't get clipped by the panel edge.
+        const W = 520, H = 320;
+        const padL = 42, padR = 32, padT = 16, padB = 28;
         const plotW = W - padL - padR;
         const plotH = H - padT - padB;
         const xAt = i => padL + (i / 24) * plotW;
@@ -332,13 +353,44 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
           <div style={{
             position:'absolute', right:28, top:'50%', transform:'translateY(-50%)',
             zIndex:3,
-            background:'rgba(0,0,0,.42)', backdropFilter:'blur(12px)',
-            WebkitBackdropFilter:'blur(12px)',
-            borderRadius:14, padding:'14px 16px 10px',
-            border:'0.5px solid rgba(255,255,255,.1)',
+            background:'rgba(0,0,0,.46)', backdropFilter:'blur(14px)',
+            WebkitBackdropFilter:'blur(14px)',
+            borderRadius:16, padding:'16px 20px 12px',
+            border:'0.5px solid rgba(255,255,255,.10)',
           }}>
+            {/* Combined current-weather summary above the chart — was a
+                separate top-left card but felt orphaned. */}
+            <div style={{ display:'flex', alignItems:'center', gap:18, marginBottom:14 }}>
+              <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={64} />
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
+                  <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:64, fontWeight:300, color:'#fff', lineHeight:1 }}>
+                    {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
+                  </span>
+                  <span style={{ fontSize:15, color:'rgba(255,255,255,.4)', paddingBottom:6 }}>F</span>
+                </div>
+                <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', letterSpacing:'.02em', marginTop:3 }}>{currentHourData?.desc || today.desc}</div>
+              </div>
+              {/* High/Low — promoted from a tiny line to a dedicated stack
+                  with bigger numbers. The whole point of "today's weather"
+                  is the H/L answer; making them readable matters. */}
+              <div style={{
+                textAlign:'right', borderLeft:'0.5px solid rgba(255,255,255,.12)',
+                paddingLeft:16, lineHeight:1.15,
+              }}>
+                <div>
+                  <span style={{ fontSize:10, color:'rgba(252,211,77,.55)', fontWeight:700, letterSpacing:'.08em' }}>HIGH</span>
+                  <div style={{ fontSize:26, fontWeight:600, color:'rgba(252,211,77,.95)', fontFamily:'DM Sans, sans-serif' }}>{today.hi != null ? `${today.hi}°` : '—'}</div>
+                </div>
+                <div style={{ marginTop:6 }}>
+                  <span style={{ fontSize:10, color:'rgba(147,197,253,.55)', fontWeight:700, letterSpacing:'.08em' }}>LOW</span>
+                  <div style={{ fontSize:26, fontWeight:600, color:'rgba(147,197,253,.95)', fontFamily:'DM Sans, sans-serif' }}>{today.lo != null ? `${today.lo}°` : '—'}</div>
+                </div>
+                <div style={{ fontSize:11, color:'rgba(96,165,250,.85)', marginTop:8 }}>{today.precip ?? 0}% rain</div>
+              </div>
+            </div>
             <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.55)', marginBottom:6 }}>
-              Today — {today.full || today.day}
+              Hourly — {today.full || today.day}
             </div>
             <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
               {/* Y-axis gridlines + labels (°F left, % right) */}

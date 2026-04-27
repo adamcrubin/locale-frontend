@@ -646,8 +646,12 @@ export default function App() {
         />
       )}
 
-      {/* ── Post-event feedback toast ── */}
-      <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
+      {/* ── Post-event feedback toast ──
+          Suppressed on ambient (it's a clock/photo screen — interrupting it
+          with a feedback ask is jarring) and during onboarding/welcome flows. */}
+      {screen !== 'ambient' && (
+        <PostEventFeedback prompt={feedbackPrompt} onRespond={respondFeedback} />
+      )}
 
       {/* ── Login / connect-calendar prompt ── */}
       <LoginPromptModal

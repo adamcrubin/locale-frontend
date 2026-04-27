@@ -42,17 +42,26 @@ export function usePostEventFeedback(profileId, zipCode = '22046') {
       const pending = loadPending();
       const now     = new Date();
 
-      // Find an event that:
-      // - happened in the past (date < today)
-      // - hasn't been asked about yet
-      // - was added at least 1 day ago (don't ask same day)
+      // Only prompt about events the user is plausibly going to remember
+      // attending. Specifically:
+      //   - hasn't been asked about yet
+      //   - the event date is in the past but within the last 14 days
+      //   - the user added it within 14 days BEFORE the event date
+      //     (so we're not asking about a calendar add from 6 months ago
+      //     for an event that the user almost certainly didn't actually go to)
+      //   - it's been at least a day since the event ended
       const due = pending.find(p => {
         if (p.askedAt || p.response) return false;
         if (!p.date) return false;
         const eventDate = new Date(p.date + 'T23:59:59');
         const addedDate = new Date(p.addedAt);
-        const daysSinceAdded = (now - addedDate) / 86400000;
-        return eventDate < now && daysSinceAdded >= 1;
+        const eventToNowDays = (now - eventDate) / 86400000;
+        const addedToEventDays = (eventDate - addedDate) / 86400000;
+        if (eventToNowDays < 1) return false;            // event hasn't ended yet (or barely)
+        if (eventToNowDays > 14) return false;           // too old; user definitely won't remember
+        if (addedToEventDays > 14) return false;         // added long before the event = probably never went
+        if (addedToEventDays < -1) return false;         // added AFTER the event ended = weird, skip
+        return true;
       });
 
       if (due) setPrompt(due);
@@ -83,9 +92,20 @@ export function usePostEventFeedback(profileId, zipCode = '22046') {
         ? { ...p, askedAt: new Date().toISOString(), response }
         : p
     );
-    // Clean up old items (older than 30 days)
-    const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
-    savePending(pending.filter(p => p.addedAt > cutoff));
+    // On skip: also drop any stale entries (event date >14 days ago) so a
+    // legacy localStorage from old test data doesn't perpetually re-prompt.
+    // The 'ask' window above already filters them out, but cleaning the
+    // store keeps localStorage tidy.
+    const now = Date.now();
+    const cutoffAdded = new Date(now - 30 * 86400000).toISOString();
+    const cleaned = pending.filter(p => {
+      if (p.addedAt < cutoffAdded) return false;          // older than 30d add
+      if (!p.date) return p.addedAt > cutoffAdded;
+      const eventAge = (now - new Date(p.date + 'T23:59:59').getTime()) / 86400000;
+      if (eventAge > 21) return false;                    // event >3 weeks past
+      return true;
+    });
+    savePending(cleaned);
 
     setPrompt(null);
   };
