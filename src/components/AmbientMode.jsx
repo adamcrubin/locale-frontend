@@ -358,35 +358,39 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
             borderRadius:16, padding:'16px 20px 12px',
             border:'0.5px solid rgba(255,255,255,.10)',
           }}>
-            {/* Combined current-weather summary above the chart — was a
-                separate top-left card but felt orphaned. */}
-            <div style={{ display:'flex', alignItems:'center', gap:18, marginBottom:14 }}>
-              <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={64} />
+            {/* Combined current-weather summary above the chart. Sized up
+                so the header reads as the headline of the panel rather
+                than a footnote. Three columns: icon | current+desc | H/L. */}
+            <div style={{ display:'flex', alignItems:'center', gap:24, marginBottom:18, paddingBottom:14, borderBottom:'0.5px solid rgba(255,255,255,.08)' }}>
+              <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={84} />
               <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'baseline', gap:4 }}>
-                  <span style={{ fontFamily:'Cormorant Garamond, serif', fontSize:64, fontWeight:300, color:'#fff', lineHeight:1 }}>
+                <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
+                  <span style={{ fontFamily:"'DM Sans', sans-serif", fontSize:80, fontWeight:200, color:'#fff', lineHeight:.9, letterSpacing:'-.04em', fontVariantNumeric:'tabular-nums' }}>
                     {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
                   </span>
-                  <span style={{ fontSize:15, color:'rgba(255,255,255,.4)', paddingBottom:6 }}>F</span>
+                  <span style={{ fontSize:18, color:'rgba(255,255,255,.4)', paddingBottom:10, fontWeight:300 }}>F</span>
                 </div>
-                <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', letterSpacing:'.02em', marginTop:3 }}>{currentHourData?.desc || today.desc}</div>
+                <div style={{ fontSize:15, color:'rgba(255,255,255,.78)', letterSpacing:'.01em', marginTop:6, lineHeight:1.3 }}>
+                  {currentHourData?.desc || today.desc}
+                </div>
               </div>
-              {/* High/Low — promoted from a tiny line to a dedicated stack
-                  with bigger numbers. The whole point of "today's weather"
-                  is the H/L answer; making them readable matters. */}
               <div style={{
                 textAlign:'right', borderLeft:'0.5px solid rgba(255,255,255,.12)',
-                paddingLeft:16, lineHeight:1.15,
+                paddingLeft:20, lineHeight:1.1, minWidth:78,
               }}>
                 <div>
-                  <span style={{ fontSize:10, color:'rgba(252,211,77,.55)', fontWeight:700, letterSpacing:'.08em' }}>HIGH</span>
-                  <div style={{ fontSize:26, fontWeight:600, color:'rgba(252,211,77,.95)', fontFamily:'DM Sans, sans-serif' }}>{today.hi != null ? `${today.hi}°` : '—'}</div>
+                  <span style={{ fontSize:10, color:'rgba(252,211,77,.6)', fontWeight:700, letterSpacing:'.1em' }}>HIGH</span>
+                  <div style={{ fontSize:30, fontWeight:600, color:'rgba(252,211,77,.95)', fontFamily:"'DM Sans', sans-serif", fontVariantNumeric:'tabular-nums', marginTop:2 }}>
+                    {today.hi != null ? `${today.hi}°` : '—'}
+                  </div>
                 </div>
-                <div style={{ marginTop:6 }}>
-                  <span style={{ fontSize:10, color:'rgba(147,197,253,.55)', fontWeight:700, letterSpacing:'.08em' }}>LOW</span>
-                  <div style={{ fontSize:26, fontWeight:600, color:'rgba(147,197,253,.95)', fontFamily:'DM Sans, sans-serif' }}>{today.lo != null ? `${today.lo}°` : '—'}</div>
+                <div style={{ marginTop:10 }}>
+                  <span style={{ fontSize:10, color:'rgba(147,197,253,.6)', fontWeight:700, letterSpacing:'.1em' }}>LOW</span>
+                  <div style={{ fontSize:30, fontWeight:600, color:'rgba(147,197,253,.95)', fontFamily:"'DM Sans', sans-serif", fontVariantNumeric:'tabular-nums', marginTop:2 }}>
+                    {today.lo != null ? `${today.lo}°` : '—'}
+                  </div>
                 </div>
-                <div style={{ fontSize:11, color:'rgba(96,165,250,.85)', marginTop:8 }}>{today.precip ?? 0}% rain</div>
+                <div style={{ fontSize:11, color:'rgba(96,165,250,.85)', marginTop:10, fontWeight:600, letterSpacing:'.04em' }}>{today.precip ?? 0}% rain</div>
               </div>
             </div>
             <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.55)', marginBottom:6 }}>
@@ -441,10 +445,15 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
         WebkitBackdropFilter:'blur(4px)',
       }}>
         <div style={{
-          fontFamily:'Cormorant Garamond, serif',
-          fontSize:'min(22vw, 150px)',
+          // Match the font family used by the HIGH/LOW labels so the clock
+          // reads as part of the same "system" instead of an editorial
+          // serif lifted from a different design language. Cormorant looks
+          // pretty but feels off for digital time.
+          fontFamily:"'DM Sans', sans-serif",
+          fontSize:'min(20vw, 140px)',
           fontWeight:300, color:'#fff', lineHeight:1,
-          letterSpacing:'-.02em',
+          letterSpacing:'-.04em',
+          fontVariantNumeric:'tabular-nums',
           textShadow:'0 2px 60px rgba(0,0,0,.6), 0 0 120px rgba(0,0,0,.3)',
         }}>{timeStr}</div>
         <div style={{
