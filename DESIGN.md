@@ -307,6 +307,167 @@ Pattern match on `sources.name`; see `getSourceAuthorityBoost` in `extractor.js`
 
 ---
 
+## Changes 2026-04-27 (data-quality round)
+
+A round triggered by "the feed looks empty on Monday." Single root cause —
+the extractor was setting `expires_at` to "this weekend's Sunday" regardless
+of when the event actually was, so future-weekend events landed in the DB
+already-expired and got flagged inactive on the next pass. Fixing it
+surfaced a few related issues that all got addressed at once.
+
+### `expires_at` heal
+
+The fix is layered:
+1. **Extractor compute logic.** `expires_at = COALESCE(end_date, start_date) +
+   23:59:59`, falling back to `NOW() + 30 days` if neither is known. The old
+   "end of this weekend" default is gone.
+2. **UPSERT refresh.** ON CONFLICT now updates `expires_at` and reactivates
+   the row when the new value is in the future. Without this, stale rows
+   from before the fix never self-healed because re-extraction couldn't
+   touch the column.
+3. **Boot-time data heal.** `healStaleEventExpiry()` in db.js recomputes
+   `expires_at` for any row where it's NULL or already-past while
+   `start_date` is upcoming, then reactivates affected rows. Idempotent
+   (only matches rows that need fixing) so it's safe to run on every boot.
+
+### Auto-pause: days-since-last-event, scaled by track record
+
+Old policy was "3 consecutive empty extraction runs → pause." With the
+stricter "skip events > 6 weeks out" extraction prompt, top-yielding sources
+were producing 0 events in a single run for legitimate reasons and getting
+killed permanently. New policy:
+
+- Pause threshold scales by lifetime track record:
+  - 0–5 lifetime events  → 14 days idle before pause
+  - 6–20 lifetime events → 30 days
+  - 21+ lifetime events  → 45 days
+- "Idle" is measured as `MAX(extracted_at)` from the events table, not a
+  per-run strike counter. Cache-skipped runs (when raw_text hash matches
+  the prior run) don't count, so dormant pages don't accumulate strikes.
+- Boot-time `unpauseLegacyAutoPaused()` reactivates every source whose
+  `last_error` matches the old strike-rule format. One-time cleanup.
+
+Brand-new sources with zero lifetime events skip the pause check entirely
+on a single empty run — they get an implicit grace window from creation.
+
+### Cross-source dedup
+
+\`content_hash\` (title + start_date with normalized title) misses variants
+where promotional prefixes change the hash:
+
+- "Throwback Night: Spirit vs Current" / "Washington Spirit Home Match
+  vs Kansas City Current" / "Washington Spirit Game" — three sources,
+  three hashes, one game.
+- "Premiere: Hamilton at Kennedy Center" / "Hamilton at Kennedy Center" —
+  two hashes, one show.
+
+Two layers handle this:
+
+1. **Pre-hash title normalization** strips promotional prefixes
+   (Throwback Night:, Premiere:, Featured:, Now Showing:, Opening Weekend:,
+   Sponsored:, Spotlight:, …) and trailing parentheticals
+   ((Matinee), (Encore), (Rescheduled), (Sold Out), (Preseason), …) and
+   normalizes "vs.", "@", "v.s." → "vs". Category-agnostic.
+
+2. **Post-extraction merge pass** (`mergeDuplicateEvents`) catches what
+   survives the hash. Two cluster keys: same canonical \`ticket_url\` +
+   \`start_date\`, OR same \`venue\` + \`start_date\` + \`start_time\`.
+   For each cluster the row with the most non-null fields wins; losers
+   donate their non-null fields then get deleted.
+
+### Distance filter (universal)
+
+Hide events estimated > 2 hours one-way drive from DC metro UNLESS
+\`base_score ≥ 0.85\`. Applies to **every category** — sports away games,
+NYC concerts, Charlottesville exhibits, Pittsburgh art shows, Rehoboth
+beach weekends are all judged on the same rule. The 'away' category
+isn't exempt; weekend-trip events still earn their slot via score.
+
+Three-layer text-based heuristic in \`services/distance.js\`:
+
+1. **Pro stadium names** — Guaranteed Rate Field, Citi Field, Fenway,
+   Yankee Stadium, MetLife, Soldier Field, etc. Most specific.
+2. **City/town tokens** — DC metro core (≤ 30 min) → distant cities
+   (NYC / Philly / Pittsburgh / Boston, 240 min). Charlottesville,
+   Gettysburg, Luray, Rehoboth all 150–180 min.
+3. **Source-name fallback** — "Visit Charlottesville", "Destination
+   Gettysburg", "Rehoboth Beach Events" carry distance signal even
+   when the row's address fields are sparse.
+
+Returns null if uncertain — null events default to "keep" (don't hide
+on a guess). \`?showHidden=1\` on \`/api/events\` bypasses for admin
+debugging and tags events with \`_distance_hidden\`, \`_distance_minutes\`,
+\`_distance_reason\`.
+
+V0 heuristic; future: replace with event_lat/event_lng + haversine
+when those columns land.
+
+### Source authority — data-driven
+
+\`sources.source_tier\` (A/B/C/D) is now the source of truth for the
+authority boost (+0.15 / +0.08 / 0 / −0.05). The regex-on-name classifier
+is kept as a fallback for sources with NULL tier. Boot-time \`seedSourceTiers()\`
+populates the column from the regex once, and applies hand-promotions
+for editorial roundups whose name doesn't match: \`washington.org Monthly\`,
+\`washington.org This Weekend\`, \`FXVA Fairfax Events\` → Tier B.
+
+Admin can promote/demote without a code deploy via
+\`POST /api/admin/sources/:id/tier\`.
+
+### Other scoring tweaks
+
+- **\`recencyMod\`** — never-shown bumped from +0.1 to +0.2 so it clearly
+  outranks long-ago-shown (+0). Same fix on the evergreen recency path.
+- **\`weatherModifier\`** — picks the forecast day matching the event's
+  \`start_date\` (was always Saturday). Outdoor categories expanded to
+  include \`family\` and \`wellness\` so Sunday 5Ks and kid park festivals
+  read their own day's weather.
+- **\`MAJOR_VENUE_KEYWORDS\`** audited against actual \`events.venue\`
+  strings. Added: AFI Silver, Torpedo Factory, Politics and Prose, Pearl
+  Street Warehouse, Capital One Hall, Library of Congress, Studio
+  Theatre, Olney Theatre, Shakespeare Theatre, Jiffy Lube Live,
+  Merriweather, Mosaic District. Removed entries that never matched.
+- **Title+date dedup nullsafe** — null-date events no longer collapse
+  via the synthetic \`"::nd"\` key. Two unrelated trivia nights at
+  different breweries with null dates pass through untouched.
+- **NULL-category heal** — \`siteParsers.js\` config now supports
+  \`defaults.categories\`; pre-parsed events from single-purpose parsers
+  (Smithsonian Associates seeded as \`['nerdy']\`) won't land with
+  \`category=NULL\` anymore. Boot-time heal backfills existing NULL rows
+  via a source-name → category map.
+
+### Frontend: "Time on ticket"
+
+\`formatWhen\` used to fall back to "Anytime" when no time signal was
+extractable, even for events with a fixed time (concert, theater) the
+extractor just couldn't parse. Now: when the event has both a
+\`start_date\` AND a \`ticket_url\`, render "Time on ticket" — the user
+can click the ticket button to see the actual time. Evergreens (no
+start_date) keep "Anytime" since they really are open-ended.
+
+### Admin dashboard
+
+\`GET /api/admin-ui\` serves a single-page HTML viewer (no auth on the
+page; prompts for the admin token, caches in sessionStorage). Source
+health table with tier pills, lifetime / 14d / days-idle counts, status
+pills, last-error text, inline reactivate + set-tier buttons. Top-row
+summary stats. Feed-stats panel showing per-category counts, score
+buckets, sample distance-hidden events with their estimated minutes.
+
+JSON endpoints behind it (all token-gated):
+- \`GET /api/admin/dashboard\` — per-source health
+- \`GET /api/admin/feed-stats\` — feed-level diagnostics
+- \`POST /api/admin/sources/:id/reactivate\` — manual unpause
+- \`POST /api/admin/sources/:id/tier\` — set source_tier
+
+### checkSourceHealth column reference
+
+\`events.created_at\` doesn't exist (the column is \`extracted_at\`). The
+zero-event advisory query in \`checkSourceHealth\` was throwing silently
+inside the catch and never wrote the \`last_error\` flag. One-line fix.
+
+---
+
 ## Changes 2026-04-25 (later session)
 
 **Sports as time-bound events, not evergreens.** `Nationals game` / `Capitals + Wizards` / `DC United` were sitting in `evergreen_events` with vague "Check schedule" copy — they're not evergreen, they have specific dates. Deleted those rows. New `src/services/sports.js` pulls Nationals home games from MLB Stats API (`statsapi.mlb.com`), filters to `teamId=120` home games, skips postponed/cancelled, dedupes via `content_hash` (`md5(normalized title + start_date)`), and upserts into `events`. Wired into the nightly 3am cron via `syncAllSports()`. Capitals + DC United next on the same scaffold.
@@ -333,3 +494,97 @@ Frontend `SendFeedback.jsx` floating 💬 button (bottom-right, safe-area aware)
 **ESLint TDZ rule.** `eslint.config.js` adds `no-use-before-define` with `variables: true, functions: false, classes: true`. Catches the temporal-dead-zone footgun where a `useEffect` dep array references a `const` declared further down in the same component (throws ReferenceError → blank screen). We hit this twice; now lint-blocked. Fixed one existing violation in `App.jsx` (`transitionTo` declared after `resetIdleTimer` referenced it).
 
 **Auth path console.log strip.** Wrapped the OAuth token-storage log in `if (process.env.NODE_ENV !== 'production')` so we don't spew profile IDs in Render logs.
+
+---
+
+## Current State — May 2026
+
+A round of user testing against ~5 beta users surfaced five trust-killers; the next two weeks of work was almost entirely about fixing those. This section documents the resulting product state.
+
+### Five trust-killers and their fixes
+
+| Issue | Fix |
+|---|---|
+| Heavy Google data ask on first login (`/auth/calendar` full scope = "see, edit, share, and **permanently delete** all calendars") | Narrowed to `/auth/calendar.events` — same write-event capability, dramatically less alarming consent screen |
+| Empty / thin category columns | Drop empty columns entirely. Thin columns (1–2 events) merge into a synthetic "Other" bucket. Final ordering: Curated → populated → Other. No zero-count tail. |
+| Links that go to Google instead of the actual event | Frontend killed the `btnI=1` "I'm Feeling Lucky" fallback. The Open button only renders when there's a real URL. |
+| Wrong data ("Best of the Apollo" tagged at "Nationals Park") | Extractor prompt got rule 4f (sports home/away) + rule 0 ("CARDINAL RULE — NO CROSSED WIRES: every field for one event must come from the same paragraph"). Plus per-site HTML parsers replace Haiku entirely for ~80 sources, eliminating the cross-mixing failure mode. |
+| Duplicate events (5× "Georgetown French Market", 4× "DC Chocolate Festival") | `content_hash` now hashes title+date only (was title+venue+date — venue varied across sources, so dedup missed). UPSERT smart-merges venue/url/desc from whichever source had the most complete row. |
+
+### Categories — now 21 (was 14)
+
+`outdoors`, `food`, `restaurants`, `arts`, `theater`, `books`, `music`, `sports`, `nerdy`, `drinks`, `nightlife`, `comedy`, `film`, `wellness`, `family`, `activities`, `shopping`, `away`, `trips` — plus two synthetic columns:
+
+- **`curated`** — top 8 events across all categories by base_score, deduped, sponsored excluded. First card gets the **Spotlight** strip (violet, expanded by default). Always renders first.
+- **`other`** — thin-category overflow bucket. Events with category counts <3 get pulled out and rolled into `other` with their source category preserved (rendered as emoji prefix). Always second-to-last.
+
+### View modes
+
+Toggle in the QuickPrompts row, persists in localStorage:
+
+- **Compact** — every card collapsed; tighter spacing
+- **Standard** — Spotlight expanded, rest collapsed (default)
+- **Magazine** — every card expanded; more breathing room
+
+### Sponsored events
+
+New `events.is_sponsored boolean` column. 8 self-serving seeds in the DB (poker at Adam's, Target with Kailee, etc.). Render treatment:
+
+- **Card:** amber inline strip at top reading `⚡ SPONSORED`
+- **Desktop:** sponsored hero takes precedence over Top Pick in the WeekendSidebar
+- **Mobile:** spliced into the Curated column at slot #2 (right after Spotlight) — no sidebar on mobile
+
+### Action bar — consolidated
+
+Old: 8 buttons (📅 📍 🍽 🎟 🔗 ↗ ❤️ 👍 👎). New:
+
+- 📅 Add to calendar
+- 📍 Directions
+- **Smart Open** — picks the best link automatically: Reserve (Resy/OpenTable) → Tickets (specific URL) → Open page (event page) → hidden (no Google fallback)
+- ↗ Share
+- 👍 / 👎 feedback
+
+The heart Save button is gone — thumbs-up + calendar-add cover both signals.
+
+### Top-bar menu (replaces Settings → About Locale)
+
+A small ⓘ button in the header opens a popover with the 7 boilerplate pages (About, Business, Advertise, Terms, Privacy, Trust, Support). Settings stays focused on actual settings.
+
+### Source transparency — behind an infotip
+
+The "From Washingtonian · ✓ confirmed" footer that appeared on every expanded card is now collapsed behind a tiny ⓘ at the bottom-right of the card. Click reveals.
+
+### Loading splash — split rows
+
+Progress lines (1.4s rotation) and tips (5s rotation) are now separate rows. Old version mixed them at 2.2s, which was too fast to read tips and too slow for momentum. Now: progress churns above, tip dwells below in its own card.
+
+### Friend-going pill
+
+When `act.friends_interested.length > 0`, the compact card shows a small amber pill in the title row reading `👥 3 going` with stacked avatars. Replaces the bare avatar stack.
+
+### View-mode default behavior in cards
+
+ActCard now reads `viewMode` prop and sets initial `expanded` state accordingly:
+- `magazine`: every card opens expanded
+- `standard`: only Spotlight opens expanded (current behavior)
+- `compact`: every card opens collapsed
+
+### Three-tier venue / area system (data quality)
+
+After multiple iterations on what to do when a source returns null venue:
+
+- **Tier 1 — single venue:** Source/host = one specific physical place. `Pinstripes DC Bocce`, `Birchmere Alexandria`, `Kennedy Center`, `Ford's Theatre`, `9:30 Club`, etc. → fill venue with that name.
+- **Tier 2 — small navigable area:** Source/host = a small walkable district (~2 sq mi or one mixed-use complex). `Falls Church City Calendar`, `Mosaic District Events`, `Downtown Silver Spring`, `CityCenterDC`, `Old Town Alexandria`, `National Mall`, `Smithsonian Associates` (programs cluster on the Mall) → fill BOTH venue AND neighborhood with the area name. Frontend's `formatVenue()` prefers neighborhood; relevancy uses neighborhood for proximity scoring.
+- **Tier 3 — sprawling aggregator:** Smithsonian umbrella (museums miles apart), NoVA Parks (30+ parks), Loudoun Wineries (40+ over 500 sq mi), Ocean City MD (5-mile boardwalk), Eventbrite NoVA, FXVA Fairfax, Visit Charlottesville, washington.org, washingtonian.com, MLB/NFL schedules (home/away ambiguity) → leave both fields null. Each event is at a different real venue; `web_search` backfill resolves per-event.
+
+`AGGREGATOR_HOSTS` set + `isAggregatorHost()` guard prevents these from leaking via the title-host slug-match heuristic.
+
+### Authentication scope (Google OAuth)
+
+- **App scope:** `openid email profile https://www.googleapis.com/auth/calendar.events`
+- **Pending:** custom OAuth client in our own Google Cloud project so the consent screen says "Sign in to Locale" instead of `<supabase-ref>.supabase.co`. Code path is correct; this is config-only.
+
+### Beta info
+
+Single inbox during beta is `adamcrubin@gmail.com`. Onboarding flow + Welcome screen exist; demo mode is gated (LoginPromptModal blocks writes for unauthenticated users).
+

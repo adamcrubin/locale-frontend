@@ -300,6 +300,49 @@ UPDATE events SET active=false WHERE zip_code=$1 AND expires_at < NOW() AND acti
 
 `setExtracting(true/false, count)` bookends the pass.
 
+### Auto-pause policy
+
+A source is auto-paused (`active=false`, `auto_paused_at=NOW()`) when its
+events table has gone idle for longer than a threshold scaled by its
+lifetime track record:
+
+| Lifetime events | Threshold |
+|---|---|
+| 0 – 5 | 14 days idle |
+| 6 – 20 | 30 days idle |
+| 21 + | 45 days idle |
+
+Idle is measured as `MAX(extracted_at)` from the events table. Cache-skipped
+runs (when raw_text hash matches the prior run) don't count, so a source
+serving the same page for weeks doesn't accumulate pressure unfairly.
+
+Brand-new sources with zero lifetime events skip the check entirely — they
+get an implicit grace window from creation rather than pausing on a single
+empty run.
+
+`unpauseLegacyAutoPaused()` runs at boot and reactivates any source whose
+`last_error` matches the old strike-counter format (`auto-paused: N empty
+extraction runs in a row`). One-time cleanup against the prior policy.
+
+### Cross-source dedup (Pass 3 after extraction + backfill)
+
+The insert-time `content_hash` UPSERT collapses duplicates that share
+title + start_date. Two more keys catch what survives:
+
+1. **Canonical ticket_url + start_date** — same ticketing page = same event,
+   regardless of how three different sources titled it.
+2. **Venue + start_date + start_time** — same room at the same moment.
+
+`mergeDuplicateEvents(zipCode)` runs after `backfillMissingFields`. For each
+cluster, the row with the most non-null informative fields wins; losers
+donate their non-null fields to the winner via UPDATE then get deleted.
+
+Title hashing also strips a category-agnostic noise list before computing
+the hash: `Throwback Night:`, `Premiere:`, `Featured:`, `Spotlight:`,
+`Now Showing:`, `Opening Weekend:`, `Sponsored:`, `(Matinee)`, `(Encore)`,
+`(Rescheduled)`, `(Sold Out)`, `(Preseason)`, `home match`, `at home`, etc.
+"vs.", "@", "v.s." normalize to "vs".
+
 ---
 
 ## Stage 2b: Scraped Context for AI Prompts (`getScrapedContext`)
@@ -391,6 +434,41 @@ Events are grouped into 14 categories. For the top 3 events per category, Haiku 
 }
 ```
 
+### Stage 3b: Distance filter (`src/services/distance.js`)
+
+Applied right after URL/title-date dedup, before per-category bucketing.
+Universal across all categories.
+
+**Rule:** hide events estimated > 120 minutes one-way drive from DC metro
+unless `base_score ≥ 0.85`. Astronomical scores cross the bar (headliner
+festivals, can't-miss regional draws); ordinary out-of-metro listings get
+cut.
+
+**Three-layer text-based heuristic** (returns null if uncertain → defaults
+to keep):
+
+1. **Stadium names** — Guaranteed Rate Field (Chicago, 600 min), Yankee
+   Stadium (240), Citi Field (240), Fenway (480), Truist Park (Atlanta,
+   600), MetLife (240), Lincoln Financial Field (180), Soldier Field
+   (Chicago, 600), Heinz Field / Acrisure Stadium (Pittsburgh, 240), …
+   Most-specific signal — beats stray city tokens elsewhere in the row.
+2. **City / town names** — DC metro core (Falls Church, Arlington,
+   Alexandria, McLean, Tysons, Bethesda, Silver Spring, Rockville: 20–30
+   min), inner suburbs (Manassas, Leesburg, Frederick: 50–75 min),
+   day-trip mid (Annapolis, Baltimore, Harpers Ferry, Front Royal: 90),
+   long day trip (Charlottesville, Gettysburg, Luray, Rehoboth: 150–180),
+   distant (NYC, Philly, Pittsburgh, Boston, Ocean City MD: 240+).
+3. **Source-name fallback** — "Visit Charlottesville", "Destination
+   Gettysburg", "Rehoboth Beach Events" carry distance signal even when
+   the row's address fields are sparse.
+
+**Admin bypass:** `?showHidden=1` on `/api/events` returns far-away events
+in the response, tagged with `_distance_hidden`, `_distance_minutes`,
+`_distance_reason`. Used by the admin dashboard "what's getting cut" panel.
+
+V0 heuristic; future: replace with `event_lat` / `event_lng` columns +
+haversine when those land.
+
 ---
 
 ## Stage 4: Frontend Display
@@ -431,7 +509,9 @@ Polls `GET /api/pipeline-status` every **8 seconds**. Shows an amber pulsing ind
 | Weather refresh | Every 3 hours | Clears weather cache, re-fetches |
 | Scrape + extract | Daily at 5am | Skips scrape if ≥5 sources fresh within 6h; always runs extraction |
 | **Sports sync** | **Daily at 3am** | `syncAllSports()` — pulls schedules from MLB Stats API (Nationals home games); Capitals + DC United coming next |
+| **Sponsored roll-forward** | **Every Monday at 3:30am** | Re-stamps sponsored seed events ("Poker night at Adam's", etc.) to the upcoming Fri/Sat/Sun. Without this they expire after the seeded weekend and never come back. |
 | Evergreen verification | Every Monday 4am | `runVerificationPass(zip)` |
+| Restaurant booking refresh | Every Monday 4:30am | Looks up direct booking URLs for restaurants in events + evergreens |
 | Health check | 1st of each month at 3am | `checkSourceHealth` + `runAutoValidator` + `runVerificationPass` |
 | **DB cleanup** | **Every Sunday at 2am** | Deletes expired `scraped_content`, `generated_activities`, and inactive `events` older than 30 days |
 | On startup | After 3s / 5s delay | Weather + full activity refresh |
@@ -457,6 +537,11 @@ Polls `GET /api/pipeline-status` every **8 seconds**. Shows an amber pulsing ind
 | `last_ok` | timestamptz | Last successful scrape |
 | `last_error` | text | Most recent error message (includes advisory "No events extracted in 14 days") |
 | `last_checked` | timestamptz | Last attempt (success or fail) |
+| `last_extracted_hash` | text | md5 of `raw_text` from the most recent extraction; used by hash-skip cache |
+| `last_extracted_weekend` | date | Weekend Friday this source was last extracted for; combined with `last_extracted_hash` to short-circuit unchanged extractions |
+| `consecutive_empty_runs` | int | Legacy counter (kept for admin dashboard back-compat); the live auto-pause policy uses days-since-last-event, not strikes |
+| `auto_paused_at` | timestamptz | Set when source crossed the auto-pause threshold; cleared on `reactivate` |
+| `source_tier` | text | `A` / `B` / `C` / `D`. Drives the +0.15 / +0.08 / 0 / −0.05 base_score boost. Admin-controllable via `POST /admin/sources/:id/tier`. |
 
 ### `scraped_content`
 
@@ -525,17 +610,48 @@ Always-available venues/parks/museums. Not time-bound. Scored by `times_saved`, 
 
 Caches Sonnet-generated activity lists and prompt responses. Keyed by `(zip_code, profile_hash, content_hash, weekend_str)`. Rows older than 7 days are hard-deleted weekly.
 
+### `user_feedback`
+
+Free-text feedback drop from the floating 💬 button (`SendFeedback.jsx`).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | PK |
+| `body` | text | User's text, capped 4000 chars at the API |
+| `category` | text | Whitelist: `bug`, `idea`, `data`, `praise`, `other` |
+| `profile_id` | text | Active profile id from the frontend, nullable |
+| `email` | text | Supabase user email when signed in, nullable |
+| `user_id` | uuid | Supabase user id (regex-validated UUID), nullable |
+| `context` | jsonb | `{ url, ua, viewport, ts }` snapshot at submit |
+| `status` | text | `new` (default) / `triaged` / `shipped` / `wont-fix` |
+| `created_at` | timestamptz | |
+
 ---
 
 ## Admin API Endpoints
 
-All routes are under `/api/`:
+All routes are under `/api/`. All `/admin/*` routes require an `X-Admin-Token`
+header matching `process.env.ADMIN_SECRET`; comparison uses
+`crypto.timingSafeEqual` and per-IP failure rate-limiting (10 attempts/hr).
+
+### Admin dashboard
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/admin-ui` | **Single-page HTML dashboard.** Unauth on the page; prompts for the admin token, caches in sessionStorage, sends `X-Admin-Token` on data fetches. Source health table (tier pills, lifetime / 14d / days-idle, status, last_error), inline reactivate + set-tier buttons, summary stats, feed-stats panel (per-category counts, score buckets, sample distance-hidden events). |
+| `GET` | `/admin/dashboard` | JSON: per-source health for a zip. Returns each source with `source_tier`, `active`, `auto_paused_at`, `lifetime_events`, `events_last_14d`, `last_event_at`, `days_idle`, `last_error`. Plus a top-level `summary` rollup. |
+| `GET` | `/admin/feed-stats` | JSON: feed-level diagnostics. `total_active`, `after_distance_filter`, `hidden_distance`, `by_category`, `score_buckets`, `hidden_examples` (8 sample distance-hidden events with `minutes` + `base_score`). |
+| `POST` | `/admin/sources/:id/reactivate` | Manual unpause. Clears `auto_paused_at`, `last_error`, `consecutive_empty_runs`; sets `active=true`. |
+| `POST` | `/admin/sources/:id/tier` | Body `{ tier: 'A' \| 'B' \| 'C' \| 'D' }`. Sets `source_tier` to drive the +0.15 / +0.08 / 0 / −0.05 base_score boost without a code deploy. |
+
+### Pipeline + sources
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/admin/refresh/sources` | Trigger scrape for a zip (`{ zip }`) |
 | `POST` | `/admin/extract` | Trigger extraction pass (`{ zip }`) |
 | `POST` | `/admin/refresh/activities` | Trigger full scrape+extract (`{ zip, force }`) |
+| `POST` | `/admin/sync-sports` | Trigger MLB Nationals sync (Capitals/DC United TBD on the same scaffold) |
 | `POST` | `/admin/sources/add` | Add a new source (`{ name, url, source_type, category_hint, needs_pattern, zip_code }`) |
 | `POST` | `/admin/sources/classify` | Haiku classifies a URL (`{ url }`) → returns `{ name, source_type, category_hint, needs_pattern, notes }` |
 | `POST` | `/admin/sources/test` | Scrape + extract a single source, return debug info (`{ sourceId, zip }`) |
@@ -553,7 +669,16 @@ All routes are under `/api/`:
 | `POST` | `/admin/health-check` | Run monthly health check |
 | `GET` | `/admin/cache` | List in-memory cache keys |
 | `POST` | `/admin/cache/clear` | Flush in-memory cache |
+| `GET` | `/admin/feedback` | List user feedback (default `?status=new`) |
+| `POST` | `/admin/feedback/:id/status` | Triage feedback to `new` / `triaged` / `shipped` / `wont-fix` |
 | `GET` | `/pipeline-status` | Current scraping/extracting booleans + timestamps |
+
+### Public
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/events` | Main feed. Query params: `zip`, `profileId`, `category?`, `weekday?`, `timeWindow?`, `limit?`, `offset?`, `userLat?`, `userLng?`, `userId?`, `showHidden=1?` (admin debug — returns far-away events tagged with `_distance_hidden`/`_distance_minutes`/`_distance_reason`). |
+| `POST` | `/feedback` | Free-text feedback drop. Body `{ body, category, profileId?, email?, userId?, context? }`. Validates category against `bug \| idea \| data \| praise \| other`; caps body at 4000 chars. |
 
 ---
 
@@ -661,3 +786,262 @@ Existing admin dashboard surfaces `last_error` and `active=false` sources for re
 - **Hash skip**: zero Claude calls for unchanged sources. On days with no weekend rollover and mostly-stable pages, this should dominate the savings.
 - **max_tokens**: caps tail — limited savings since Anthropic only bills emitted tokens.
 - **Auto-pause**: compounding over time — each quiet source removed is one fewer call per pipeline run forever.
+
+---
+
+# Current pipeline — May 2026
+
+This is the **authoritative** flow for now. The earlier sections of this doc describe the older Haiku-primary pipeline; they're kept for historical reference. When in doubt, this section wins.
+
+## End-to-end flow
+
+```
+[1] sources (DB)
+       │
+       ▼
+[2] scraper.js                     ← daily at 5am OR /admin/refresh/sources
+       │  • directScrape: axios → raw HTML
+       │  • try per-site HTML parser FIRST (services/siteParsers.js)
+       │  • htmlToText() for the Haiku fallback path
+       │  • web search via Haiku for blocked sites OR direct-scrape failures
+       │  • apology detection drops bad web_search responses
+       │
+       ▼
+[3] scraped_content (DB)            raw_text + parsed_events JSONB
+       │
+       ▼
+[4] extractor.js                    ← /admin/extract OR auto after scrape
+       │  IF parsed_events present  → use them, skip Haiku
+       │  ELSE                       → Haiku extraction with prompt-cached static rules
+       │
+       │  THEN insert loop applies:
+       │    • BLOCKLIST filter
+       │    • Cost cleanup (junk strings → null)
+       │    • Heuristic venue tier 1 (single-venue host/source map)
+       │    • Heuristic venue tier 2 (small-area host/source map → fills venue + neighborhood)
+       │    • Smart date inference (day-in-title → matching weekend day; else upcoming Sat + recurring=true)
+       │    • Title-host slug match (festival domain = venue)
+       │    • content_hash dedup (title+date only) + smart UPSERT merge
+       │
+       ▼
+[5] events (DB)                    rough draft of the weekend's lineup
+       │
+       ▼
+[6] backfill resolver              ← runs once at end of extraction pass
+       │  • Find events missing url/venue/date/neighborhood/description
+       │  • One Haiku web_search call per event returns JSON with whatever
+       │    it could verify on real source pages
+       │  • Sanitized fields written back to events
+       │  • LAST resort: rows still missing ALL of (venue, date, url) get active=false
+       │
+       ▼
+[7] events (final state)
+       │
+       ▼
+[8] relevancy.js                   ← per request via /api/events
+       │  scoring + dedup + category grouping + why-blurb (cached, global per event)
+       ▼
+[9] frontend
+```
+
+## Stage 1: Per-site HTML parsers (`src/services/siteParsers.js`)
+
+The primary extraction path for ~80 of ~120 active sources. Parsers are pure functions — no Claude calls, no network, just regex. Run during scrape on the raw HTML before strip-tags.
+
+### Architecture
+
+| Layer | What it does |
+|---|---|
+| **Primitives** | 4 generic HTML matchers: `jsonLd`, `microdata`, `tribe`, `articleList` |
+| **Custom parsers** | Escape hatches for sites that don't fit a primitive (Smithsonian Associates) |
+| **`SOURCE_CONFIG`** | Per-source recipe: which primitives to run, in what order, plus quirk flags + defaults |
+| **`DEFAULT_CONFIG`** | Fallback for any source not explicitly listed: try `jsonLd` then `microdata` |
+| **Dispatcher** | `tryParseSite(name, html, url)` runs primitives in order, returns first non-empty result |
+
+### The 4 primitives
+
+| Primitive | What it catches | Best for |
+|---|---|---|
+| `jsonLd` | `<script type="application/ld+json">` schema.org/Event blocks | Modern theatre/music sites, Eventbrite, Tribe-on-WordPress |
+| `microdata` | `itemtype="schema.org/Event"` blocks with `itemprop` fields | CivicPlus gov calendars, library sites |
+| `tribe` | WordPress Tribe Events Calendar plugin (falls back to jsonLd, supplements with tooltip scrape) | ~10% of WP sites |
+| `articleList` | Generic `<article>` / `<li class="event">` / `<div class="event-card">` with `<h2/h3>` + `<time>` | Editorial roundups (last resort) |
+
+### Per-source quirk flags
+
+| Flag | What it does | Used by |
+|---|---|---|
+| `defaults: { venue, neighborhood, address }` | Fills these fields when primitives leave them blank | Most single-venue sites (Birchmere, Kennedy Center, …) |
+| `venueFromTitlePrefix: true` | Splits title on first colon → venue is the prefix. "Williams Sonoma: Art of Espresso" → venue = "Williams Sonoma" | Mosaic District (tenants in title) |
+| `venueFromAdjacentDiv: { selector, innerSelector, lookback }` | After title is found, looks back `lookback` chars in the HTML for a sibling `<div class="...selector...">` containing a `<div class="...innerSelector...">VENUE</div>` | Falls Church City Calendar |
+| `customFn: 'parseSmithsonian'` | Calls an entirely custom parser registered in `CUSTOM_PARSERS` | Smithsonian Associates (presentation-method extraction) |
+
+### Dispatcher behavior
+
+- Tries primitives in config order, first non-empty result wins
+- Applies post-processing: title-prefix venue, adjacent-div venue, defaults
+- Returns `null` if everything came up empty → existing Haiku flow runs as fallback (zero regression risk)
+
+### Storage path
+
+- Scraper persists per-site results to `scraped_content.parsed_events` JSONB column (migration: `add_scraped_content_parsed_events.sql`)
+- Extractor's `runExtractionPass()` reads `parsed_events` alongside `raw_text`; passes to `extractEventsFromSource(..., { preParsedEvents })` which short-circuits the Haiku call
+
+### Tests
+
+`scripts/test-site-parsers.js` runs all 3 parsers (Mosaic, Falls Church, Smithsonian) against cached HTML samples and prints field-coverage stats. Run quarterly or after any HTML format change.
+
+| Site | Events | Venue | Date | URL | Time |
+|---|---|---|---|---|---|
+| Mosaic District | 53 | 53/53 | 53/53 | 53/53 | 3 ms |
+| Falls Church | 14 | 12/14 | 14/14 | 0/14 | 1 ms |
+| Smithsonian Associates | 10 | 8/10 | 10/10 | 10/10 | 2 ms |
+
+### Health check (`src/services/parserHealth.js`)
+
+`POST /admin/parser-health` runs every parser against the most recent cached HTML and:
+
+1. Logs per-source `events_count`, `primitive`, and 3 sample titles to a new `parser_health` table.
+2. Compares to the prior run's count — if a source went from N>0 to 0, marks it as `regressed` (site changed its HTML).
+3. Returns a structured report:
+   ```json
+   { "successes": 47, "failures": 33, "regressions": 2,
+     "regressionList": [{ "name": "...", "lastCount": 14, "url": "..." }] }
+   ```
+
+Designed to run weekly via cron / GitHub Actions.
+
+## Stage 2: Scraper changes
+
+The scraper still has two strategies (direct HTTP scrape + web search Haiku) but now:
+
+- **Tries the per-site parser FIRST** on raw HTML before strip-tags. If the parser succeeds, the events are stored to `scraped_content.parsed_events` and the Haiku extraction call is skipped downstream.
+- **Apology detection strengthened** — drops web_search responses that start with "I appreciate your request, but I can't use site:..." or similar preambles. These were dumping unrelated events into the extractor and causing crossed-wires (e.g. "Best of the Apollo" tagged at "Nationals Park").
+- **Structured hints preamble** — before strip-tags, `extractStructuredHints()` pulls `og:*` meta tags, microdata `itemprop="location"/"address"/"startDate"`, `<address>` blocks, and `<time datetime="...">` into a `=== STRUCTURED HINTS ===` block prepended to the cleaned text. Captures rich signal that strip-tags would otherwise nuke.
+
+## Stage 3: Extractor changes
+
+### Three-tier venue heuristic (runs BEFORE web_search backfill)
+
+Cheap deterministic fills based on the source/host of each event:
+
+- **Tier 1 — single venue** (`SOURCE_DEFAULT_VENUE` + `HOST_DEFAULT_VENUE`): e.g. `Birchmere Alexandria` → "The Birchmere", `kennedy-center.org` → "Kennedy Center". Fills `venue` only.
+- **Tier 2 — small navigable area** (`SMALL_AREA_BY_SOURCE` + `SMALL_AREA_BY_HOST`): e.g. `Falls Church City Calendar` → both venue + neighborhood = "Falls Church"; `mosaicdistrict.com` → "Mosaic District". Fills BOTH `venue` AND `neighborhood`.
+- **Tier 3 — aggregator** (`AGGREGATOR_HOSTS`): `smithsonianassociates.org`, `novaparks.com`, `mlb.com`, `eventbrite.com`, `washington.org`, etc. → leave both fields null. Each event is at a different real venue; backfill resolves per-event.
+
+The `isAggregatorHost()` guard is also applied to the title-host slug-match heuristic ("DC Chocolate Festival" + `dcchocolatefestival.com` → venue=title) so aggregators don't leak via that path.
+
+### Smart date inference
+
+For events that come back without `start_date`:
+
+- Day-of-week in title (`"Throwback Thursdays"`) → that day's weekend occurrence
+- Otherwise → upcoming Saturday + `recurring=true` (so dedup collapses across weeks for evergreen-shaped events like "Bowling & Bocce")
+
+### Dedup overhaul
+
+- `content_hash` = MD5(normalized_title + "::" + start_date_or_recurring) — was previously title+venue+date, but venue varied across sources causing the dedup to miss
+- `ON CONFLICT (content_hash) DO UPDATE` smart-merges: keeps the best non-null venue/url/desc/neighborhood/cost from whichever source had the more complete row. Description: longer one wins.
+- Migration `dedup_cleanup_round2.sql` retroactively collapses ~69 existing duplicate rows, backfilling the winner with the best fields from losers and soft-deleting losers.
+
+### Backfill resolver
+
+After extraction completes, `backfillMissingFields(zipCode)` runs once:
+
+1. Selects up to `BACKFILL_MAX=120` events still missing one or more of url, venue, start_date, neighborhood, description.
+2. For each, ONE Haiku web_search call with a focused prompt that returns a JSON object containing only the fields it could verify on real source pages.
+3. Sanitizes (URL shape via `looksLikeEventUrl`, length caps, ISO date format), then partial UPDATE — only writes the fields that came back.
+4. **Last-resort drop:** rows still missing ALL THREE of (venue, date, url) get `active=false`. On current data, that's 0 rows.
+
+### Removed
+
+- The `BLOCKLIST` filter that skipped events with junk titles is now soft (returns null rather than hard-skip when feasible).
+- The strict "no venue → drop" gate from an earlier iteration was relaxed in favor of the backfill-first approach.
+
+## Stage 4: Frontend changes (relevant to the data path)
+
+- **No Google fallback.** `ActionBar.jsx` Open button hides entirely when there's no `url`, `ticket_url`, or `reservation_url`. Pipeline drops these events before they ship anyway, so the button-hidden state is rare.
+- **Empty category columns dropped.** `ActiveMode.jsx` filters out categories with 0 events before render. Final ordering: `curated` → populated → `other` (synthetic thin-category bucket).
+- **Why-blurb cache scope** changed from `(event_id, profile_id)` to `(event_id)` only. Same blurb works for everyone; ~10× fewer Haiku calls.
+
+## Stage 5: New columns
+
+| Table | Column | Purpose |
+|---|---|---|
+| `events` | `is_sponsored boolean` | Sponsored event flag (8 self-serving seeds in DB). Renders amber strip + sidebar slot. Migration: `sponsored_events.sql`. |
+| `scraped_content` | `parsed_events jsonb` | Per-site parser output. Pipeline tolerates absence. Migration: `add_scraped_content_parsed_events.sql`. |
+| `parser_health` | new table | Weekly parser health snapshots. Auto-created by `parserHealth.js`. |
+
+## Pending migrations (none applied yet — Adam-side)
+
+1. [migrations/sponsored_events.sql](migrations/sponsored_events.sql) — `is_sponsored` column + 8 seeds
+2. [migrations/remove_meetup_source.sql](migrations/remove_meetup_source.sql) — disables Meetup source + soft-deletes existing meetup events
+3. [migrations/dedup_cleanup_round2.sql](migrations/dedup_cleanup_round2.sql) — collapses ~69 existing duplicates
+4. [migrations/add_scraped_content_parsed_events.sql](migrations/add_scraped_content_parsed_events.sql) — `parsed_events` JSONB column
+
+Idempotent. Order doesn't matter except meetup before dedup.
+
+## Migrations applied 2026-04-27 via MCP
+
+These were applied directly via the Supabase MCP — no manual paste needed.
+Recorded here for posterity:
+
+- `create_restaurant_bookings` — restaurant_bookings cache table (per-
+  restaurant booking-platform URLs, populated by services/restaurantDirectory.js)
+- `seed_dc_evergreens_round1` — ~70 evergreens across 10 categories that
+  had zero coverage (theater, books, drinks, nightlife, comedy, wellness,
+  family, activities, shopping, away)
+- `seed_dc_evergreens_round2_outdoors_sports` — +9 entries to bulk up
+  outdoors and sports
+- `add_out_of_dc_sources` — 10 new sources for headliner-tier discovery:
+  NYC Go, Time Out NY, Philly Festivals, CFG Bank Arena Baltimore, Visit
+  Wilmington DE, Walter E Washington Convention Center, Pennsylvania
+  Convention Center, Baltimore Convention Center, Hampton Roads
+  Convention Center, Mid-Atlantic Festivals
+
+## Lookahead window (May 2026)
+
+The extractor prompt was rewritten to capture events up to **6 weeks in
+the future** (not just this weekend). Most venue calendars publish weeks
+ahead — Birchmere, Wolf Trap, AFI Silver, Kennedy Center all post 6+
+weeks of upcoming shows. We were throwing 90% of that away by date-
+filtering at the prompt level.
+
+Concretely:
+- Prompt rule 2 now reads "events happening any time in the next ~6
+  weeks (this weekend + 5 weekends after it + weeknights between)"
+- expires_at default no longer defaults to "this weekend's Sunday".
+  When no end_date is given, falls back to start_date + 1 day; when no
+  date at all, falls back to 30 days. Was deactivating future events the
+  moment the current weekend rolled.
+- Frontend's time-window selector (this-weekend / next-weekend /
+  weeknights / this-month) queries the events table by date range, so
+  the future events surface in the right view automatically.
+
+## Out-of-metro headliner rule
+
+Sources from other cities (NYC, Philly, Baltimore, Wilmington DE,
+Charlottesville, Richmond, Annapolis, Rehoboth) now go through prompt
+rule 5c: extract ONLY name-brand headliner-tier events that DC users
+would drive 1-3 hours for — multi-day festivals, parades, marathons,
+comic-cons, citywide weekends. Skip individual venue listings (a
+concert at one Brooklyn club is not a DC user problem). Tag as `away`
+or `trips`.
+
+Convention centers go through rule 5d: only consumer-facing expos
+(auto/anime/comic/food shows). Skip B2B conferences and trade shows.
+
+## Ongoing issues
+
+| Issue | Status | Notes |
+|---|---|---|
+| Sources still produce occasional wrong venue/date | Active | Per-site parsers replace Haiku for ~80 sources; coverage will keep growing as we add configs. The remaining ~40 still go through Haiku (where the cardinal "no crossed wires" rule helps). |
+| Aggregator events (Smithsonian umbrella, NoVA Parks, etc.) need real per-event venue | Tier-3 fix in place | Backfill resolver does this, ~120 events/run cap. Could expand cap if budget allows. |
+| Render free tier cold start (30–60s) | Active | localStorage 5-min TTL stale-while-revalidate absorbs this. Eliminate by upgrading to $7/mo paid tier. |
+| `/admin/*` admin endpoints unauthenticated | Critical, not yet fixed | Public URL exposes scrape/extract/clear triggers. Add `X-Admin-Token` middleware before opening to general invitations. |
+| Google OAuth shows Supabase project URL on consent screen | Adam-side config | Default Supabase routing. Fix via custom Google Cloud OAuth client (see ROADMAP.md). |
+| `parsed_events` column not yet present in DB | Adam-side migration | Pipeline tolerates — falls back to Haiku flow with a console warning. Apply migration to activate full speedup. |
+| Per-site parsers can silently regress when a site changes HTML | Mitigated | Weekly `POST /admin/parser-health` flags regressions (events count went from N>0 to 0). |
+| Web_search backfill can hit rate limits if many events need URLs | Bounded | `BACKFILL_MAX=120` per run. If exceeded, lowest-base_score events skip backfill that run. |
+| Cost: pipeline runs ~$3–4 per full extract+backfill | OK | Most cost is in backfill (web_search @ $0.01 each). Per-site parsers reduce extractor calls; cache hits reduce them further. |
+| Custom Google OAuth client (Locale-branded consent screen) | Adam-side | Step-by-step in ROADMAP.md. Code path correct. |
