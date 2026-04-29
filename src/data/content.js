@@ -1,26 +1,60 @@
+// ── Option 2 categories: 8 buckets, content-based, with Sports split out ──
+//
+// Migrated from the previous 21-bucket model after a competitor survey
+// (Eventbrite, Time Out DC, washington.org, Meetup) and DC-specific sizing.
+// Notes on the consolidation:
+//   - Sports kept as its own column (DC's pro density justifies, and intent
+//     is distinct from Outdoors).
+//   - Markets & Shopping merged into Food & Drink (farmers markets) and
+//     Arts & Culture (craft fairs). Pure shopping doesn't drive weekend plans.
+//   - Comedy folded into Nightlife. Drinks folded into Food & Drink.
+//   - Nerdy / Books / Theater / Film all under Arts & Culture.
+//   - Wellness + Activities (active) folded into Outdoors.
+//   - Festivals/conventions handled by a hero strip + festival tag, not a column.
+//
+// Curated and Other are virtual buckets, not stored on events.
 export const ALL_CATEGORIES = [
-  { id:'curated',     label:'Curated',            icon:'✨', cls:'cat-arts'     },
-  { id:'other',       label:'Other',              icon:'⭐', cls:'cat-arts'     },
-  { id:'outdoors',    label:'Outdoors',           icon:'🌿', cls:'cat-outdoors' },
-  { id:'food',        label:'Food events',        icon:'🥂', cls:'cat-food'     },
-  { id:'restaurants', label:'Hot restaurants',    icon:'🍽', cls:'cat-food'     },
-  { id:'arts',        label:'Arts & culture',     icon:'🎨', cls:'cat-arts'     },
-  { id:'theater',     label:'Theater & dance',    icon:'🎭', cls:'cat-arts'     },
-  { id:'books',       label:'Books & talks',      icon:'📚', cls:'cat-nerdy'    },
-  { id:'music',       label:'Live music',         icon:'🎵', cls:'cat-music'    },
-  { id:'sports',      label:'Sports & games',     icon:'⚽', cls:'cat-sports'   },
-  { id:'activities',  label:'Activities',         icon:'🎳', cls:'cat-sports'   },
-  { id:'shopping',    label:'Shopping & markets', icon:'🛍', cls:'cat-food'     },
-  { id:'nerdy',       label:'Nerdy / talks',      icon:'🧠', cls:'cat-nerdy'    },
-  { id:'drinks',      label:'Drinks',             icon:'🍺', cls:'cat-sports'   },
-  { id:'nightlife',   label:'Nightlife',          icon:'🌃', cls:'cat-music'    },
-  { id:'comedy',      label:'Comedy',             icon:'😂', cls:'cat-food'     },
-  { id:'film',        label:'Film & cinema',      icon:'🎬', cls:'cat-arts'     },
-  { id:'wellness',    label:'Fitness & wellness', icon:'🧘', cls:'cat-trips'    },
-  { id:'family',      label:'Family-friendly',    icon:'👨‍👩‍👧', cls:'cat-music'   },
-  { id:'trips',       label:'Day trips',          icon:'🚗', cls:'cat-trips'    },
-  { id:'away',        label:'Weekend away',       icon:'🧳', cls:'cat-away'     },
+  { id:'curated',   label:'Curated',          icon:'✨',     cls:'cat-arts'     },
+  { id:'other',     label:'Other',            icon:'⭐',     cls:'cat-arts'     },
+  { id:'music',     label:'Live Music',       icon:'🎵',     cls:'cat-music'    },
+  { id:'food',      label:'Food & Drink',     icon:'🍽',     cls:'cat-food'     },
+  { id:'arts',      label:'Arts & Culture',   icon:'🎭',     cls:'cat-arts'     },
+  { id:'sports',    label:'Sports',           icon:'⚾',     cls:'cat-sports'   },
+  { id:'outdoors',  label:'Outdoors & Active',icon:'🌿',     cls:'cat-outdoors' },
+  { id:'family',    label:'Family & Kids',    icon:'👨‍👩‍👧', cls:'cat-family'   },
+  { id:'nightlife', label:'Nightlife & Comedy', icon:'🌃',   cls:'cat-music'    },
+  { id:'trips',     label:'Day Trips & Away', icon:'🚗',     cls:'cat-trips'    },
 ];
+
+// Legacy → new category mapping. Used by:
+//   - frontend transformFeed when reading legacy DB rows still tagged with
+//     old category strings (during the migration window before all events
+//     are remapped server-side)
+//   - the SQL boot heal that does the one-time DB remap
+export const LEGACY_CATEGORY_MAP = {
+  // Already correct
+  music:        'music',
+  food:         'food',
+  arts:         'arts',
+  sports:       'sports',
+  outdoors:     'outdoors',
+  family:       'family',
+  nightlife:    'nightlife',
+  trips:        'trips',
+  // Folded
+  restaurants:  'food',
+  drinks:       'food',
+  breweries:    'food',
+  shopping:     'food',         // farmers markets > craft fairs in DC
+  theater:      'arts',
+  books:        'arts',
+  film:         'arts',
+  nerdy:        'arts',         // talks/lectures fit best with culture
+  comedy:       'nightlife',
+  activities:   'outdoors',     // bowling, mini-golf, etc. — active
+  wellness:     'outdoors',
+  away:         'trips',
+};
 
 export const PREFERENCES = [
   'Dog lover','Adventurous food','Nerdy / intellectual','Low-cost / free',
