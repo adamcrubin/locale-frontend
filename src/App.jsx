@@ -15,6 +15,7 @@ import PostEventFeedback    from './components/PostEventFeedback';
 import LoginPromptModal     from './components/LoginPromptModal';
 import SendFeedback         from './components/SendFeedback';
 import LoadingSplash, { hasSplashBeenShown, markSplashShown } from './components/LoadingSplash';
+import LoadingBanner from './components/LoadingBanner';
 import FriendRequestsToast from './components/FriendRequestsToast';
 import StaticPage from './components/StaticPage';
 import FilterSheet from './components/FilterSheet';
@@ -676,6 +677,16 @@ export default function App() {
           would be noise). */}
       {screen !== 'ambient' && settings.onboardingDone && (
         <SendFeedback user={user} profileId={activeProfile?.id} />
+      )}
+
+      {/* ── Background-refresh banner ──
+          Shown when ActiveMode is up with cached/live data BUT a fresh
+          fetch is still in flight after 3s. Companion to LoadingSplash
+          (which covers the cold-cache case). Auto-dismisses when the
+          fetch finishes. Hidden on ambient since the screensaver should
+          stay clean. */}
+      {screen !== 'ambient' && (
+        <LoadingBanner loading={activitiesLoading} source={activitiesSource} />
       )}
 
       {/* ── Login / connect-calendar prompt ── */}

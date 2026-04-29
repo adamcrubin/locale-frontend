@@ -11,6 +11,7 @@
 // (new session) will see it again.
 
 import { useEffect, useState } from 'react';
+import { usePipelineStatus } from '../hooks/usePipelineStatus';
 
 // Hand-picked Unsplash photo IDs — all in the "people enjoying an event" spirit.
 // Served via Unsplash's direct image CDN; resize params keep them lightweight.
@@ -22,19 +23,26 @@ const PHOTOS = [
 ];
 const bg = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1600&h=900&q=70`;
 
-// Two separate streams:
-//   PROGRESS_LINES rotate fast (1.4s) so you always feel work happening.
-//   TIPS rotate slowly (5s) so users have a chance to actually read one.
-// Rendering them on different rows means the tip stays put while the
-// progress text underneath churns.
-const PROGRESS_LINES = [
-  'Curating a great weekend…',
-  'Reading the local press so you don\'t have to…',
-  'Cross-checking the weather…',
-  'Ranking what\'s actually worth your weekend…',
-  'Tuning picks to your neighborhood…',
-  'Almost there — loading your picks…',
-];
+// Real progress stages, surfaced as a checklist. Each stage activates
+// based on a combination of elapsed time AND real backend signals from
+// /api/pipeline-status. This replaces the prior fake-rotating progress
+// strings — users get to see what's actually happening, not a feel-good
+// stream of placeholders.
+//
+// Stage transitions:
+//   0  ✓ Reading your saved profile          (instant — Locale runs in browser)
+//   1  ▸ Connecting to backend                (active 0-3s)
+//   2  ▸ Loading this weekend's events        (active 3s+ until data arrives)
+//   3  ▸ Personalizing for your taste         (post data, ~1s)
+//   4  ✓ Ready                                (when source becomes live/cached)
+//
+// During stage 2, if backend pipelineStatus reports scraping/extracting,
+// we substitute the real label (e.g. "Scraping 23/75 sources").
+
+function stageState(elapsedMs, pipelineStatus) {
+  if (elapsedMs < 1500) return 1;
+  return 2;
+}
 
 const TIPS = [
   '👍 Tap thumbs-up on events you like — your feed learns fast',
@@ -55,13 +63,11 @@ export function hasSplashBeenShown() {
 }
 
 export default function LoadingSplash() {
-  const [photoIdx, setPhotoIdx] = useState(0);
-  const [progressIdx, setProgressIdx] = useState(0);
-  const [tipIdx, setTipIdx] = useState(() => Math.floor(Math.random() * TIPS.length));
-  // True after 12 seconds — Render's free-tier cold start runs ~30-60s, so
-  // we set expectations after a short patience window. Keeps the user from
-  // assuming the app is broken on first load.
-  const [coldStart, setColdStart] = useState(false);
+  const [photoIdx, setPhotoIdx]     = useState(0);
+  const [tipIdx, setTipIdx]         = useState(() => Math.floor(Math.random() * TIPS.length));
+  const [elapsedMs, setElapsedMs]   = useState(0);
+  const [coldStart, setColdStart]   = useState(false);
+  const { status: pipelineStatus }  = usePipelineStatus();
 
   // Crossfade photos every 4s.
   useEffect(() => {
@@ -69,15 +75,17 @@ export default function LoadingSplash() {
     return () => clearInterval(t);
   }, []);
 
-  // Progress lines churn fast — keeps a sense of activity.
-  useEffect(() => {
-    const t = setInterval(() => setProgressIdx(i => (i + 1) % PROGRESS_LINES.length), 1400);
-    return () => clearInterval(t);
-  }, []);
-
   // Tips dwell — 5s gives users actual time to read.
   useEffect(() => {
     const t = setInterval(() => setTipIdx(i => (i + 1) % TIPS.length), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Tick elapsed time so the checklist can advance + cold-start banner
+  // can decide when to fade in. 250ms is plenty smooth for second-tick UI.
+  useEffect(() => {
+    const start = Date.now();
+    const t = setInterval(() => setElapsedMs(Date.now() - start), 250);
     return () => clearInterval(t);
   }, []);
 
@@ -88,6 +96,35 @@ export default function LoadingSplash() {
     const t = setTimeout(() => setColdStart(true), 12000);
     return () => clearTimeout(t);
   }, []);
+
+  // Build the live checklist. Stage labels can include real backend state
+  // from /api/pipeline-status when the pipeline is actually running.
+  const activeStage = stageState(elapsedMs, pipelineStatus);
+  const fetchLabel = (() => {
+    if (pipelineStatus?.scraping) {
+      const n = pipelineStatus.lastScrapeCount || 0;
+      return n > 0
+        ? `Backend is scraping (${n} sources fresh)…`
+        : 'Backend is scraping fresh sources…';
+    }
+    if (pipelineStatus?.extracting) {
+      const n = pipelineStatus.lastExtractCount || 0;
+      return n > 0
+        ? `Backend is extracting events (${n} so far)…`
+        : 'Backend is extracting events…';
+    }
+    if (elapsedMs < 5000)  return 'Loading this weekend\'s events…';
+    if (elapsedMs < 15000) return 'Still loading your events…';
+    if (elapsedMs < 30000) return 'Backend is waking up — this can take a moment…';
+    return 'Almost there, the cold start is the longest wait…';
+  })();
+  const checklist = [
+    { id: 1, label: 'Reading your saved profile',         done: true,                  active: false },
+    { id: 2, label: 'Connecting to backend',              done: activeStage > 1,       active: activeStage === 1 },
+    { id: 3, label: fetchLabel,                           done: false,                 active: activeStage >= 2 },
+    { id: 4, label: 'Personalizing for your taste',       done: false,                 active: false, pending: true },
+    { id: 5, label: 'Building your weekend',              done: false,                 active: false, pending: true },
+  ];
 
   return (
     <div style={{
@@ -151,16 +188,36 @@ export default function LoadingSplash() {
           }} />
         </div>
 
-        {/* Progress line — short, rotates quickly. */}
+        {/* Real progress checklist — stages light up as work advances.
+            Replaces the old rotating fake-progress strings. */}
         <div style={{
-          marginTop: 18, fontSize: 13,
-          color: 'rgba(255,255,255,.55)',
-          minHeight: 18,
-          fontStyle: 'italic',
-        }}
-          key={`p-${progressIdx}`}
-        >
-          <span style={{ animation: 'fadeIn 350ms ease both' }}>{PROGRESS_LINES[progressIdx]}</span>
+          marginTop: 24, marginBottom: 4,
+          display: 'inline-block', textAlign: 'left',
+          minWidth: 280,
+        }}>
+          {checklist.map(item => {
+            const icon = item.done   ? '✓'
+                       : item.active ? '▸'
+                       :                '·';
+            const color = item.done   ? 'rgba(126,217,87,.95)'
+                        : item.active ? '#C9A84C'
+                        :                'rgba(255,255,255,.30)';
+            return (
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'baseline', gap: 10,
+                padding: '5px 0',
+                fontSize: 13,
+                color: item.pending ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.85)',
+                animation: item.active ? 'pulseDim 1.6s ease-in-out infinite' : 'none',
+              }}>
+                <span style={{
+                  display: 'inline-block', width: 14, textAlign: 'center',
+                  color, fontWeight: item.done ? 600 : 400,
+                }}>{icon}</span>
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Tip — separated, dwells longer so users can read. */}
@@ -193,12 +250,16 @@ export default function LoadingSplash() {
         )}
       </div>
 
-      {/* Keyframes for the spinner bar. fadeIn is assumed to be global already. */}
+      {/* Keyframes for the spinner bar + checklist active-row pulse. */}
       <style>{`
         @keyframes splashBar {
           0%   { left: -40%; }
           50%  { left: 60%; }
           100% { left: 100%; }
+        }
+        @keyframes pulseDim {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0.6; }
         }
       `}</style>
     </div>
