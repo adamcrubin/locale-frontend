@@ -13,9 +13,34 @@ export const FRONTEND_BLOCKLIST = [
   'religious service','church service','bible study',
 ];
 
+// Strip whitespace + punct + lowercase for venue/title equality check.
+function slugForCompare(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function isFrontendBlocked(act) {
   const combined = `${(act.title||'')} ${(act.description||'')}`.toLowerCase();
-  return FRONTEND_BLOCKLIST.some(kw => combined.includes(kw));
+  if (FRONTEND_BLOCKLIST.some(kw => combined.includes(kw))) return true;
+  // Title-equals-venue suppression — extracted "events" where the title IS
+  // the venue (e.g. "The Anthem" listed at venue "The Anthem"). These are
+  // venue listings that leaked into the events feed; they don't describe
+  // an actual happening, just a place. Drop client-side.
+  if (act.title && act.venue) {
+    const t = slugForCompare(act.title);
+    const v = slugForCompare(act.venue);
+    if (t && v && (t === v || t.startsWith(v) && Math.abs(t.length - v.length) < 4
+                            || v.startsWith(t) && Math.abs(t.length - v.length) < 4)) {
+      return true;
+    }
+  }
+  // Article-headline suppression as belt-and-suspenders for the backend
+  // rule 0e + heal. Cheaper than waiting for the next extraction pass to
+  // re-categorize.
+  const title = (act.title || '').toLowerCase();
+  if (/^\d+\+? (great|fantastic|essential|best|must|top|amazing) /.test(title)) return true;
+  if (/^(how to |where to |what to |what happened |neighborhood guide:|guide to )/.test(title)) return true;
+  if (/\b(may be |opens on |humming along )\b/.test(title)) return true;
+  return false;
 }
 
 export function isRestaurant(act) {
