@@ -1045,3 +1045,100 @@ Convention centers go through rule 5d: only consumer-facing expos
 | Web_search backfill can hit rate limits if many events need URLs | Bounded | `BACKFILL_MAX=120` per run. If exceeded, lowest-base_score events skip backfill that run. |
 | Cost: pipeline runs ~$3–4 per full extract+backfill | OK | Most cost is in backfill (web_search @ $0.01 each). Per-site parsers reduce extractor calls; cache hits reduce them further. |
 | Custom Google OAuth client (Locale-branded consent screen) | Adam-side | Step-by-step in ROADMAP.md. Code path correct. |
+
+---
+
+## Changes 2026-04-29
+
+### Categories: 21 → 8
+
+The valid-category list in the Haiku prompt is now exactly 8: `music, food, arts, sports, outdoors, family, nightlife, trips`. Each absorbs 2-4 legacy buckets. Folding rules:
+
+| Legacy | New |
+|---|---|
+| restaurants, drinks, breweries, shopping | food |
+| theater, books, film, nerdy | arts |
+| comedy | nightlife |
+| activities, wellness | outdoors |
+| away | trips |
+
+Boot heal `healEventCategoriesToOption2()` rewrites both `category` (text) and `categories[]` for every existing row.
+
+### Pipeline Pass 4: source self-discovery
+
+After Pass 3 (cross-source merge) and the backfill, `discoverSourcesFromAggregators()` runs:
+1. SELECT events from Tier-A/B aggregator sources from the last 30 days where `event.url` is set.
+2. Extract host, filter against ~30 skip-host rules (aggregators, ticket platforms, social, CDN).
+3. Filter against existing `sources` (don't suggest duplicates).
+4. Detect singular-event hosts (festival/show/expo/marathon keywords or title-equals-host) — those wait for admin review.
+5. Auto-promote: ≥ 2 aggregators OR (1 aggregator AND not singular-event) → INSERT into `sources` and mark suggestion `auto_approved`.
+6. Reconciliation pass at the end heals any drift between auto-promote and `source_suggestions.status`.
+
+New columns / tables: none new (`source_suggestions` already existed). New SQL only at the application layer.
+
+### V2 pipeline (shadow)
+
+`src/services/v2/` runs parallel to V1 against the same `scraped_content`. Writes to:
+- `events_v2` — canonical row per real-world event with `fingerprint UNIQUE`, `source_names[]`, `source_count`, `storage_kind` (`time_bound|recurring|evergreen`), `region_validated`, `drive_min_from_dc`.
+- `pipeline_telemetry_v2` — append-only run log with `candidates_count`, `events_inserted`, `events_merged`, `region_rejected`, `required_field_rejected`, `llm_used`, `llm_yielded`, `duration_ms`, `error`. Heartbeat + finish marker rows let admin tooling detect "started but didn't complete" runs.
+
+Six archetypes drive extraction strategy:
+- `single_venue` — JSON-LD → microdata → siteparser, LLM fallback. Examples: 9:30 Club, AFI Silver, Birchmere.
+- `district` — same primitives + district default venue/neighborhood. Examples: Mosaic, CityCenterDC, Falls Church City Calendar.
+- `editorial_roundup` — LLM only (article schema doesn't yield Event objects). Examples: Washingtonian Weekly, WaPo Going Out.
+- `regional_aggregator` — JSON-LD → LLM, strict region. Examples: washington.org, FXVA, Visit-*.
+- `ticket_platform` — JSON-LD only, no LLM noise. Examples: Ticketmaster, Eventbrite.
+- `api_feed` — handled by sports.js (MLB) directly.
+
+Admin endpoints: `POST /admin/v2/run` (fire-and-forget), `GET /admin/v2/status/:runId` (poll), `GET /admin/v2/compare`, `GET /admin/v2/telemetry`.
+
+### Article-title rejection (Haiku rule 0e)
+
+Skips rows whose title reads like a magazine headline:
+- Numbered listicles: `^\d+\+? (Things|Fantastic|Best|Top|Great|Essential)`
+- How-to / where-to / what-happened guides
+- Restaurant news: `Opens on`, `Humming Along`, `Cheffiest Yet`, `A New X is`
+- Neighborhood guides
+
+Boot heal `healArticleTitleEvents()` deactivates historical matches.
+
+### Sort + scoring
+
+- Dropped `+0.03 if cost = Free` boost. Free is a chip filter, not a base_score signal.
+- Sort within columns: `start_date ASC`, `final_score DESC` as tiebreaker. Replaces pure-score sort.
+
+### Photos: bulk endpoint
+
+New `GET /api/photos/all?city=X` returns all 8 category photo sets in one round-trip via `getAllCategoryPhotos()`. Used by the desktop card-image system. 24h backend cache + 24h localStorage cache.
+
+### Cron schedule changes
+
+| New cron | Schedule | What |
+|---|---|---|
+| Sponsored placeholder roll-forward | Every Monday 3:30am | Picks one of 8 sponsored seed events for the week, dates it to upcoming weekend |
+| Sports schedule sync | Every Monday 4am | Pulls Nationals MLB schedule via API, upserts to events |
+| Source discovery is Pass 4 of every extraction (not its own cron) |
+
+### Admin endpoints added today
+
+```
+GET  /api/admin-ui                         single-page dashboard with V2 tab
+GET  /api/admin/dashboard                  source health JSON
+GET  /api/admin/feed-stats                 feed-level stats
+POST /api/admin/sources/:id/reactivate
+POST /api/admin/sources/:id/tier
+GET  /api/admin/source-suggestions
+POST /api/admin/source-suggestions/:id/approve
+POST /api/admin/source-suggestions/:id/reject
+POST /api/admin/source-suggestions/backfill
+POST /api/admin/v2/run
+GET  /api/admin/v2/status/:runId
+GET  /api/admin/v2/compare
+GET  /api/admin/v2/telemetry
+GET  /api/photos/all
+```
+
+### Render keep-warm
+
+`.github/workflows/keep-warm.yml` pings `/api/pipeline-status` every 10 min. ~6h/month of GitHub Actions quota; defeats Render free-tier cold starts in practice.
+

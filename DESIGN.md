@@ -588,3 +588,72 @@ After multiple iterations on what to do when a source returns null venue:
 
 Single inbox during beta is `adamcrubin@gmail.com`. Onboarding flow + Welcome screen exist; demo mode is gated (LoginPromptModal blocks writes for unauthenticated users).
 
+---
+
+## Changes 2026-04-29
+
+### Category model: Option 2 (8 buckets, content-based, sports kept distinct)
+
+After surveying competitors (Eventbrite, Time Out DC, washington.org, Meetup) and DC-specific event density, the 21-bucket model was consolidated to:
+
+```
+1. Live Music
+2. Food & Drink           — restaurants + drinks + breweries + food fests + farmers markets
+3. Arts & Culture         — theater + museums + galleries + books + films + lectures
+4. Sports                 — pro/college games, marathons-as-spectator
+5. Outdoors & Active      — hikes, runs, kayak, yoga, pickleball, bowling-as-participant
+6. Family & Kids
+7. Nightlife & Comedy     — comedy folded in (stand-up, improv); drag, late-night
+8. Day Trips & Away
+```
+
+**Why split Sports from Outdoors despite competitor consensus:** DC has 6+ pro teams (Caps, Nats, Wiz, Spirit, Mystics, DC United, Commanders), 2+ college tier-1, and an active marathon scene. Spectator-vs-participant intent is sharply different. Falls back to "Sports & Outdoors" combined if volume in either column drops too low.
+
+**Festivals/conventions** (Cherry Blossom, Awesome Con, Magfest, Folklife, Pride) handled via a planned "Big This Weekend" hero strip + `festival` tag — not their own column. Strip ships next session.
+
+### Sort: chronological first
+
+Events sort by `start_date` ascending (earlier = top), `final_score` as tiebreaker. Replaces score-only sort which surfaced "highest-scored thing this week" regardless of when. Saturday Caps game now beats Sunday-anytime bowling.
+
+### Free is a filter, not a boost
+
+Dropped `+0.03 if cost = Free` from `calculateBaseScore`. Replaced with `+0.02 if cost is known` (free OR paid). Free recurring activities (Pinstripes Bowling, Free Trivia) were sorting above ticketed headliner shows — now they don't unless they earn it on other signals.
+
+### Article-title rejection at extraction
+
+New prompt rule 0e: skip rows whose title reads like a magazine headline rather than an event name. Patterns rejected:
+- Numbered listicles (`23 Things to Do`, `70 Fantastic Festivals`)
+- How-to / where-to / what-happened guides
+- Restaurant/venue news patterns (`Opens on 14th Street`, `Humming Along`)
+- Neighborhood guides
+
+Boot heal `healArticleTitleEvents()` deactivates historical matches.
+
+### Source self-discovery (closed-loop)
+
+`services/sourceDiscovery.js` mines venue URLs from aggregator events. When ≥ 2 aggregators surface the same host, OR a single aggregator surfaces a non-singular-event host, that URL gets auto-promoted into the `sources` table. Event-festival sites (`dcchocolatefestival.com`, `44theobamamusical.com`, `hersheysupersweetadventure.com`) are detected via keyword + title-equals-host check and stay pending for admin review. Wired as Pass 4 of `runExtractionPass`.
+
+### V2 pipeline (shadow)
+
+Built parallel pipeline in `src/services/v2/` with archetype-driven extraction, fingerprint-first dedup at insert (3-tier key), region gate before persist, and per-source telemetry. Six archetypes: `single_venue`, `district`, `editorial_roundup`, `regional_aggregator`, `ticket_platform`, `api_feed`. Writes to `events_v2` and `pipeline_telemetry_v2`. Currently shadow mode behind admin trigger; not feeding production yet. The architecture canonical for future replacement of V1.
+
+### Desktop card images
+
+Per-category Unsplash photo sets fetched via new `/api/photos/all` (one round-trip for all 8 categories; 24h backend cache + 24h localStorage cache). `useCategoryPhotos(city)` hook + `pickPhoto(photos, eventId)` djb2-stable picker. ActCard renders 110px image (160px for spotlight) on desktop only, when expanded or spotlight. Mobile stays text-only.
+
+Per-event `image_url` is honored when it ends in a real image extension (filters out the "site logo" `og:image` failure mode the prior dev had explicitly suppressed).
+
+### Loading UX
+
+- Splash now shows whenever `source === 'mock'` AND loading (dropped `hasSplashBeenShown()` sessionStorage gate which broke cache-expired returning visitors).
+- Splash uses a real 5-stage checklist driven by pipeline-status polling. Stage 3's label dynamically substitutes live backend status when the pipeline is actively scraping or extracting.
+- New `LoadingBanner` for background refreshes — floats top-center when loading is in flight ≥ 3s with data already on screen.
+- Cold-start banner fades in at 12s.
+
+### Admin tooling
+
+- Single-page dashboard at `/api/admin-ui` with two tabs (Overview, V2 Pipeline). V2 tab has Run button, side-by-side comparison, multi-source confirmed events, V1-only/V2-only diff samples, per-source telemetry.
+- Source suggestions admin endpoints: list / approve / reject / backfill.
+- GitHub Actions warmer (`.github/workflows/keep-warm.yml`) pings `/api/pipeline-status` every 10 min to defeat Render free-tier cold starts.
+
+

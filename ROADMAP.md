@@ -219,6 +219,142 @@ Not the focus, but options:
 
 ---
 
+## Shipped 2026-04-29 (post-V2 + photos + Option-2 + cleanup round)
+
+A long working session that landed a stack of structural changes after the
+previous day's data-quality round. Highest-impact items:
+
+### V2 pipeline (shadow / parallel)
+
+Built a new pipeline architecture in `src/services/v2/` that runs against
+the same scraped_content as V1 but with: archetype-driven extraction
+(single_venue / district / editorial_roundup / regional_aggregator /
+ticket_platform / api_feed), fingerprint-first dedup at insert (3-tier:
+ticket_url+date > title+venue+date > title+date), region gate before
+persist, and per-source telemetry baked in. Writes to `events_v2` and
+`pipeline_telemetry_v2`. Currently shipped as shadow mode behind admin
+trigger; not used for production feed yet. Admin endpoints:
+`POST /admin/v2/run`, `GET /admin/v2/status/:runId`, `GET /admin/v2/compare`,
+`GET /admin/v2/telemetry`. Run is fire-and-forget (Render gateway times
+out before V2 finishes); UI polls status every 5s with a heartbeat
+marker so we can detect "started but didn't complete" failures.
+
+### Source self-discovery
+
+`services/sourceDiscovery.js` mines venue URLs from aggregator events.
+When Washingtonian / washington.org / FXVA / etc. names a specific venue
+with a non-aggregator URL (allhallowsguild.org for Flower Mart, not the
+SeatGeek ticket link), capture it as a `source_suggestions` row.
+Auto-promote rule:
+  - ≥ 2 distinct aggregators surface the host → always promote
+  - 1 aggregator surfaces it AND the host doesn't look like a
+    singular-event site (no `festival`, `fest`, `expo`, `week`,
+    `marathon`, `gala`, etc. in the host stem; title slug doesn't
+    exactly equal host stem) → promote
+  - Otherwise → leave pending for admin review
+Ran end-to-end against existing data; 5 high-signal venues already
+landed in `sources` (Ford's Theatre, Filmfest DC, Georgetown French
+Market, Audi Field, Union Market). 23 more pending review. Wired as
+Pass 4 of `runExtractionPass`. Reconciliation pass at end heals any
+drift between auto-promote and `source_suggestions.status`.
+
+### Option-2 category migration (21 → 8)
+
+After surveying competitors (Eventbrite, Time Out DC, washington.org,
+Meetup), consolidated the messy 21-bucket model into 8:
+  music · food · arts · sports · outdoors · family · nightlife · trips
+Sports kept distinct from Outdoors because DC pro density justifies it.
+Markets/Shopping/Drinks merged into Food. Theater/Books/Film/Nerdy
+folded into Arts. Comedy folded into Nightlife. Activities/Wellness
+folded into Outdoors. Boot heal `healEventCategoriesToOption2()` rewrites
+both `category` (text) and `categories[]` for the 505 existing events.
+Haiku prompt rewritten to emit only the 8 valid categories with explicit
+multi-tag guidance.
+
+### Sort + scoring fixes
+
+- Dropped the +0.03 "Free" base_score boost. User flagged that free
+  recurring activities were sorting above ticketed headliner shows.
+- Sort within columns is now CHRONOLOGICAL FIRST (earliest event up top),
+  final_score as tiebreaker. Saturday Caps game beats Sunday-anytime
+  bowling because it's happening sooner.
+- Same chronological-first rule applied to the post-friends-boost
+  re-sort.
+
+### Article-title rejection (NEW)
+
+Holistic-review pass surfaced that 17 of 64 active upcoming events were
+ARTICLE TITLES, not events: "23 Things to Do This Weekend",
+"How to Celebrate Earth Day", "A New Bakery Is Humming Along on 14th
+Street", "Neighborhood Guide: Logan Circle", "70 Fantastic Festivals".
+Haiku was treating roundup-article and restaurant-news headlines as
+events. New prompt rule 0e explicitly rejects:
+  - Numbered listicles (`^\d+ Things`, `70 Fantastic`)
+  - How-to / where-to / what-happened guides
+  - Restaurant news patterns ("Opens on", "Humming Along", "Cheffiest Yet")
+  - Generic neighborhood guides
+Boot heal `healArticleTitleEvents()` deactivates existing matches.
+
+### Desktop card images
+
+Per user request: desktop event cards now render a photo. Strategy chosen
+after data review (0% of events have a real `image_url` — JSON-LD
+`og:image` is mostly site logos):
+  - Lean on per-category Unsplash photo sets we already fetch with
+    metro-aware "people doing things upbeat" queries.
+  - New `getAllCategoryPhotos(city)` returns all 8 sets in one call.
+  - New `useCategoryPhotos(city)` hook with localStorage 24h cache.
+  - `pickPhoto(photos, eventId)` is a djb2-stable picker so cards don't
+    shuffle on re-render.
+  - ActCard renders 110px image (160px for spotlight) on DESKTOP only,
+    when expanded or spotlight. Mobile keeps the dense text layout.
+  - Real `event.image_url` is honored when it ends in a real image
+    extension (filters out the "site logo" failure mode).
+
+### Loading UX
+
+- Splash always shows when source='mock' AND loading (was gated on
+  `hasSplashBeenShown()` sessionStorage which persisted across reloads,
+  so cache-expired returns skipped the splash and showed mock data
+  while loading).
+- Splash now uses a real progress checklist (5 stages) driven by
+  pipeline-status polling instead of fake rotating strings. When the
+  backend reports scraping/extracting, the active stage label
+  substitutes the live status: "Backend is scraping (23 sources fresh)…".
+- Cold-start banner fades in at 12s acknowledging Render free-tier
+  wait.
+- New `LoadingBanner` floats top-center when loading is in flight ≥ 3s
+  with cached/live data on screen. Source-tag right side
+  ("Showing cached events"). Auto-dismisses on completion.
+
+### Admin tooling
+
+- `/api/admin-ui` single-page dashboard with V2 Pipeline tab — run
+  button, side-by-side V1 vs V2 stats with green/red diff coloring,
+  multi-source confirmed events table, V1-only and V2-only diff
+  samples, per-source telemetry table.
+- New `/admin/source-suggestions` (list/approve/reject/backfill).
+- GitHub Actions warmer at `.github/workflows/keep-warm.yml` pings
+  `/api/pipeline-status` every 10 min to defeat Render free-tier
+  cold starts. ~6h/month against 2000-min Actions quota.
+
+### Photos: city-keyed + upbeat queries
+
+Cache key now includes city so two metros don't share photo sets.
+Queries reframed around PEOPLE doing things in upbeat moments
+("friends brunch happy" not "candlelit dinner romantic"). New
+`metroFlavor()` maps zip/city → signature shots (tidal basin spring,
+old town alexandria, georgetown waterfront people) + seasonal moments
+(cherry blossom).
+
+### Source defaults expanded
+
+Wharf, Eastern Market, Union Market District, Georgetown BID added to
+`SMALL_AREA_BY_SOURCE` and `SMALL_AREA_BY_HOST` so events from those
+sources don't land with null venue.
+
+---
+
 ## Shipped 2026-04-24
 
 - Curated category (top-10 across all cats, rendered first).
