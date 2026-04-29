@@ -392,13 +392,18 @@ export default function App() {
   if (authLoading && !demoMode) return <LoadingSplash />;
 
   // ── Cold-start feed splash ────────────────────────────────────────────────
-  // Shown once per session when: (a) we have no cache (source='mock'), and
-  // (b) the first feed fetch is still in flight. Prevents the "mock→live"
-  // content jolt that rattles the whole layout.
-  if (activitiesSource === 'mock' && activitiesLoading && !hasSplashBeenShown() && !isDemo) {
+  // Shown whenever (a) we have no cache (source='mock'), and (b) the first
+  // feed fetch is still in flight. Previously gated on hasSplashBeenShown()
+  // — but sessionStorage persists across page reloads, so a returning user
+  // whose 5-min cache had expired would land on ActiveMode showing the
+  // mock placeholder data while the real fetch ran. Now: as long as we
+  // genuinely have nothing real to show, the splash shows. It only hides
+  // once cached or live data is available.
+  if (activitiesSource === 'mock' && activitiesLoading && !isDemo) {
     return <LoadingSplash />;
   }
-  // Mark shown once real data arrives so subsequent navigation doesn't re-splash.
+  // Mark shown once real data arrives — kept for any other consumers but no
+  // longer gates the splash itself.
   if ((activitiesSource === 'live' || activitiesSource === 'cached') && !hasSplashBeenShown()) {
     markSplashShown();
   }

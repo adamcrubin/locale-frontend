@@ -58,6 +58,10 @@ export default function LoadingSplash() {
   const [photoIdx, setPhotoIdx] = useState(0);
   const [progressIdx, setProgressIdx] = useState(0);
   const [tipIdx, setTipIdx] = useState(() => Math.floor(Math.random() * TIPS.length));
+  // True after 12 seconds — Render's free-tier cold start runs ~30-60s, so
+  // we set expectations after a short patience window. Keeps the user from
+  // assuming the app is broken on first load.
+  const [coldStart, setColdStart] = useState(false);
 
   // Crossfade photos every 4s.
   useEffect(() => {
@@ -75,6 +79,14 @@ export default function LoadingSplash() {
   useEffect(() => {
     const t = setInterval(() => setTipIdx(i => (i + 1) % TIPS.length), 5000);
     return () => clearInterval(t);
+  }, []);
+
+  // Cold-start banner after 12s. Render free-tier dynos sleep after 15min
+  // idle and take 30-60s to wake. Without this, users assume the app is
+  // broken or stuck. Acknowledging the wait makes it tolerable.
+  useEffect(() => {
+    const t = setTimeout(() => setColdStart(true), 12000);
+    return () => clearTimeout(t);
   }, []);
 
   return (
@@ -167,6 +179,18 @@ export default function LoadingSplash() {
           <div style={{ fontSize:9, letterSpacing:'.16em', textTransform:'uppercase', color:'rgba(201,168,76,.7)', marginBottom:4 }}>Tip</div>
           <span style={{ animation: 'fadeIn 500ms ease both' }}>{TIPS[tipIdx]}</span>
         </div>
+
+        {/* Cold-start acknowledgment — fades in after 12s */}
+        {coldStart && (
+          <div style={{
+            marginTop: 16, fontSize: 11, color: 'rgba(255,255,255,.45)',
+            maxWidth: 320, marginLeft: 'auto', marginRight: 'auto',
+            lineHeight: 1.5, animation: 'fadeIn 600ms ease both',
+          }}>
+            ☕ The backend's waking up — first load on a free server takes
+            a moment. Subsequent visits are instant.
+          </div>
+        )}
       </div>
 
       {/* Keyframes for the spinner bar. fadeIn is assumed to be global already. */}
