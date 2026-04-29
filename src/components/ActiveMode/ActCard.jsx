@@ -23,7 +23,7 @@ function formatInterestedLine(friends) {
   return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length > 3 ? 's' : ''} are interested in this event`;
 }
 
-export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, viewMode = 'standard' }) {
+export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo = null, isMobile = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, viewMode = 'standard' }) {
   // Default-expand depends on view mode:
   // - magazine: every card expanded
   // - compact:  every card collapsed
@@ -102,6 +102,32 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, onCal
         }}>
           <span>{isSpotlight ? '✨ Spotlight' : '⚡ Sponsored'}</span>
           {isSpotlight && <span style={{ fontSize: 8, opacity: .8, fontWeight: 500 }}>top pick this weekend</span>}
+        </div>
+      )}
+
+      {/* Desktop card image — uses event.image_url when present, falls
+          back to a category-themed Unsplash photo. Hidden on mobile to
+          keep the dense list compact. Only shows when the card is
+          expanded (compact rows stay text-only on desktop too).
+          Spotlight cards always show their image since they're the
+          centerpiece. */}
+      {!isMobile && (isExpanded || isSpotlight) && (photo?.url || (act.image_url && /\.(jpe?g|png|webp|avif)([?#]|$)/i.test(act.image_url))) && (
+        <div style={{
+          width: '100%',
+          height: isSpotlight ? 160 : 110,
+          backgroundImage: `url(${(act.image_url && /\.(jpe?g|png|webp|avif)([?#]|$)/i.test(act.image_url)) ? act.image_url : photo.url})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundColor: photo?.color || '#1c1a17',
+          position: 'relative',
+        }}>
+          {/* Subtle bottom gradient so any text bleeding into the photo
+              area stays legible. Mostly relevant for the spotlight card. */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0) 60%, rgba(0,0,0,.18) 100%)',
+            pointerEvents: 'none',
+          }} />
         </div>
       )}
       {thumbFeedback && (

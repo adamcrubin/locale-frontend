@@ -123,6 +123,14 @@ export async function fetchCategoryPhotos(category, city, count = 8) {
   return data.photos || [];
 }
 
+// Bulk fetch all 8 category photo sets in one round-trip. Returns
+// { music: [...], food: [...], arts: [...], sports: [...], outdoors: [...],
+//   family: [...], nightlife: [...], trips: [...] }.
+export async function fetchAllCategoryPhotos(city) {
+  const data = await apiFetch(`/photos/all?city=${encodeURIComponent(city)}`);
+  return data.photos || {};
+}
+
 // ── Friends ───────────────────────────────────────────────────────────────────
 // In auto-all mode, this returns every other Supabase user so the
 // friends_interested indicator has signal without an invite flow. When

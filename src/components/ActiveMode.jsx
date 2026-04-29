@@ -67,7 +67,7 @@ const QUICK_PROMPTS = [
   { label:'✏️ Ask Anything', canned: true },
 ];
 
-export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, onShowPage, isDemo=false, onLoginPrompt, timeWindow='this-weekend', onSwitchTimeWindow }) {
+export default function ActiveMode({ settings, activeProfile, calQueue, activities={}, weather=[], activitiesSource='mock', weatherSource='mock', calendar, categoryPhotos = {}, onCalendar, onWeather, onSettings, onAmbient, onSwitchProfile, onSaveItem, onShowSaved, onThumbUp, onThumbDown, onEditCal, timeFilters=[], setTimeFilters, priceFilters=[], setPriceFilters, onOpenFilter, onShowPage, isDemo=false, onLoginPrompt, timeWindow='this-weekend', onSwitchTimeWindow }) {
   const gateDemo = (feature, fn) => (...args) => {
     if (isDemo) { onLoginPrompt?.(feature); return; }
     return fn?.(...args);
@@ -183,7 +183,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather, viewMode, isGuest: isDemo, onGuestSignIn: onLoginPrompt };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather, viewMode, isGuest: isDemo, onGuestSignIn: onLoginPrompt, categoryPhotos };
 
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>

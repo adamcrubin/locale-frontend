@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ACTIVITIES as MOCK_ACTIVITIES, ALL_CATEGORIES } from '../../data/content';
 import { dedupeActivities, isPastEvent, isFrontendBlocked, getTimeOfDay, getPriceTier } from './utils';
 import { titlePrefixForCategory } from '../../lib/eventEmoji';
+import { pickPhoto } from '../../hooks/useCategoryPhotos';
 import ActCard from './ActCard';
 import { SpotlightHero } from './Spotlight';
 
@@ -20,7 +21,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn, categoryPhotos = {} }) {
   // Memoize the filter chain — runs on every render of any sibling
   // column (e.g. when a user toggles a chip in another column). Without
   // memo, dedupeActivities + 4 filters re-run for every column on every
@@ -107,6 +108,15 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
               // First card in the Curated column = Spotlight (highest base_score).
               // Renders with violet styling and starts expanded.
               const isSpotlightCard = isCurated && idx === 0;
+              // Pick a stable photo for this card. For curated/other columns
+              // use the event's source category (so the photo matches what the
+              // event actually IS, not the column it landed in). Fall back to
+              // the column's own photo set if nothing else fits.
+              const photoCatId = (isCurated || isOther)
+                ? ((Array.isArray(a.categories) ? a.categories[0] : null) || cat.id)
+                : cat.id;
+              const photoSet = categoryPhotos?.[photoCatId] || categoryPhotos?.[cat.id] || [];
+              const cardPhoto = pickPhoto(photoSet, a.id || a.title, idx);
               return (
               <div key={a.title} data-tour={isSpotlightCard ? 'spotlight' : undefined}>
               <ActCard
@@ -118,6 +128,8 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                 catId={cat.id}
                 isSpotlight={isSpotlightCard}
                 cardBg={isCurated && !isSpotlightCard ? curatedCardBg : undefined}
+                photo={cardPhoto}
+                isMobile={isMobile}
                 onCal={onCal}
                 onRemove={()=>onRemove(cat.id,a)}
                 onHeart={()=>onHeart(cat.id,a)}

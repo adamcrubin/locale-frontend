@@ -28,6 +28,7 @@ import { useWeekdayActivities } from './hooks/useWeekdayActivities';
 import { useWeather }       from './hooks/useWeather';
 import { useCalendar }      from './hooks/useCalendar';
 import { usePhotos }        from './hooks/usePhotos';
+import { useCategoryPhotos } from './hooks/useCategoryPhotos';
 import { usePostEventFeedback, trackForFeedback } from './hooks/usePostEventFeedback';
 import { postFeedback }     from './lib/api';
 
@@ -214,6 +215,7 @@ export default function App() {
   // backend uses those directly; city string is fallback.
   const { weather,            source: weatherSource    } = useWeather(settings.neighborhood || settings.city);
   const { photos }                                       = usePhotos(settings.city);
+  const categoryPhotos                                    = useCategoryPhotos(settings.city);
 
   const { prompt: feedbackPrompt, respond: respondFeedback } = usePostEventFeedback(activeProfile?.id, settings.city);
 
@@ -364,7 +366,7 @@ export default function App() {
 
   const commonProps = {
     settings, activeProfile, calQueue, activities: activitiesWithCurated, weather,
-    activitiesSource, weatherSource, calendar,
+    activitiesSource, weatherSource, calendar, categoryPhotos,
     onCalendar:      gate('calendar', setCalModal),
     onWeather:       setWeatherDay,
     onSettings:      gate('settings', (patch) => patch && typeof patch === 'object' ? update(patch) : setSettingsOpen(true)),
