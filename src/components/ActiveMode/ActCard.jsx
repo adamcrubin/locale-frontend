@@ -151,11 +151,14 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo
           userSelect: 'none',
         }}
       >
-        {isRec && <span title="Recommendation" style={{ fontSize: 10, flexShrink: 0 }}>🔄</span>}
         {/* Evergreen marker — distinguishes always-available activities (a
             trail, a venue, a museum) from time-specific events. Quietly tucked
-            in the title row so users don't expect "what time?" detail. */}
-        {!isRec && isEvergreen && (
+            in the title row so users don't expect "what time?" detail.
+            Recommendation cards get a different background tint (#F9F7F4) for
+            visual differentiation; we don't render an extra glyph for them
+            since "recommendation" and "evergreen" overlap conceptually for
+            users and two icons read as redundant. */}
+        {isEvergreen && (
           <span title="Always available — no specific date" style={{ fontSize: 9, flexShrink: 0, color: '#6B7280', letterSpacing: '.04em' }}>∞</span>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
