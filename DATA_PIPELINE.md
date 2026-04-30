@@ -1142,3 +1142,129 @@ GET  /api/photos/all
 
 `.github/workflows/keep-warm.yml` pings `/api/pipeline-status` every 10 min. ~6h/month of GitHub Actions quota; defeats Render free-tier cold starts in practice.
 
+---
+
+## Changes 2026-04-30
+
+### Categorization: prompt rewrite + venue-agnostic pattern heal
+
+Audit of 81 active events found 8 mis-bucketed (e.g. Smithsonian "Diplomacy in Melody: Brazil and America in Concert" tagged `arts` instead of `music`; bowling at Pinstripes in `outdoors`). Root cause was prompt-rule conflicts, not venue-specific logic. Three coordinated fixes:
+
+1. **`extractor.js` prompt rewrite (line 182–203)**
+   - Adds explicit `PRECEDENCE: when venue and activity disagree, activity wins.` Trivia at a brewery → nightlife. Concert at a museum → music. 5K at a library → outdoors.
+   - Tightened `outdoors` to "active participation outside" only. Bowling/bocce/mini-golf/arcades/axe-throwing/escape-rooms moved to `nightlife` (they were stale entries from the old 21-bucket model).
+   - `music` includes "in Concert", "Symphony", "Soundscapes", "Recital", "Chamber Music" regardless of venue.
+   - `trips` includes any event with venue containing "Overnight Tour" / "Day Tour" / "Bus Tour" OR title naming a non-DC destination.
+   - `arts` includes outdoor static art (light shows, lantern displays, photo-op installations).
+
+2. **`db.js healCategoriesByPattern()`** — applies the same rules to existing rows so prompt fixes work on the backlog without waiting for re-extraction. Six pattern rules, all venue-AGNOSTIC (regex on title/venue keywords, zero hardcoded venue names). Wired into `runScheduledHeals()` so cron picks it up between deploys.
+
+3. **`siteParsers.js` Smithsonian default removed.** The pre-parser had `defaults: { categories: ['arts'] }` which locked every Smithsonian-parsed event to arts even if it was a concert or overnight tour. Now neighborhood default only — Haiku (or the pattern heal) picks the bucket per event.
+
+### Admin PATCH /admin/events/:id allows category + active
+
+The endpoint previously allowed `categories` (array) and content fields but NOT `category` (primary) or `active` (kill switch). Future audit work can re-bucket / deactivate from the admin UI without raw SQL.
+
+### Source-coverage diagnosis: 88% empty
+
+Coverage report at audit time:
+- 21 sources producing ≥1 active event
+- 44 with `consecutive_empty_runs > 0` (empty-track)
+- **101 sources never produced**
+
+Common `last_error`: `"All resolved URLs failed"`. Pattern: nearly every failing source is a React/Vue SPA (Kennedy Center, Wolf Trap, Round House, Woolly Mammoth, Alamo Drafthouse) or Cloudflare-blocked (Pearl Street, Lincoln Theatre, Drafthouse Comedy). Direct HTTP returns a JS shell or a 403.
+
+### Scraper: BLOCKED_SITES expansion + better web-search queries
+
+`scraper.js`:
+
+- **`BLOCKED_SITES` expanded from 22 to 65 entries.** All known JS-rendered / Cloudflare-protected venues now skip the futile direct-fetch attempt and go straight to `webSearchScrape`. Coverage gained: most theatres, music venues, cinema chains, library calendars, brewery event pages.
+
+- **`getWebSearchQuery()` tuned per-venue.** Most blocked venues now have explicit `site:venue.com OR site:ticketmaster.com` hints + ticket/showtime keywords. Reduces apology-pattern false-positives (Haiku was hedging because its generic query returned essays about the venue rather than event listings).
+
+- **`isApologyResponse()` tightened.** Threshold for short-hedge detection lowered from 400 to 250 chars, removed 'however,' from the pattern list. Single-show legitimate returns (e.g. one Wolf Trap concert with date + ticket link) often land at 280-380 chars — they were being discarded.
+
+### `scrapeSourcesForZip(zipCode, opts)` accepts source filter
+
+New options:
+- `opts.sourceIds` — array of source IDs to restrict the scrape to.
+- `opts.filter = 'never-produced'` — shorthand: "active sources with zero events ever extracted." Resolves to a SQL JOIN with `NOT EXISTS (SELECT 1 FROM events WHERE source_id = s.id)`.
+
+Lets the new sweep endpoint target the 101 never-produced sources without re-scraping the full 166-source list.
+
+### Admin: `/admin/sources/sweep` + `/admin/sources/coverage`
+
+```
+POST /api/admin/sources/sweep
+     body: { zip?, filter? = 'never-produced' }
+     → runs scrapeSourcesForZip with the filter, then runExtractionPass.
+     → returns per-source success/fail breakdown.
+
+GET  /api/admin/sources/coverage?zip=dc-metro
+     → JSON: { summary: {total, producing, empty_track, never_produced, failing}, sources: [...] }
+     → diagnoses "why is the feed thin?" at a glance.
+```
+
+### Cron-driven maintenance endpoints (added 2026-04-29, documented here)
+
+```
+GET  /api/cron/heal       — runs runScheduledHeals (7 idempotent heals + the new pattern heal)
+GET  /api/cron/backfill   — runs backfillMissingFields (3-retry queue with 6h cooldown)
+GET  /api/events?warm=1   — DB-touching warmer fast-path (keeps pg pool alive)
+```
+
+Recommended schedule (external pinger like cron-job.org):
+- `/api/events?warm=1` — every 5 min
+- `/api/cron/heal` — every 2 hours
+- `/api/cron/backfill` — every 6 hours
+
+### Categorization findings — venue-specific logic inventory
+
+Audit confirmed categorization itself is venue-AGNOSTIC. No rule exists like "if venue=X then category=Y" anywhere in the prompt or extractor. Categories come from activity keywords in title/description.
+
+Venue-specific logic DOES exist in three other places (separate concerns):
+
+1. **`siteParsers.js` `defaults` blocks** — 50+ single-venue sources have hardcoded `defaults: { venue: 'Name' }` to fill missing venue field. Affects venue field only, not category. (After today's fix, the Smithsonian `categories: ['arts']` default is gone — was the only one bridging into category territory.)
+
+2. **`extractor.js` SOURCE_DEFAULT_VENUE / SMALL_AREA_BY_SOURCE maps** — 40+ source→venue mappings used by the backfill stage. Venue field only.
+
+3. **`extractor.js` MAJOR_VENUE_KEYWORDS** — 40+ venue names that get +0.06 base_score. **This IS venue bias, but in ranking, not categorization.** A small-bar comedy show scores 0.70; the same act at DC Improv scores 0.76 just because of venue name. Flagged for future replacement with derived signals (multi-source corroboration, has-ticket-URL, has-confirmed-time). Not addressed in this round.
+
+### Drop-points reference (every place an event vanishes)
+
+Documented for ops reference:
+
+**Pre-extraction:**
+- HTTP timeout (12s, 3 retries with backoff)
+- Web search apology detection
+- 40K char text cap (15K with JSON-LD present)
+- JSON-LD events truncated to first 60
+
+**Extraction:**
+- Haiku output truncation (max_tokens cap)
+- Cardinal Rule 0 (no crossed wires) — conservative LLM may skip ambiguous events
+- Rule 0e (article-title rejection) — correctly skips listicles, may catch legit "10th Annual X" titles
+- Rule 5b (retail store events skip)
+- Malformed JSON from Haiku → 0 events from that source for the run
+
+**Post-extraction:**
+- `expires_at < NOW()` on insert (recurring events with past start_date land inactive — see `is_recurring` persistence fix in 2026-04-29 changes)
+- `content_hash` UPSERT collapses title+date duplicates
+- `mergeDuplicateEvents` Pass 3 DELETEs loser rows in venue+date+time and venue-only buckets
+- Backfill drop: missing all of (venue, date, url) after 3 retries × 6h cooldown
+
+**Filter / display:**
+- Region/distance filter: `WRONG_REGION_TOKENS` → 999 → hidden. `>120 min + score <0.85` → hidden.
+- Frontend `isFrontendBlocked`: title=venue suppression + article-headline patterns
+
+### Headless browser fallback (deferred)
+
+Long-term solution for the 65 SPA / Cloudflare-blocked venues. Web search recovers ~70% of those — for the rest (especially small theatres, libraries, and brewery event pages), the pages exist but require JS execution to render the events.
+
+Options when ready to invest:
+- **ScrapingBee / Browserless / ScrapingBro** — pay-per-request hosted Playwright. ~$0.001/page. No infra.
+- **Self-hosted Playwright** on Render — free but adds 200MB to the dyno and complicates the build.
+- **Cloudflare Workers Browser Rendering** — free tier covers ~100K/month. Requires Cloudflare account.
+
+Estimated impact: probably +30 sources from "never produced" → "producing." Music feed especially benefits (9:30 Club, Anthem, Wolf Trap). Out of scope for this round; flagged in ROADMAP.
+

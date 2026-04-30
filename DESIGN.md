@@ -656,4 +656,35 @@ Per-event `image_url` is honored when it ends in a real image extension (filters
 - Source suggestions admin endpoints: list / approve / reject / backfill.
 - GitHub Actions warmer (`.github/workflows/keep-warm.yml`) pings `/api/pipeline-status` every 10 min to defeat Render free-tier cold starts.
 
+---
+
+## Changes 2026-04-30
+
+### Categories — now 8 buckets (Option-2 model, finalized rules)
+
+Categorization is now venue-AGNOSTIC. The Haiku prompt has zero rules like "if venue=X then category=Y" — categories come from activity keywords in title/description with explicit precedence: when venue and activity disagree, activity wins (trivia at a brewery → nightlife, concert at a museum → music).
+
+The 8 buckets, with current rules:
+
+- **music** — concerts, live music, DJ sets at music venues. Includes museum concert programs ("in Concert", "Symphony", "Soundscapes", "Recital", "Chamber Music").
+- **food** — restaurants, food festivals, cooking classes, farmers markets, food halls, chef pop-ups, wine dinners, vineyards, distilleries. Brewery events count as food only when the activity is the beer itself; otherwise the activity wins.
+- **arts** — theater, museums, galleries, dance, opera, art exhibitions, craft fairs, book readings, author talks, lectures, classes, film screenings, indie cinema, library events. **Includes outdoor static art** — light shows, lantern displays, sculpture installations, photo-op installations.
+- **sports** — SPECTATOR ONLY. Pro games (MLB/NFL/NBA/etc.), college games, marathons-watched, esports.
+- **outdoors** — ACTIVE PARTICIPATION OUTSIDE. Hikes, bike rides, paddleboarding, group runs, run clubs, 5Ks/10Ks/marathons-as-runner, yoga in the park, outdoor fitness. **NOT** bowling/bocce/mini-golf/arcades/axe-throwing/escape-rooms (those are nightlife). **NOT** static outdoor art (arts).
+- **family** — kid-focused. Otherwise use the most-fitting other category + "kid-friendly" tag.
+- **nightlife** — comedy, dance clubs, DJ nights, drag shows, queer nightlife, karaoke, trivia, happy hour, after-work drinks. Plus social-leisure venues regardless of indoor/outdoor: bowling, bocce, mini-golf, arcades, axe throwing, escape rooms, billiards.
+- **trips** — day trips + weekend aways, 1-4 hours' drive from DC. Plus any event with venue containing "Overnight Tour" / "Day Tour" / "Bus Tour", or title naming a non-DC destination.
+
+Plus the synthetic columns from earlier:
+- **curated** — top events across all 8 buckets, sponsored excluded, with Spotlight as first card.
+- **other** — thin-category overflow with source category preserved as emoji prefix.
+
+### Visual indicator simplification
+
+`🔄` recommendation glyph removed from event cards. Two glyphs (`∞` for evergreen, `🔄` for recommendation) read as duplicate indicators of "not a specific event" — recommendations now lean on the off-white background tint (`#F9F7F4`) for visual distinction while `∞` carries the always-available signal alone.
+
+### Source-coverage diagnosis added
+
+`GET /api/admin/sources/coverage` and `POST /api/admin/sources/sweep` let the admin see at a glance which sources are producing and trigger targeted scrapes against the 101 never-produced sources without re-running the full pipeline. See DATA_PIPELINE.md for full detail.
+
 

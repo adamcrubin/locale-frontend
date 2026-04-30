@@ -803,3 +803,82 @@ User feedback after the first late-April batch:
   CORS, update Google OAuth authorized domains.
 - **Google OAuth Locale-branded consent screen (#12)** — Branding page
   needs `.netlify.app` (not `.com`) typo fix from earlier attempt.
+
+## Late-April 2026 — third push (categorization + scraper coverage)
+
+Audit of the 81-event feed found two systemic issues:
+
+1. **Categorization rules had conflicts and stale entries.** The Haiku
+   prompt put bowling/bocce/arcades/escape rooms under `outdoors` (stale
+   from the 21-bucket model) and had no precedence between food (breweries)
+   and nightlife (trivia at bars). Result: same event got bucketed
+   inconsistently across runs.
+
+2. **88% of active sources produced zero events.** 101 of 166 sources
+   never produced; another 44 were empty-track. Common pattern: React/Vue
+   SPAs (Kennedy Center, Wolf Trap, Round House, Woolly Mammoth) and
+   Cloudflare-protected sites (Pearl Street, Lincoln Theatre) that direct
+   HTTP can't reach. The web-search fallback existed but had weak per-venue
+   queries that triggered apology-pattern false positives.
+
+### ✅ Shipped
+
+- **Prompt rewrite (`extractor.js` line 182–203).** Explicit precedence
+  rule: when venue and activity disagree, activity wins. Outdoors tightened
+  to "active participation outside" only. Music includes museum concert
+  programs ("in Concert", "Symphony", "Soundscapes"). Trips includes
+  "Overnight Tour" / "Day Tour" venues + non-DC destination titles. Arts
+  includes outdoor static art (light shows, lantern displays).
+- **`healCategoriesByPattern` heal.** Same rules applied to existing rows
+  via cron. Six pattern rules, all venue-AGNOSTIC (regex on title/venue
+  keywords, zero hardcoded venue names). Wired into `runScheduledHeals()`.
+- **Smithsonian arts-default removed from `siteParsers.js`.** Pre-parsed
+  Smithsonian events were locking to arts even when they were concerts
+  or overnight tours. Now Haiku decides per-event.
+- **Admin PATCH allows `category` + `active`.** Future audits can re-bucket
+  / deactivate rows without raw SQL.
+- **`BLOCKED_SITES` expanded from 22 → 65 entries.** All known JS-rendered /
+  Cloudflare-blocked venues now go straight to web search, skipping the
+  futile direct-fetch attempt. Coverage gained: most theatres, music
+  venues, cinema chains, library calendars, brewery event pages.
+- **Per-venue web-search queries tuned.** ~40 venues now have explicit
+  `site:venue.com OR site:ticketmaster.com` hints + ticket/showtime
+  keywords. Reduces apology-pattern false-positives.
+- **`isApologyResponse` tightened.** Threshold for short-hedge detection
+  lowered from 400 to 250 chars; removed 'however,' from the pattern list.
+  Single-show legitimate returns (e.g. one Wolf Trap concert with date +
+  ticket link) often land at 280-380 chars — they were being discarded.
+- **`scrapeSourcesForZip(zipCode, opts)`** accepts source filter via
+  `opts.sourceIds` or `opts.filter = 'never-produced'`. Lets sweep target
+  the 101 dormant sources without re-scraping the full list.
+- **`POST /admin/sources/sweep`** runs the targeted scrape + extraction
+  for a filter subset.
+- **`GET /admin/sources/coverage`** returns the producing / empty-track /
+  never-produced summary so "why is the feed thin?" diagnoses at a glance.
+- **`🔄` recommendation glyph removed from event cards.** Conceptual
+  overlap with `∞` evergreen marker. Recommendations still get the
+  off-white background tint.
+
+### Open / pending
+
+- **Headless browser fallback.** Web search recovers ~70% of SPA sites.
+  The remaining ~30% (especially small theatres, library calendars,
+  brewery event pages) need actual JS execution. Options: ScrapingBee /
+  Browserless / Cloudflare Workers Browser Rendering. Estimated +30
+  sources from "never produced" → "producing." Music feed especially
+  benefits.
+- **Replace `MAJOR_VENUE_KEYWORDS` scoring boost (`extractor.js` line
+  236–258).** Current state hardcodes 40+ venue names that get +0.06
+  base_score — this is venue bias in ranking, separate from categorization.
+  Replace with derived signals: multi-source corroboration
+  (`COUNT(DISTINCT source_id) > 1`), has-ticket-URL, has-confirmed-time.
+- **Add Reddit / Meetup / library / faith-community sources.** Categories
+  the current source list doesn't reach: pop-up flea markets, neighborhood
+  block parties, free yoga at Meridian Hill, run clubs, language exchanges,
+  library author talks, embassy + cultural-institute concerts (the embassy
+  source was added 2026-04-29 but Reddit + Meetup remain).
+- **Itinerary mode (separate view).** Adam approved the concept of a
+  "give me 5 itinerary options for this weekend" view as a separate
+  button / mode, NOT a replacement for category columns. Not yet built.
+  See conversation notes; needs duration backfill + neighborhood bins
+  before Phase 2 (LLM-driven generation).
