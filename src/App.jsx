@@ -518,7 +518,19 @@ export default function App() {
             const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
             const today = new Date();
             const dow = today.getDay();
-            const thisFri = new Date(today); thisFri.setDate(today.getDate() + ((5 - dow + 7) % 7));
+            // "This weekend" anchored to the CURRENT weekend's Friday, not the
+            // upcoming one. On Saturday/Sunday the current weekend is already
+            // in progress — Friday was yesterday/two days ago — so we step
+            // backward, not forward. Mismatched the backend's
+            // getWeekendDateRange() previously: tab pill said "This weekend
+            // 5/8–5/10" on Sunday May 3 even though the API was correctly
+            // serving May 1–3 events.
+            let daysToFri;
+            if (dow === 5)      daysToFri = 0;   // Fri
+            else if (dow === 6) daysToFri = -1;  // Sat → Fri was yesterday
+            else if (dow === 0) daysToFri = -2;  // Sun → Fri was 2 days ago
+            else                daysToFri = 5 - dow; // Mon..Thu → upcoming Fri
+            const thisFri = new Date(today); thisFri.setDate(today.getDate() + daysToFri);
             const thisSun = new Date(thisFri); thisSun.setDate(thisFri.getDate() + 2);
             const nextFri = new Date(thisFri); nextFri.setDate(thisFri.getDate() + 7);
             const nextSun = new Date(nextFri); nextSun.setDate(nextFri.getDate() + 2);
