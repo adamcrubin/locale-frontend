@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import AdminConsole         from './components/admin/AdminConsole';
 import AmbientMode          from './components/AmbientMode';
 import ActiveMode           from './components/ActiveMode';
 import WeekdayMode          from './components/WeekdayMode';
@@ -120,6 +121,19 @@ function ChipRow({ value, onChange, options, anyLabel = 'Any' }) {
 export default function App() {
   // ── Auth ──────────────────────────────────────────────────────────────────
   const { user, loading: authLoading, error: authError, signInWithGoogle, signOut, connectCalendar, hasCalendarScope, isEnabled: authEnabled } = useAuth();
+
+  // ── Admin route shortcut ──────────────────────────────────────────────────
+  // /admin and any sub-path (/admin/health, /admin#tables, etc.) renders the
+  // standalone AdminConsole instead of the main app shell. Auth gate is
+  // enforced inside AdminConsole — hitting /admin while not logged in shows
+  // a sign-in prompt instead of leaking any UI.
+  const isAdminRoute = (() => {
+    try { return window.location.pathname.startsWith('/admin'); }
+    catch { return false; }
+  })();
+  if (isAdminRoute) {
+    return <AdminConsole user={user} authLoading={authLoading} signInWithGoogle={signInWithGoogle} />;
+  }
 
   // ── Browse-without-account mode ────────────────────────────────────────────
   // Was originally "demo mode"; now framed as the default-no-account

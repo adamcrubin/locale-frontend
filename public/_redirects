@@ -1,0 +1,4 @@
+# Netlify SPA fallback — every non-asset path serves index.html so the
+# React app's path-based routing (e.g. /admin) works on direct page load
+# and refresh, not just on internal navigation.
+/*    /index.html   200
