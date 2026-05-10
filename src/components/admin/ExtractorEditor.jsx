@@ -2,7 +2,7 @@
 // Lets the operator paste/edit JSON, dry-run against the live source URL,
 // see what the parser extracts, then save the config back to the row.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -35,6 +35,64 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [fixtures, setFixtures] = useState([]);
+  const [fixturesLoading, setFixturesLoading] = useState(false);
+  const [fixtureBusy, setFixtureBusy] = useState(null); // fixture id currently replaying/deleting
+
+  const loadFixtures = async () => {
+    setFixturesLoading(true);
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}/fixtures`);
+      const j = await res.json();
+      if (j.ok) setFixtures(j.fixtures || []);
+    } catch (e) { /* ignore — non-blocking */ }
+    finally { setFixturesLoading(false); }
+  };
+
+  useEffect(() => { loadFixtures(); }, [source.id]);
+
+  const captureFixture = async () => {
+    setFixtureBusy('capture');
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}/fixtures/capture`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      await loadFixtures();
+    } catch (e) {
+      setSaveError(`capture failed: ${e.message}`);
+    } finally {
+      setFixtureBusy(null);
+    }
+  };
+
+  const replayFixture = async (fixtureId) => {
+    setFixtureBusy(fixtureId);
+    try {
+      const res = await fetch(`${BASE}/admin/fixtures/${fixtureId}/replay`, { method: 'POST' });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      await loadFixtures();
+    } catch (e) {
+      setSaveError(`replay failed: ${e.message}`);
+    } finally {
+      setFixtureBusy(null);
+    }
+  };
+
+  const deleteFixture = async (fixtureId) => {
+    if (!confirm('Delete this fixture?')) return;
+    setFixtureBusy(fixtureId);
+    try {
+      await fetch(`${BASE}/admin/fixtures/${fixtureId}`, { method: 'DELETE' });
+      await loadFixtures();
+    } finally {
+      setFixtureBusy(null);
+    }
+  };
 
   const parseJson = () => {
     try {
@@ -179,7 +237,8 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
             )}
           </div>
 
-          {/* Preview */}
+          {/* Preview + fixtures (split vertically) */}
+          <div style={{ display: 'grid', gridTemplateRows: '1fr auto', gap: 8, minWidth: 0, minHeight: 0 }}>
           <div style={{
             background: 'rgba(0,0,0,.3)', border: '0.5px solid rgba(255,255,255,.08)',
             borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0,
@@ -234,11 +293,82 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
               )}
             </div>
           </div>
+
+          {/* Fixtures section (Pipeline 2 stage 2B) */}
+          <div style={{
+            background: 'rgba(0,0,0,.3)', border: '0.5px solid rgba(255,255,255,.08)',
+            borderRadius: 8, padding: 10, fontSize: 11,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ color: 'rgba(255,255,255,.7)', fontWeight: 600 }}>Fixtures</span>
+              <span style={{ color: 'rgba(255,255,255,.4)' }}>
+                {fixturesLoading ? 'loading…' : `${fixtures.length} saved`}
+              </span>
+              <button onClick={captureFixture} disabled={fixtureBusy === 'capture'} style={{
+                marginLeft: 'auto',
+                background: 'rgba(99,102,241,.2)', border: '0.5px solid rgba(99,102,241,.45)',
+                color: '#A5B4FC', padding: '4px 10px', borderRadius: 6, fontSize: 11,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+                {fixtureBusy === 'capture' ? 'Capturing…' : '📸 Capture fixture'}
+              </button>
+            </div>
+            {fixtures.length === 0 && !fixturesLoading && (
+              <div style={{ color: 'rgba(255,255,255,.4)', fontSize: 10 }}>
+                Save a fixture to enable drift detection. Daily replay flags this source as drifted if the parser stops matching the saved baseline.
+              </div>
+            )}
+            {fixtures.length > 0 && (
+              <div style={{ display: 'grid', gap: 4 }}>
+                {fixtures.map(f => {
+                  const status = f.last_replay_status;
+                  const statusColor = status === 'passed' ? '#22c55e'
+                                    : status === 'drifted' ? '#F59E0B'
+                                    : status === 'broken' ? '#ef4444'
+                                    : 'rgba(255,255,255,.4)';
+                  return (
+                    <div key={f.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '4px 6px', background: 'rgba(255,255,255,.03)', borderRadius: 4,
+                    }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor }} />
+                      <span style={{ color: 'rgba(255,255,255,.85)', fontFamily: 'monospace', fontSize: 10 }}>
+                        {f.label || 'fixture'}
+                      </span>
+                      <span style={{ color: 'rgba(255,255,255,.4)', fontSize: 10 }}>
+                        {f.expected_count} events
+                      </span>
+                      <span style={{ color: 'rgba(255,255,255,.4)', fontSize: 10 }}>
+                        captured {(f.captured_at || '').slice(0, 16).replace('T', ' ')}
+                      </span>
+                      {status && (
+                        <span title={f.last_replay_diff ? JSON.stringify(f.last_replay_diff, null, 2) : ''}
+                          style={{ color: statusColor, fontSize: 10, marginLeft: 'auto' }}>
+                          {status}
+                        </span>
+                      )}
+                      <button onClick={() => replayFixture(f.id)} disabled={fixtureBusy === f.id}
+                        style={fixBtn}>↻</button>
+                      <button onClick={() => deleteFixture(f.id)} disabled={fixtureBusy === f.id}
+                        style={{ ...fixBtn, color: '#ef4444' }}>✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+const fixBtn = {
+  background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.12)',
+  color: 'rgba(255,255,255,.7)', padding: '2px 7px', borderRadius: 4,
+  fontSize: 10, cursor: 'pointer', fontFamily: 'inherit',
+};
 
 const btnPrimary = {
   background: 'rgba(201,168,76,.2)', border: '0.5px solid rgba(201,168,76,.45)',

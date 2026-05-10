@@ -20,6 +20,10 @@ const JOBS = [
     desc: 'Classify every active source as healthy/drifted/broken/unknown. Updates parser_health columns. Recommended: daily.',
   },
   {
+    id: 'parser-drift', label: 'Parser drift replay', method: 'POST', path: '/cron/parser-drift',
+    desc: 'Replay every saved fixture against the current parser. Flags sources where the parser no longer matches its baseline (site redesign or config drift). Recommended: daily, just before /cron/source-health.',
+  },
+  {
     id: 'sweep-empty', label: 'Sweep never-produced sources', method: 'POST', path: '/admin/sources/sweep',
     body: { filter: 'never-produced' },
     desc: 'Targeted scrape against sources that have never produced events. Useful after BLOCKED_SITES updates or new source seeds.',

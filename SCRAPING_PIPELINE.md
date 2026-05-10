@@ -358,20 +358,55 @@ Compare to baseline (rolling 7-day median). Flag deviations:
 - Content-type changed from `text/html` to `application/json` (site
   rebuild) → `parser_health = 'drifted'`
 
-### 4.2 Stage 2B — Structure-drift detection
+### 4.2 Stage 2B — Structure-drift detection (built 2026-05-10)
 
-For sources with custom extractors, run the parser against today's
-HTML and compare against the fixture's expected output:
+Each fixture is a frozen pair of (HTML, expected_events) saved when the
+parser was known-good. Drift detection re-runs the CURRENT parser
+against the SAVED HTML and compares to the fixture's `expected_events`.
+Catches two failure modes:
 
-- Parser threw → `parser_health = 'broken'`
-- Parser returned 0 events when fixture expected ≥ 1 → `'drifted'`
-- Parser returned events but key fields are now null → `'drifted'`
+1. **Parser drift** — operator edited the extractor_config, broke a
+   selector, didn't notice. Replay says "current parser produces 0
+   events from saved HTML" → broken.
+2. **Site drift** — separately, the operator captures a NEW fixture
+   from the LIVE URL once a week. If the parser now produces fewer
+   events from current HTML than from the previous week's HTML, the
+   site changed. The week-over-week capture+compare lives in the
+   `/cron/parser-drift` cron loop (replays the most-recent fixture
+   per source).
 
-For sources using generic primitives, check that the primitive that
-last succeeded is still present:
+Verdicts written to `source_fixtures.last_replay_status`:
 
-- JSON-LD block present and parses?
-- Microdata `itemscope` count within ±50% of baseline?
+| Status | Meaning |
+|---|---|
+| `passed` | Current parser yields ≥ 50% of fixture's count AND ≥ 50% of fixture rows have matching (title + start_date) signatures in the new output. |
+| `drifted` | Count dropped > 50% OR signature overlap < 50%. |
+| `broken` | Current parser returned 0 events; fixture had > 0. |
+| `no-baseline` | Fixture had 0 events when captured (probably a bad capture). |
+
+Pipeline 2 health classifier reads the most-recent fixture's status
+per source as the highest-priority signal — `broken` and `drifted`
+verdicts override yield-based rules. So a parser drift detected
+overnight surfaces as `parser_health = 'broken'` in the next health
+check, before the user sees a thin feed.
+
+**Endpoints:**
+
+```
+POST /api/admin/sources/:id/fixtures/capture     body: { label? }
+GET  /api/admin/sources/:id/fixtures
+POST /api/admin/fixtures/:id/replay
+DELETE /api/admin/fixtures/:id
+GET  /api/cron/parser-drift                       cron entry; replays one
+                                                  fixture per source.
+POST /api/cron/parser-drift
+```
+
+**UX:** the Fixtures section lives at the bottom-right of the
+ExtractorEditor modal in `/admin#sources`. After saving a config and
+verifying with Test, click 📸 **Capture fixture** to freeze the current
+HTML + extracted events as the baseline. Per-fixture row shows replay
+status (green/amber/red dot) with timestamp; ↻ replays one, ✕ deletes.
 
 ### 4.3 Stage 2C — Yield monitoring
 
@@ -828,7 +863,10 @@ source onboarded.
   read-only SQL playground; whitelisted DB table viewer; gated to
   adamcrubin@gmail.com). **Declarative DSL built** (`extractor_config`
   JSONB column + `services/declarativeParser.js` engine + admin
-  ExtractorEditor modal with live preview).
+  ExtractorEditor modal with live preview). **Fixture-based drift
+  detection built** (`source_fixtures` table, `services/fixtureRunner.js`,
+  cron + admin endpoints, drift signal feeds Pipeline 2 classifier as
+  the highest-priority input, UI fixtures panel in ExtractorEditor).
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
@@ -857,7 +895,7 @@ source onboarded.
 | 1 | 1D Custom extractor — LLM-authored workflow | ❌ not built |
 | 1 | 1E Activation | ⚠️ manual |
 | 2 | 2A HTTP probe | ❌ stub |
-| 2 | 2B Structure-drift (fixture replay) | ❌ not built |
+| 2 | 2B Structure-drift (fixture replay) | ✅ built (2026-05-10) |
 | 2 | 2C Yield monitoring | ✅ built (2026-05-10) |
 | 2 | 2D Triage report | ✅ built (2026-05-10) |
 | 2 | 2E Logic update path | ⚠️ manual (operator reviews triage, kicks back to Pipeline 1) |
