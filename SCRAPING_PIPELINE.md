@@ -1,46 +1,75 @@
 # Locale Scraping Pipeline — Design Reference
 
-> **Status:** as of 2026-05-10. Canonical reference for how a URL on the
-> internet becomes a row in the events table. Owns the full
-> `source → scraped_content → events` lifecycle.
+> **Status:** as of 2026-05-10. Canonical reference for how an event in
+> the world becomes a row in the events table. Owns the full
+> `find sources → scrape → extract → backfill → merge → discover-more`
+> lifecycle.
 
 ---
 
 ## 1. Mental Model
 
-The pipeline is a 5-stage Unix-y data transform:
+The pipeline is a 6-stage closed loop. Stage 0 is where sources come
+from in the first place; stage 5 feeds new sources discovered in events
+back into stage 0 for the next run.
 
 ```
-sources (config)
-   │
-   ▼
-[1] SCRAPE                 raw bytes → cleaned text + structured hints
-   │   timeout/retry/fallback
-   ▼
-scraped_content (cache)
-   │
-   ▼
-[2] EXTRACT                cleaned text → event rows (LLM)
-   │   prompt-cached static rules
-   ▼
-events (raw)
-   │
-   ▼
-[3] BACKFILL               fill missing fields via web_search (queued, retried)
-   │   3-attempt budget, 6h cooldown
-   ▼
-[4] MERGE                  collapse cross-source duplicates
-   │   3 bucketing strategies, title-similarity guard
-   ▼
-[5] DISCOVER               mine venue URLs → new sources
-   │
-   ▼
-events (canonical) → relevancy → feed
+                            ┌──────────────────────────────────────┐
+                            │                                      │
+                            ▼                                      │
+[0] SOURCING                                                       │
+    Manual seed (admin UI)                                         │
+    Hand-curated seeds (tiers, embassies, sponsored)               │
+    Auto-promoted from discovery feedback (stage 5)  ◀──────┐      │
+                                                            │      │
+                            sources                         │      │
+                              │                             │      │
+                              ▼                             │      │
+[1] SCRAPE                 raw bytes → cleaned text +        │      │
+    timeout/retry/fallback   structured hints (JSON-LD,      │      │
+                             OG meta, microdata)             │      │
+                              │                              │      │
+                              ▼                              │      │
+                          scraped_content                    │      │
+                              │                              │      │
+                              ▼                              │      │
+[2] EXTRACT                cleaned text → event rows         │      │
+    prompt-cached LLM       (Haiku)                          │      │
+                              │                              │      │
+                              ▼                              │      │
+                          events (raw)                       │      │
+                              │                              │      │
+                              ▼                              │      │
+[3] BACKFILL               fill missing fields via           │      │
+    queued, 3 retries        web_search                      │      │
+    6h cooldown               │                              │      │
+                              ▼                              │      │
+[4] MERGE                  collapse cross-source dupes       │      │
+    3 bucket strategies      │                              │      │
+                              ▼                              │      │
+                          events (canonical)                 │      │
+                              │                              │      │
+                              ├──────▶ relevancy → feed      │      │
+                              │                              │      │
+                              ▼                              │      │
+[5] DISCOVERY              mine venue URLs from events,      │      │
+    feedback loop          auto-promote → source_suggestions │      │
+                                                  │         │      │
+                                                  └─────────┘      │
+                                                                   │
+[6] HEALS                  cross-cutting: stale-expiry, category   │
+    cron + boot            recat, article-title kill, etc.         │
+                                                                   │
+                              ▲                                    │
+                              └────────────────────────────────────┘
+                                      runs continuously
 ```
 
 Each stage is idempotent. Each writes to a table the next stage reads.
-Re-running the pipeline against the same `scraped_content` produces the
-same canonical `events` (modulo Haiku non-determinism).
+Re-running the pipeline against the same input produces the same output
+(modulo Haiku non-determinism). The discovery feedback loop is what
+makes the source list grow over time without manual curation for every
+new venue.
 
 Three cross-cutting heals run on cron + boot to keep the table clean:
 
@@ -93,7 +122,107 @@ context as a default when prose is silent.
 
 ---
 
-## 3. Stage 1 — Scrape
+## 3. Stage 0 — Sourcing (where sources come from)
+
+The `sources` table is the input config for everything downstream. It's
+not a static seed file — it grows over time through three pathways. The
+discovery feedback loop (§8) is the one that scales without human effort.
+
+### 3.1 Three pathways into the sources table
+
+**A. Manual seed via admin UI.**
+`POST /api/admin/sources/add` with `{name, url, source_type, category_hint, zip_code}`.
+Used when the operator (Adam) finds a new venue or aggregator and wants
+it scraped. Backed by `routes/api.js:1310`. Sets `active=true`,
+`type='scrape'` (or `'pattern'` if `needs_pattern: true`), default
+tier 'C'.
+
+The operator workflow: notice a venue from a friend's recommendation or
+a news article → add via the admin UI → next pipeline run scrapes it →
+either it produces events or it joins the empty-track / never-produced
+list and gets diagnosed.
+
+**B. Hand-curated seed functions (idempotent, run on boot).**
+Each adds a fixed list to `sources` if rows don't already exist. Lives
+in `services/db.js`. Three current seeds:
+
+- `seedSourceTiers()` — assigns Tier A/B/C/D to existing rows by name
+  regex. Tier-A: WaPo, Washingtonian, Axios, NYT. Tier-B: DCist, Eater,
+  Thrillist, Time Out, City Paper. Tier-D: 'listings feed' / 'rss
+  aggregator'. Default to C.
+- `seedSourceContracts()` — assigns `field_contract` JSONB to known
+  roundup-style sources. WaPo / Washingtonian / DCist / Eater / Time
+  Out / City Paper / FXVA never provide ticket_url or itemized
+  cost_display, so backfill skips searching for those fields → saves
+  ~$0.02/run/source in Anthropic credits.
+- `seedEmbassyAndCulturalSources()` — adds 8 embassy + cultural
+  institutes (Embassy Series, Goethe-Institut, Mexican Cultural
+  Institute, Maison Française, Italian Cultural Institute, House of
+  Sweden, IDB Cultural Center, Library of Congress Concerts). These
+  fill a gap that no DC aggregator covers well.
+
+Boot heals also live alongside seeds in `db.js`:`testConnection()` —
+they run on every Render restart so newly-added seeds always materialize
+and stale rows get reactivated.
+
+**C. Auto-promotion from discovery feedback (§8).**
+The closed loop. Aggregator events that link out to non-aggregator
+hosts get mined for new sources. Single-aggregator hits with a non-
+singular-event host name → auto-add to `sources`. Multi-aggregator hits
+→ auto-add. Singular-event-flagged hits (festival, fest, marathon,
+gala) → write to `source_suggestions` for admin review.
+
+Today this pathway provides ~12-18 new sources per month with zero
+manual effort. The bulk of long-tail venue coverage comes from here.
+
+### 3.2 Sponsored seed events (separate but related)
+
+`rotateSponsored()` is a heal, not a source pathway, but worth noting
+here. 8 sponsored event placeholders live in `events` directly (poker
+night at Adam's, ice cream with Kailee, etc.) — not in `sources`. The
+heal picks one per week (week-of-year mod 8) and `active=true`s it
+while deactivating the others. They re-stamp themselves to the upcoming
+weekend's Fri/Sat/Sun based on which day-of-week they're scheduled for.
+
+These bypass scrape and extract entirely — they're written directly to
+`events` by a one-time SQL seed in the admin UI. Mentioned here because
+they appear in the feed alongside scraped events and can confuse the
+"why did this row appear?" diagnosis.
+
+### 3.3 What the table promises
+
+After Stage 0, every row in `sources` has:
+
+- `name` — human-readable label
+- `url` — the canonical URL (or hub URL, for `type='pattern'`)
+- `type` — scrape strategy: `scrape` / `pattern` / `api`
+- `source_type` — taxonomy: `aggregator` / `venue` / `editorial`
+- `category_hint` — fallback bucket when extractor returns null
+- `source_tier` — A/B/C/D, scoring weight
+- `active` — master kill switch
+- `zip_code` — geo scope (always `dc-metro` today; multi-region future)
+
+Plus optional bookkeeping: `last_extracted_hash`, `last_extracted_weekend`,
+`last_ok`, `last_error`, `consecutive_empty_runs`, `field_contract`.
+
+### 3.4 Coverage as a leading indicator
+
+Three states a source can be in (queryable via `GET /admin/sources/coverage`):
+
+- **Producing** — has at least one active event extracted from it ever.
+- **Empty-track** — `consecutive_empty_runs > 0` but never auto-paused
+  (auto-pause was deliberately not built; operator decides).
+- **Never produced** — has run scrape attempts but never extracted an
+  event. Either: (a) site is JS-rendered/blocked, (b) URL is stale,
+  (c) genuinely has nothing this week.
+
+Healthy ratio target: **producing > 50% of active sources.** Below that,
+something structural is wrong (deploy stuck, BLOCKED_SITES needs
+expansion, web search apology rate spiking).
+
+---
+
+## 4. Stage 1 — Scrape
 
 ### 3.1 Strategies, ordered by cost
 
@@ -194,7 +323,7 @@ success, sources get `last_ok = NOW(), last_error = NULL`. On fail,
 
 ---
 
-## 4. Stage 2 — Extract
+## 5. Stage 2 — Extract
 
 ### 4.1 Prompt structure
 
@@ -268,7 +397,7 @@ hash matches `last_extracted_hash`).
 
 ---
 
-## 5. Stage 3 — Backfill
+## 6. Stage 3 — Backfill
 
 Decoupled from extraction so transient failures don't drop events.
 
@@ -319,7 +448,7 @@ Runs as Pass 2 inside `runExtractionPass` AND independently via
 
 ---
 
-## 6. Stage 4 — Cross-source Merge
+## 7. Stage 4 — Cross-source Merge
 
 ### 6.1 Why content_hash isn't enough
 
@@ -363,39 +492,74 @@ also re-applied via `mergeDuplicateEvents` if called directly).
 
 ---
 
-## 7. Stage 5 — Source Discovery
+## 8. Stage 5 — Discovery (feedback loop into §3 sourcing)
 
-`sourceDiscovery.js` Pass 4. Mines venue URLs from aggregator-extracted
-events to find new sources to scrape.
+`sourceDiscovery.js` Pass 4. The closed-loop feedback that grows the
+source list without manual curation. Mines venue URLs out of events
+extracted from aggregator sources, decides which hosts deserve to be
+their own scrape target, and either auto-adds them to `sources`
+(closing the loop into Stage 0) or queues them in `source_suggestions`
+for admin review.
 
-### 7.1 Mechanism
+This is what scales the source list. Manual seeding (§3.1A) and
+hand-curated seeds (§3.1B) hit a ceiling — there are too many DC
+venues for a human to type in. Discovery handles the long tail.
 
-1. Pull all events from Tier-A/B aggregator sources extracted in the last
-   N days.
+### 8.1 Mechanism
+
+1. Pull all events from Tier-A/B aggregator sources extracted in the
+   last N days.
 2. For each event with a non-null `url`, parse the host.
 3. Skip-filter:
-   - Hosts in `SKIP_HOSTS` (~30 ticket platforms, social, CDN, search).
+   - Hosts in `SKIP_HOSTS` (~30 ticket platforms, social, CDN, search
+     engines, generic blog hosts).
    - Hosts already present in `sources`.
-4. Group by host. Count distinct aggregators that mentioned each.
-5. Singular-event detection: hosts whose name OR title contains `festival`,
-   `fest`, `expo`, `marathon`, `gala`, `parade` AND whose count of distinct
-   titles is 1 → flag as singular event, not recurring venue.
+4. Group surviving URLs by host. Count distinct aggregators that
+   mentioned each.
+5. Singular-event detection: hosts whose name OR title contains
+   `festival`, `fest`, `expo`, `marathon`, `gala`, `parade` AND whose
+   count of distinct titles is 1 → flag as a one-off event, not a
+   recurring-venue source.
 6. Auto-promote rule:
-   - ≥2 distinct aggregators mentioned the host → auto-add to `sources`
-     with `source_type='venue'`, `source_tier='C'`, `active=true`.
+   - ≥ 2 distinct aggregators mentioned the host → auto-add to
+     `sources` with `source_type='venue'`, `source_tier='C'`,
+     `active=true`. Goes into Stage 1 of the next pipeline run.
    - 1 aggregator mentioned the host AND it's not flagged singular →
      auto-add.
-   - Otherwise → write to `source_suggestions` for admin review.
+   - Otherwise → write to `source_suggestions` with
+     `status='pending_review'` for admin to approve / reject.
 
-### 7.2 Reconciliation
+### 8.2 Reconciliation
 
-Final pass syncs drift between `source_suggestions.status` and `sources`
-membership — if a suggestion was auto-promoted but the suggestion row
-still says `pending`, flip it to `auto_approved`.
+Final pass syncs drift between `source_suggestions.status` and
+`sources` membership — if a suggestion was auto-promoted but the
+suggestion row still says `pending`, flip it to `auto_approved`. This
+keeps the admin UI's "pending suggestions" queue clean.
+
+### 8.3 Why this is a loop, not a sink
+
+A new source promoted in run N becomes input to run N+1. Run N+1
+extracts events from that source, those events have URLs pointing at
+yet more hosts, those hosts get fed back into stage 5 of run N+2.
+
+In practice the loop converges quickly: the "DC venue universe" is a
+finite set, and after ~3-4 cycles the discovery pass surfaces mostly
+hosts that fail filters (already-known, skip-listed, or singular
+events). New genuine venues appear as the long-tail aggregators
+(washington.org, FXVA, Visit-* tourism boards) update their content.
+
+### 8.4 Admin endpoints for the loop
+
+```
+GET  /api/admin/source-suggestions               list pending
+POST /api/admin/source-suggestions/:id/approve    promote to sources
+POST /api/admin/source-suggestions/:id/reject     mark rejected
+POST /api/admin/source-suggestions/backfill       re-mine historical events
+```
 
 ---
 
-## 8. Region/Distance Filter
+## 9. Region/Distance Filter
 
 `distance.js` computes one-way drive minutes from DC metro for each event.
 
@@ -433,7 +597,7 @@ they get persisted. Belt-and-suspenders.
 
 ---
 
-## 9. Heals
+## 10. Heals
 
 7 idempotent passes that run on boot AND every cron tick (`/api/cron/heal`,
 recommended every 2h).
@@ -454,7 +618,7 @@ sponsored rotation runs last.
 
 ---
 
-## 10. Drop Points (where events vanish)
+## 11. Drop Points (where events vanish)
 
 Catalog of every place a row gets deactivated or never lands. Useful for
 "why is the feed thin?" diagnosis.
@@ -490,7 +654,7 @@ Catalog of every place a row gets deactivated or never lands. Useful for
 
 ---
 
-## 11. Configuration / Tuning Knobs
+## 12. Configuration / Tuning Knobs
 
 | Knob | File | Default | Effect |
 |---|---|---|---|
@@ -510,7 +674,7 @@ Catalog of every place a row gets deactivated or never lands. Useful for
 
 ---
 
-## 12. Telemetry
+## 13. Telemetry
 
 Every pipeline run writes rows to `pipeline_telemetry_v2`:
 
@@ -531,7 +695,7 @@ BLOCKED_SITES needs expansion, web search apology rate spiking, etc.).
 
 ---
 
-## 13. Costs
+## 14. Costs
 
 Per pipeline run (typical ~166 sources):
 
@@ -549,7 +713,7 @@ block hits cache on every call after the first).
 
 ---
 
-## 14. Failure Modes Quick Reference
+## 15. Failure Modes Quick Reference
 
 | Symptom | Likely cause | Diagnose with |
 |---|---|---|
@@ -564,7 +728,7 @@ block hits cache on every call after the first).
 
 ---
 
-## 15. Glossary
+## 16. Glossary
 
 - **Content hash:** MD5 of normalized_title + date. Primary dedup key.
 - **Pattern source:** A source whose canonical URL changes per issue;
@@ -584,7 +748,7 @@ block hits cache on every call after the first).
 
 ---
 
-## 16. Versions
+## 17. Versions
 
 This doc reflects the pipeline as of 2026-05-10. Changes worth flagging
 in future revisions:
