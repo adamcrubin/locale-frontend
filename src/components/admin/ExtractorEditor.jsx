@@ -1,0 +1,257 @@
+// Modal editor for a source's declarative extractor_config.
+// Lets the operator paste/edit JSON, dry-run against the live source URL,
+// see what the parser extracts, then save the config back to the row.
+
+import { useState } from 'react';
+
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+const TEMPLATE = {
+  container: 'div.event-card',
+  fields: {
+    title: 'h3.event-title',
+    venue: '.venue-name',
+    start_date: { selector: '.event-date', transform: 'parseDate' },
+    start_time: { selector: '.event-time', transform: 'parseTime' },
+    cost_display: { selector: '.event-price', transform: 'parseCost' },
+    url: { selector: 'a', attr: 'href', absolute: true },
+    description: '.event-blurb',
+  },
+  defaults: {
+    venue: 'My Venue Name',
+    neighborhood: 'Penn Quarter',
+    categories: ['arts'],
+  },
+  drop_if_missing: ['title', 'start_date'],
+};
+
+export default function ExtractorEditor({ source, onClose, onSaved }) {
+  const initial = source.extractor_config
+    ? JSON.stringify(source.extractor_config, null, 2)
+    : JSON.stringify(TEMPLATE, null, 2);
+  const [json, setJson] = useState(initial);
+  const [parseError, setParseError] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  const parseJson = () => {
+    try {
+      return JSON.parse(json);
+    } catch (e) {
+      setParseError(e.message);
+      return null;
+    }
+  };
+
+  const runTest = async () => {
+    setParseError(null); setTestResult(null); setTesting(true);
+    const config = parseJson();
+    if (!config) { setTesting(false); return; }
+    try {
+      const res = await fetch(`${BASE}/admin/sources/test-extractor`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceId: source.id, config }),
+      });
+      const j = await res.json();
+      if (!j.ok) {
+        setTestResult({ error: j.error });
+      } else {
+        setTestResult(j);
+      }
+    } catch (e) {
+      setTestResult({ error: e.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const save = async () => {
+    setParseError(null); setSaveError(null); setSaving(true);
+    const config = parseJson();
+    if (!config) { setSaving(false); return; }
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ extractor_config: config }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      onSaved?.(j.source);
+      onClose();
+    } catch (e) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const clearConfig = async () => {
+    if (!confirm('Remove the extractor config? Source falls back to generic primitives + Haiku.')) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ extractor_config: null }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      onSaved?.(j.source);
+      onClose();
+    } catch (e) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: '#1C1A17', border: '0.5px solid rgba(255,255,255,.1)',
+        borderRadius: 12, width: '90vw', maxWidth: 1100, height: '88vh',
+        display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans, sans-serif',
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '12px 18px', borderBottom: '0.5px solid rgba(255,255,255,.1)',
+          display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0,
+        }}>
+          <span className="serif" style={{ fontSize: 16, fontWeight: 300, color: 'rgba(255,255,255,.9)' }}>
+            Extractor config
+          </span>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>{source.name}</span>
+          <a href={source.url} target="_blank" rel="noreferrer" style={{
+            fontSize: 11, color: 'rgba(255,255,255,.4)', fontFamily: 'monospace',
+            textDecoration: 'underline',
+          }}>{source.url} ↗</a>
+          <button onClick={onClose} style={{
+            marginLeft: 'auto', background: 'rgba(255,255,255,.07)',
+            border: '0.5px solid rgba(255,255,255,.1)', borderRadius: 7,
+            padding: '3px 10px', fontSize: 13, cursor: 'pointer', color: 'rgba(255,255,255,.5)',
+          }}>✕</button>
+        </div>
+
+        {/* Body — split editor / preview */}
+        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 12, minHeight: 0 }}>
+          {/* Editor */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)' }}>
+              Declarative config (JSON). See <code style={{ color: '#C9A84C' }}>SCRAPING_PIPELINE.md §6</code> for schema. Transforms: parseDate / parseTime / parseCost / trim / lowercase / slice:N.
+            </div>
+            <textarea
+              value={json}
+              onChange={e => { setJson(e.target.value); setParseError(null); }}
+              spellCheck={false}
+              style={{
+                background: '#0F0E0C', border: '0.5px solid rgba(255,255,255,.12)',
+                borderRadius: 8, padding: 12, color: 'rgba(255,255,255,.85)',
+                fontFamily: 'JetBrains Mono, Consolas, monospace', fontSize: 11, lineHeight: 1.5,
+                outline: 'none', flex: 1, resize: 'none', minHeight: 0,
+              }}
+            />
+            {parseError && (
+              <div style={{
+                fontSize: 11, color: '#ef4444', fontFamily: 'monospace',
+                padding: '6px 8px', background: 'rgba(239,68,68,.08)', borderRadius: 4,
+              }}>{parseError}</div>
+            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={runTest} disabled={testing} style={btnPrimary}>
+                {testing ? 'Testing…' : '▶ Test against source URL'}
+              </button>
+              <button onClick={save} disabled={saving} style={btnGreen}>
+                {saving ? 'Saving…' : '💾 Save config'}
+              </button>
+              <button onClick={clearConfig} disabled={saving} style={btnGhost}>
+                Clear
+              </button>
+            </div>
+            {saveError && (
+              <div style={{ fontSize: 11, color: '#ef4444' }}>{saveError}</div>
+            )}
+          </div>
+
+          {/* Preview */}
+          <div style={{
+            background: 'rgba(0,0,0,.3)', border: '0.5px solid rgba(255,255,255,.08)',
+            borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0,
+          }}>
+            <div style={{
+              padding: '8px 12px', borderBottom: '0.5px solid rgba(255,255,255,.08)',
+              fontSize: 11, color: 'rgba(255,255,255,.5)',
+            }}>
+              {!testResult && 'Test result preview'}
+              {testResult?.error && <span style={{ color: '#ef4444' }}>Error: {testResult.error}</span>}
+              {testResult?.ok && (
+                <span>
+                  ✓ {testResult.matched_containers} containers matched · {testResult.emitted} events emitted
+                  {testResult.dropped > 0 && <span style={{ color: '#F59E0B' }}> · {testResult.dropped} dropped (missing required fields)</span>}
+                  · {testResult.fetch_ms}ms fetch · {testResult.parse_ms}ms parse
+                </span>
+              )}
+            </div>
+            <div style={{ overflow: 'auto', flex: 1, padding: 12 }}>
+              {testResult?.events?.length > 0 && (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {testResult.events.slice(0, 50).map((evt, i) => (
+                    <div key={i} style={{
+                      background: 'rgba(255,255,255,.03)', border: '0.5px solid rgba(255,255,255,.08)',
+                      borderRadius: 6, padding: 8, fontSize: 11, color: 'rgba(255,255,255,.75)',
+                    }}>
+                      <div style={{ fontWeight: 600, color: 'rgba(255,255,255,.9)', marginBottom: 4 }}>
+                        {evt.title || <em style={{ color: '#ef4444' }}>(no title)</em>}
+                      </div>
+                      {Object.entries(evt).filter(([k]) => k !== 'title').map(([k, v]) => (
+                        <div key={k} style={{ display: 'flex', gap: 8 }}>
+                          <span style={{ color: 'rgba(255,255,255,.4)', minWidth: 110 }}>{k}:</span>
+                          <span style={{ flex: 1, fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                            {v === null ? <em style={{ color: 'rgba(255,255,255,.25)' }}>null</em>
+                              : typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {testResult.events.length > 50 && (
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', textAlign: 'center' }}>
+                      … {testResult.events.length - 50} more
+                    </div>
+                  )}
+                </div>
+              )}
+              {testResult?.ok && testResult.events.length === 0 && (
+                <div style={{ color: '#F59E0B', fontSize: 12 }}>
+                  Parser ran but emitted 0 events. Either selectors don't match or required fields ({JSON.stringify(testResult.drop_if_missing || ['title'])}) are missing.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const btnPrimary = {
+  background: 'rgba(201,168,76,.2)', border: '0.5px solid rgba(201,168,76,.45)',
+  color: '#C9A84C', padding: '7px 14px', borderRadius: 8, fontSize: 12,
+  fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+};
+const btnGreen = {
+  background: 'rgba(34,197,94,.15)', border: '0.5px solid rgba(34,197,94,.4)',
+  color: '#22c55e', padding: '7px 14px', borderRadius: 8, fontSize: 12,
+  fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+};
+const btnGhost = {
+  background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.12)',
+  color: 'rgba(255,255,255,.5)', padding: '7px 14px', borderRadius: 8, fontSize: 12,
+  cursor: 'pointer', fontFamily: 'inherit',
+};

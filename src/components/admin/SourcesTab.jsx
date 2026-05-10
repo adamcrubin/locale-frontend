@@ -4,6 +4,7 @@
 // auto-discovered candidates.)
 
 import { useEffect, useState } from 'react';
+import ExtractorEditor from './ExtractorEditor';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -21,6 +22,7 @@ export default function SourcesTab() {
   const [filter, setFilter] = useState('all'); // all | active | broken | drifted | inactive
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('events'); // events | tier | last_ok | name
+  const [editing, setEditing] = useState(null); // source object whose extractor we're editing
 
   useEffect(() => {
     setLoading(true); setError(null);
@@ -95,6 +97,7 @@ export default function SourcesTab() {
               <Th align="right">30d</Th>
               <Th align="right">total</Th>
               <Th>last_ok</Th>
+              <Th>extractor</Th>
               <Th>diagnosis</Th>
             </tr>
           </thead>
@@ -110,6 +113,15 @@ export default function SourcesTab() {
                 <Td align="right" mono>{s.events_30d}</Td>
                 <Td align="right" mono>{s.total_events}</Td>
                 <Td mono>{formatDate(s.last_ok)}</Td>
+                <Td>
+                  <button onClick={() => setEditing(s)} style={{
+                    background: s.extractor_config ? 'rgba(34,197,94,.12)' : 'rgba(255,255,255,.04)',
+                    border: `0.5px solid ${s.extractor_config ? 'rgba(34,197,94,.4)' : 'rgba(255,255,255,.12)'}`,
+                    color: s.extractor_config ? '#22c55e' : 'rgba(255,255,255,.5)',
+                    padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}>{s.extractor_config ? '✓ edit' : '+ add'}</button>
+                </Td>
                 <Td><span style={{ fontSize: 10, color: 'rgba(255,255,255,.5)' }}>
                   {s.parser_health_reason || s.last_error || '—'}
                 </span></Td>
@@ -118,6 +130,20 @@ export default function SourcesTab() {
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <ExtractorEditor
+          source={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            // Optimistically merge updated row
+            setData(d => ({
+              ...d,
+              sources: d.sources.map(s => s.id === updated.id ? { ...s, ...updated } : s),
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }

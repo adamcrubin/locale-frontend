@@ -223,25 +223,99 @@ markup, just configure `siteParsers.js` with `primitives:
 wins. Plus optional `defaults: { venue, neighborhood }` to fill blanks.
 Already the path for ~50 sources.
 
-**D2. Declarative config (extractor_config JSONB).**
-For sources with structured but non-schema HTML (e.g. repeating
-`<article class="event-card">` blocks). Operator writes:
+**D2. Declarative config (extractor_config JSONB) — built 2026-05-10.**
+For sources with structured but non-schema HTML (repeating
+`<article class="event-card">` blocks, etc.). Operator authors a JSONB
+config; generic engine in `services/declarativeParser.js` applies the
+selectors via cheerio. ~80% of single-venue sources should fit this
+pattern.
+
+**Full schema:**
 
 ```json
 {
-  "container": "article.event-card",
+  "container": "div.event-card",
   "fields": {
-    "title": ".event-title",
-    "venue": ".event-venue",
-    "start_date": { "selector": ".event-date", "transform": "parseDate" },
-    "url": { "selector": "a", "attr": "href" },
-    "description": ".event-blurb"
-  }
+    "title": "h3.event-title",
+    "venue": ".venue-name",
+    "start_date": { "selector": ".date", "transform": "parseDate" },
+    "start_time": { "selector": ".time", "transform": "parseTime" },
+    "cost_display": { "selector": ".price", "transform": "parseCost" },
+    "url": { "selector": "a", "attr": "href", "absolute": true },
+    "description": ".event-blurb",
+    "image_url": { "selector": "img", "attr": "src", "absolute": true }
+  },
+  "defaults": {
+    "venue": "Mosaic District",
+    "neighborhood": "Merrifield",
+    "categories": ["food"]
+  },
+  "drop_if_missing": ["title", "start_date"]
 }
 ```
 
-Generic engine reads the config and applies the selectors. ~80% of
-single-venue sources should fit this pattern. Not built yet.
+**Field spec options:**
+
+| Option | Effect |
+|---|---|
+| `selector` | CSS selector applied within the container element. Required. |
+| `attr: "href"` | Pull an attribute instead of element text |
+| `html: true` | Pull innerHTML instead of text |
+| `absolute: true` | Resolve relative URLs against the source URL |
+| `transform: "name"` | Run a named transform on the extracted string |
+| `format: "..."` | Optional argument to the transform (e.g. date format hint) |
+| `regex: "..."` | Apply regex capture group after extraction |
+| `fallback: "..."` | Use this string when selector finds nothing |
+
+**Transform library** (in `services/declarativeParser.js`):
+
+| Transform | Input → Output |
+|---|---|
+| `parseDate` | "May 9, 2026" / "5/9/2026" / "May 9" → `2026-05-09` |
+| `parseTime` | "8pm" / "20:00" / "7:30 PM" → `8:00 PM` / `2:30 PM` |
+| `parseCost` | "$15-$45" / "Free" / "$15+" → `$15–$45` / `Free` / `$15+` |
+| `trim` | Strips whitespace |
+| `lowercase` / `uppercase` | Case shift |
+| `slice:N` | First N chars (e.g. `slice:200`) |
+
+**Defaults** apply when the field is null after extraction. Useful for
+single-venue sources where venue/neighborhood are structurally fixed.
+
+**`drop_if_missing`** rejects rows lacking any listed field after
+extraction + defaults. Defaults to `["title"]` when not specified.
+
+**Authoring workflow:**
+
+1. Open `/admin#sources`, click "+ add" or "✓ edit" on a row.
+2. Modal opens with the JSON config editor on the left, a live preview
+   panel on the right.
+3. Edit the config. Click "▶ Test against source URL" — backend fetches
+   the live HTML, runs your config, returns the events that would be
+   extracted.
+4. Iterate selectors until the preview shows the right rows. The
+   preview shows `matched_containers`, `emitted`, `dropped` counts so
+   you can see when `drop_if_missing` is rejecting rows.
+5. Click "💾 Save config" to persist to `sources.extractor_config`.
+6. Next pipeline run uses the declarative path automatically. Falls
+   back to generic primitives + Haiku if the declarative pass yields
+   zero events (selectors broke).
+
+**Endpoints:**
+
+```
+POST /api/admin/sources/test-extractor
+     body: { sourceId? | url?, config }
+     → { ok, matched_containers, emitted, dropped, events, fetch_ms, parse_ms }
+
+PATCH /api/admin/sources/:id
+     body: { extractor_config?, name?, url?, source_tier?, active?, ... }
+     → { ok, source }
+```
+
+The dispatcher in `siteParsers.js` runs declarative FIRST when
+`extractor_config` is non-null. If declarative emits zero events, the
+generic primitive loop (`jsonLd`, `microdata`, `tribe`, `articleList`)
+still runs — adding capacity without adding fragility.
 
 **D3. Hand-written / LLM-authored function.**
 For sources with weird structure or anti-scraping. `siteParsers.js`
@@ -747,7 +821,14 @@ source onboarded.
 - **2026-05-10:** Architecture restructured into three pipelines
   (Onboarding / Health / Runtime). Custom-extractor shift documented
   as the primary path going forward. Listicle expansion shipped
-  (max_tokens 3000→8000, rule 0e flipped).
+  (max_tokens 3000→8000, rule 0e flipped). **Pipeline 2 yield
+  monitoring built** (parser_health columns, classify rules,
+  /admin/sources/health endpoints). **Admin console at /admin built**
+  (Health / Cron / Tables / SQL / Sources / Suggestions tabs;
+  read-only SQL playground; whitelisted DB table viewer; gated to
+  adamcrubin@gmail.com). **Declarative DSL built** (`extractor_config`
+  JSONB column + `services/declarativeParser.js` engine + admin
+  ExtractorEditor modal with live preview).
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
@@ -771,7 +852,7 @@ source onboarded.
 | 1 | 1B Validation | ❌ stub |
 | 1 | 1C Categorization | ⚠️ manual |
 | 1 | 1D Custom extractor — generic primitives | ✅ built |
-| 1 | 1D Custom extractor — declarative DSL | ❌ not built |
+| 1 | 1D Custom extractor — declarative DSL | ✅ built (2026-05-10) |
 | 1 | 1D Custom extractor — hand-written | ⚠️ 1 source (Smithsonian) |
 | 1 | 1D Custom extractor — LLM-authored workflow | ❌ not built |
 | 1 | 1E Activation | ⚠️ manual |
