@@ -776,16 +776,47 @@ source onboarded.
 | 1 | 1D Custom extractor — LLM-authored workflow | ❌ not built |
 | 1 | 1E Activation | ⚠️ manual |
 | 2 | 2A HTTP probe | ❌ stub |
-| 2 | 2B Structure-drift | ❌ not built |
-| 2 | 2C Yield monitoring | ⚠️ data exists, no triage |
-| 2 | 2D Triage report | ❌ not built |
-| 2 | 2E Logic update path | ❌ not built |
+| 2 | 2B Structure-drift (fixture replay) | ❌ not built |
+| 2 | 2C Yield monitoring | ✅ built (2026-05-10) |
+| 2 | 2D Triage report | ✅ built (2026-05-10) |
+| 2 | 2E Logic update path | ⚠️ manual (operator reviews triage, kicks back to Pipeline 1) |
 | 3 | 3A Scrape | ✅ built |
 | 3 | 3B Extract — Haiku | ✅ built |
 | 3 | 3B Extract — custom primary | ⚠️ 1 source |
 | 3 | 3C Backfill | ✅ built |
 | 3 | 3D Merge | ✅ built |
 | 3 | 3E Telemetry + feedback | ✅ built |
+
+### Pipeline 2 yield monitoring (2026-05-10 build)
+
+`services/sourceHealth.js` runs the daily probe. Endpoints:
+
+```
+GET  /api/cron/source-health        run + return triage
+GET  /api/admin/sources/health      cached view of parser_health
+GET  /api/admin/sources/health.txt  human-readable triage report
+```
+
+Schema additions to `sources`:
+
+- `parser_health TEXT DEFAULT 'unknown'` — healthy/drifted/broken/unknown
+- `parser_health_at TIMESTAMPTZ` — when last computed
+- `parser_health_reason TEXT` — short diagnosis string
+
+Classification rules (in `classify()`, first match wins):
+
+1. `total_events == 0 && age_days < 7` → `unknown` (too new)
+2. `total_events == 0 && catastrophic last_error` → `broken`
+3. `total_events == 0` → `broken` (tried but never produced)
+4. `catastrophic last_error` (403/404/All resolved URLs failed/DNS/SSL) → `broken`
+5. `events_30d == 0 && total_events > 0` → `broken` (long dormancy)
+6. `events_7d_prior >= 3 && events_7d < events_7d_prior * 0.5` → `drifted` (yield drop)
+7. `events_7d == 0 && events_7d_prior > 0` → `drifted` (just-stopped)
+8. `events_7d == 0 && events_7d_prior == 0 && events_30d > 0` → `drifted` (two-week silence)
+9. `last_error && events_7d > 0` → `drifted` (minor errors with flow)
+10. otherwise → `healthy`
+
+Auto-pause is intentionally deferred. The triage list is operator-reviewed.
 
 The build-out priority order (highest ROI first):
 

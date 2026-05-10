@@ -1296,3 +1296,34 @@ Pulled the full scrape→extract→backfill→merge→discover lifecycle out of 
 
 `PATCH /api/admin/events/:id` body now accepts `category` (primary bucket) and `active` (kill switch) in addition to the existing fields. Future categorization audits don't need raw SQL.
 
+### Pipeline 2 yield monitoring + triage (first build)
+
+First piece of the new Pipeline 2 (Health & Maintenance) architecture. Daily yield-monitoring cron that classifies every active source as `healthy` / `drifted` / `broken` / `unknown` based on:
+
+1. **Catastrophic error patterns** in `last_error` — `403`/`404`/`All resolved URLs failed`/DNS/SSL → `broken`.
+2. **Long dormancy** — `events_30d = 0` when source previously produced → `broken`.
+3. **Yield drop** — `events_7d_prior >= 3 AND events_7d < events_7d_prior * 0.5` → `drifted`.
+4. **Just-stopped** — `events_7d = 0 AND events_7d_prior > 0` → `drifted`.
+5. **Two-week silence** — `events_7d = 0 AND events_7d_prior = 0 AND events_30d > 0` → `drifted` (the Strathmore case).
+6. **Minor errors with flow** — `last_error AND events_7d > 0` → `drifted`.
+
+Three new schema columns on `sources`: `parser_health`, `parser_health_at`, `parser_health_reason`.
+
+Three new endpoints:
+
+```
+GET  /api/cron/source-health        run probe + write parser_health rows + return triage
+POST /api/cron/source-health        same; for cron-job.org POST hook
+GET  /api/admin/sources/health      read cached parser_health + current 7d/14d/30d counts
+GET  /api/admin/sources/health.txt  human-readable triage report (pipe to email)
+```
+
+Recommended cadence: daily at 6am ET. Add to cron-job.org alongside the existing `/api/cron/heal` and `/api/cron/backfill` jobs.
+
+Initial triage on the production DB (validation run) caught:
+- 4-6 sources flagged `broken` from catastrophic `All resolved URLs failed` errors (Kennedy Center, Pearl Street, Pinstripes Bocce, Destination Gettysburg, Jammin Java)
+- 10+ sources flagged `drifted` from yield drops or two-week silence (AFI Silver, Mosaic District, Library of Congress, Aslin Beer, Politics and Prose, etc.)
+- ~30 sources `unknown` because they've never produced (the BLOCKED_SITES expansion fix is still propagating)
+
+Pipeline 2 doesn't auto-pause anything. It surfaces the list for operator review. Auto-pause is intentionally deferred — false positives during the source-discovery phase would silently kill good sources.
+
