@@ -1268,3 +1268,31 @@ Options when ready to invest:
 
 Estimated impact: probably +30 sources from "never produced" → "producing." Music feed especially benefits (9:30 Club, Anthem, Wolf Trap). Out of scope for this round; flagged in ROADMAP.
 
+---
+
+## Changes 2026-05-10
+
+### Listicle expansion (extractor rule 0e + max_tokens)
+
+Empty-feed diagnosis for the May 8-10 weekend showed scrapers were running fine and reaching the right article URLs (Washingtonian's "27 Things to Do in the DC Area This Week and Weekend" was being fetched correctly, 27K chars of body content), but the LLM was emitting the article HEADLINE as one row instead of mining the body for 27 per-item events. Rule 0e correctly killed the headline as a listicle title — and the per-item rows that should have replaced it never materialized.
+
+Two coordinated fixes:
+
+1. **`max_tokens: 3000 → 8000`** in `extractEventsFromSource`. A 27-item listicle at ~200 tokens per row needs 5400+ tokens for the full JSON array. 3000 was truncating output mid-array, which manifested as the LLM emitting just the headline (the only complete element that fit before truncation) and nothing else. 8000 covers a 30-item listicle with margin.
+
+2. **Rule 0e flipped** to lead with positive instruction. Previous version led with "NEVER emit the headline as a row" — the negative rule won and the LLM stopped there, never proceeding to the body-mining instruction. New version leads with "LISTICLE EXPANSION — THIS IS THE MOST IMPORTANT RULE ON THE PAGE" plus a concrete worked example using Washingtonian's actual article. Headline-rejection becomes a corollary at the end.
+
+Recognition patterns for body items now spelled out explicitly: numbered items, day-grouped sections (FRIDAY/SATURDAY/SUNDAY), bold-heading + paragraph blocks, bullet lists, and even unstructured prose ("On Saturday, Bruno Mars plays Cap One Arena at 8pm. Sunday brings a flower festival to the Wharf..." → 2 rows).
+
+### New canonical doc: SCRAPING_PIPELINE.md
+
+Pulled the full scrape→extract→backfill→merge→discover lifecycle out of this changelog-style doc into a dedicated design reference. Covers the 5-stage data flow, source taxonomy, all configuration knobs, drop points, telemetry, costs, and a failure-mode quick reference. Use SCRAPING_PIPELINE.md as the source-of-truth for "how does the pipeline work?" — DATA_PIPELINE.md remains the dated changelog.
+
+### Frontend: tab-pill weekend label drift fix
+
+`App.jsx` weekend-pill computation used `(5 - dow + 7) % 7` to find Friday, which always jumps forward — on Sat/Sun it landed on next Friday instead of this weekend's Friday. Aligned with the backend's `getWeekendDateRange()` and the frontend's `getWeekendDateStr()` / `WeekendSidebar` / `MobileLayout` (which already step backward correctly): Sat → −1, Sun → −2.
+
+### Admin PATCH allows category + active
+
+`PATCH /api/admin/events/:id` body now accepts `category` (primary bucket) and `active` (kill switch) in addition to the existing fields. Future categorization audits don't need raw SQL.
+
