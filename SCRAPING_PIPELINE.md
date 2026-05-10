@@ -1,660 +1,649 @@
-# Locale Scraping Pipeline — Design Reference
+# Locale Scraping Architecture — Design Reference
 
 > **Status:** as of 2026-05-10. Canonical reference for how an event in
-> the world becomes a row in the events table. Owns the full
-> `find sources → scrape → extract → backfill → merge → discover-more`
-> lifecycle.
+> the world becomes a row in the events table. The architecture splits
+> into three pipelines with different cadences, consumers, and rules of
+> engagement.
 
 ---
 
-## 1. Mental Model
+## 1. Architecture: Three Pipelines
 
-The pipeline is a 6-stage closed loop. Stage 0 is where sources come
-from in the first place; stage 5 feeds new sources discovered in events
-back into stage 0 for the next run.
-
-```
-                            ┌──────────────────────────────────────┐
-                            │                                      │
-                            ▼                                      │
-[0] SOURCING                                                       │
-    Manual seed (admin UI)                                         │
-    Hand-curated seeds (tiers, embassies, sponsored)               │
-    Auto-promoted from discovery feedback (stage 5)  ◀──────┐      │
-                                                            │      │
-                            sources                         │      │
-                              │                             │      │
-                              ▼                             │      │
-[1] SCRAPE                 raw bytes → cleaned text +        │      │
-    timeout/retry/fallback   structured hints (JSON-LD,      │      │
-                             OG meta, microdata)             │      │
-                              │                              │      │
-                              ▼                              │      │
-                          scraped_content                    │      │
-                              │                              │      │
-                              ▼                              │      │
-[2] EXTRACT                cleaned text → event rows         │      │
-    prompt-cached LLM       (Haiku)                          │      │
-                              │                              │      │
-                              ▼                              │      │
-                          events (raw)                       │      │
-                              │                              │      │
-                              ▼                              │      │
-[3] BACKFILL               fill missing fields via           │      │
-    queued, 3 retries        web_search                      │      │
-    6h cooldown               │                              │      │
-                              ▼                              │      │
-[4] MERGE                  collapse cross-source dupes       │      │
-    3 bucket strategies      │                              │      │
-                              ▼                              │      │
-                          events (canonical)                 │      │
-                              │                              │      │
-                              ├──────▶ relevancy → feed      │      │
-                              │                              │      │
-                              ▼                              │      │
-[5] DISCOVERY              mine venue URLs from events,      │      │
-    feedback loop          auto-promote → source_suggestions │      │
-                                                  │         │      │
-                                                  └─────────┘      │
-                                                                   │
-[6] HEALS                  cross-cutting: stale-expiry, category   │
-    cron + boot            recat, article-title kill, etc.         │
-                                                                   │
-                              ▲                                    │
-                              └────────────────────────────────────┘
-                                      runs continuously
-```
-
-Each stage is idempotent. Each writes to a table the next stage reads.
-Re-running the pipeline against the same input produces the same output
-(modulo Haiku non-determinism). The discovery feedback loop is what
-makes the source list grow over time without manual curation for every
-new venue.
-
-Three cross-cutting heals run on cron + boot to keep the table clean:
+The original design conflated "is this source worth scraping?" with
+"scrape this source right now." Splitting them lets each pipeline run
+on the cadence and reliability profile it actually needs.
 
 ```
-healStaleEventExpiry          deactivate when expires_at < NOW()
-healArticleTitleEvents        kill listicle-headline rows that slipped past 0e
-healCategoriesByPattern       venue-agnostic category corrections
-healEventCategoriesToOption2  legacy 21-bucket → 8-bucket remap
-healMissingVenuesFromSourceDefaults    fill venue from per-source defaults
-healMissingDatesForRecurringVenues     pin recurring date to upcoming Sat/Sun
-rotateSponsored               keep 1 of 8 sponsored seeds active per week
+┌────────────────────────────────────────────────────────────────────┐
+│ Pipeline 1: ONBOARDING                  cadence: low (per source)  │
+│ Discovery → Validation → Categorization → Custom extractor → Ship  │
+│ Output: a new row in `sources` with custom logic ready to run      │
+└────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼  (sources are now in service)
+┌────────────────────────────────────────────────────────────────────┐
+│ Pipeline 3: RUNTIME                  cadence: high (every 1-4h)   │
+│ Scrape → Extract → Backfill → Merge → events table                 │
+│ Hot path. No human in the loop. Expected idempotent + cheap.       │
+└────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼  (telemetry on yield + errors)
+┌────────────────────────────────────────────────────────────────────┐
+│ Pipeline 2: HEALTH & MAINTENANCE          cadence: medium (daily) │
+│ Probe → Drift detection → Yield monitoring → Auto-pause / patch    │
+│ Catches sites that redesigned, parsers that broke, sources that    │
+│ stopped publishing. Patches custom logic via Pipeline 1 reentry.   │
+└────────────────────────────────────────────────────────────────────┘
 ```
+
+**Pipeline 1** is mostly human-in-the-loop, runs irregularly, may take
+several iterations per source before it ships. Custom extractor code
+gets written and tested here.
+
+**Pipeline 2** is fully automated, runs daily, surfaces issues for
+human review when a source's behavior changes. Doesn't write events —
+writes diagnostics and either auto-pauses sources or kicks them back
+into Pipeline 1 for re-onboarding.
+
+**Pipeline 3** is the hot path. It's already what runs in production
+today. Pipelines 1 and 2 are the build-out.
+
+### The custom-extractor shift
+
+Most sources should have **bespoke extractors**, not the generic Haiku
+prompt. A custom function for "Wolf Trap" that reads their JSON-LD or
+specific repeating div structure is:
+
+- **More reliable** — no LLM hallucination risk, no apology-pattern
+  failures, no token-truncation edge cases.
+- **Cheaper** — no Anthropic call per extraction.
+- **Faster** — no 1-3 second LLM round-trip per source.
+- **More accurate** — exact field mapping vs. fuzzy interpretation.
+
+Today only Smithsonian Associates has a true custom function
+(`parseSmithsonian` in `siteParsers.js`). Most sources fall back to
+generic primitives + Haiku. Target state: ~80% of sources have either
+generic primitives that work cleanly OR a hand-written / LLM-authored
+custom parser. Haiku stays as a fallback for new sources, listicles,
+and editorial roundups whose structure varies week to week.
 
 ---
 
 ## 2. Source Taxonomy
 
-The `sources` table is the input config for stage 1.
+The `sources` table is the shared schema across all three pipelines.
 
-### 2.1 Columns that drive routing
+### 2.1 Core columns
 
-| Column | Values | Effect |
+| Column | Values | Used by |
 |---|---|---|
-| `type` | `scrape` / `pattern` / `api` | Picks scrape strategy. `api` → custom code (sports.js). `pattern` → dynamic URL resolver. `scrape` → static URL. |
-| `source_type` | `aggregator` / `venue` / `editorial` | Used by source-discovery + scoring; doesn't affect scrape itself. |
-| `source_tier` | `A` / `B` / `C` / `D` | Score boost magnitude. Tier-A = +0.15 base_score, D = -0.05. |
-| `category_hint` | one of 8 buckets | Default category when extractor returns null. |
-| `active` | bool | Master kill switch; dormant sources keep their config but don't scrape. |
-| `last_extracted_hash` | text | Idempotency cache: skip extraction if the raw_text hash already produced rows this weekend. |
-| `consecutive_empty_runs` | int | Bookkeeping for past auto-pause logic (currently inert). |
-| `field_contract` | JSONB | Per-source promise about what fields are/aren't provided. Skips backfill calls for `never_provides` fields. |
+| `type` | `scrape` / `pattern` / `api` | Pipeline 3 routing |
+| `source_type` | `aggregator` / `venue` / `editorial` | Discovery + scoring |
+| `source_tier` | `A` / `B` / `C` / `D` | Scoring weight |
+| `category_hint` | one of 8 buckets | Default category fallback |
+| `extractor` | `auto` / `custom:<fn_name>` / `haiku` | **NEW** — Pipeline 3 chooses extraction path |
+| `extractor_config` | JSONB | **NEW** — selector hints, field mappings, regex |
+| `parser_health` | `healthy` / `drifted` / `broken` | **NEW** — Pipeline 2 writes |
+| `parser_health_at` | timestamptz | **NEW** — last health check |
+| `active` | bool | Master kill |
+| `field_contract` | JSONB | Skip backfill for fields source never provides |
 
-### 2.2 Three source archetypes
+`extractor` and `extractor_config` are the new columns the custom-
+extractor shift requires. `parser_health` is what Pipeline 2 uses to
+surface drift.
 
-These map to scrape strategy, NOT to schema:
+### 2.2 Source archetypes
 
-1. **Single-venue sources** (e.g. `9:30 Club Shows`, `Kennedy Center Calendar`).
-   One physical venue, one URL. Backfill assumes the venue is the source's
-   default if extractor returns null.
-2. **Small-area aggregators** (e.g. `Mosaic District Events`, `Falls Church
-   City Calendar`). Multiple venues but a walkable district. Default
-   `neighborhood`; venue is per-event.
+Maps to extraction strategy, not schema:
+
+1. **Single-venue sources** (e.g. `9:30 Club Shows`, `Kennedy Center`).
+   One physical venue, one URL. Custom parser usually reads venue's
+   structured data or a known repeating div. Backfill assumes venue =
+   source default if extractor returns null.
+2. **Small-area aggregators** (e.g. `Mosaic District Events`, `Falls
+   Church City Calendar`). Multiple venues but a walkable district.
+   Custom parser handles per-event venue extraction; defaults fill
+   neighborhood.
 3. **Large/dispersed aggregators** (e.g. `Washingtonian Weekly`,
-   `washington.org`, `DCist Weekend Events`). Editorial roundups that
-   cite many venues across the metro. No defaults — everything from prose.
+   `washington.org`, `DCist Weekend Events`). Editorial roundups.
+   Listicles. Custom parser is impractical — structure varies week to
+   week. Haiku with rule 0e (listicle expansion) handles these.
+4. **Ticket platforms** (e.g. `Eventbrite NoVA`, `Ticketmaster DC`).
+   Structured JSON-LD or API. Custom parser reads JSON-LD directly;
+   fastest and cheapest.
+5. **API feeds** (e.g. `MLB Schedule`, `DC United Schedule`). Bypass
+   scrape entirely; fetch structured JSON, write to events.
 
-The extractor's **TIER 1/2/3 venue rule** in the Haiku prompt enforces this
-classification. It's not strict — the LLM is just told to use the source's
-context as a default when prose is silent.
+Today's mix: ~80 single-venue, ~10 small-area, ~30 large-aggregator,
+~15 ticket-platform, ~5 API. The bottom 100 are the long tail of
+single-venue sources where custom parsers would have the highest
+return.
 
 ---
 
-## 3. Stage 0 — Sourcing (where sources come from)
+## 3. Pipeline 1 — Onboarding
 
-The `sources` table is the input config for everything downstream. It's
-not a static seed file — it grows over time through three pathways. The
-discovery feedback loop (§8) is the one that scales without human effort.
+> **Cadence:** human-driven, per-source. Maybe 5-20 sources per cycle.
+> **Status:** discovery + sourcing built; validation + custom-extractor
+> authoring partially built; categorization is a manual step today.
+> **Goal:** new source goes from "I noticed this venue exists" to "it's
+> reliably producing events in Pipeline 3" in under a day.
 
-### 3.1 Three pathways into the sources table
+### 3.1 Stage 1A — Discovery
 
-**A. Manual seed via admin UI.**
-`POST /api/admin/sources/add` with `{name, url, source_type, category_hint, zip_code}`.
-Used when the operator (Adam) finds a new venue or aggregator and wants
-it scraped. Backed by `routes/api.js:1310`. Sets `active=true`,
-`type='scrape'` (or `'pattern'` if `needs_pattern: true`), default
-tier 'C'.
+Three pathways for a host to enter the candidate set:
 
-The operator workflow: notice a venue from a friend's recommendation or
-a news article → add via the admin UI → next pipeline run scrapes it →
-either it produces events or it joins the empty-track / never-produced
-list and gets diagnosed.
+**A1. Manual admin add.** Operator (Adam) finds a venue → `POST
+/api/admin/sources/add` with `{name, url, source_type, category_hint}`.
 
-**B. Hand-curated seed functions (idempotent, run on boot).**
-Each adds a fixed list to `sources` if rows don't already exist. Lives
-in `services/db.js`. Three current seeds:
+**A2. Hand-curated boot seeds (idempotent).** Three current seeds in
+`services/db.js`:`testConnection()`:
 
-- `seedSourceTiers()` — assigns Tier A/B/C/D to existing rows by name
-  regex. Tier-A: WaPo, Washingtonian, Axios, NYT. Tier-B: DCist, Eater,
-  Thrillist, Time Out, City Paper. Tier-D: 'listings feed' / 'rss
-  aggregator'. Default to C.
-- `seedSourceContracts()` — assigns `field_contract` JSONB to known
-  roundup-style sources. WaPo / Washingtonian / DCist / Eater / Time
-  Out / City Paper / FXVA never provide ticket_url or itemized
-  cost_display, so backfill skips searching for those fields → saves
-  ~$0.02/run/source in Anthropic credits.
+- `seedSourceTiers()` — assigns A/B/C/D by name regex.
+- `seedSourceContracts()` — assigns `field_contract` JSONB for known
+  roundup-style sources.
 - `seedEmbassyAndCulturalSources()` — adds 8 embassy + cultural
-  institutes (Embassy Series, Goethe-Institut, Mexican Cultural
-  Institute, Maison Française, Italian Cultural Institute, House of
-  Sweden, IDB Cultural Center, Library of Congress Concerts). These
-  fill a gap that no DC aggregator covers well.
+  institutes that no aggregator covers.
 
-Boot heals also live alongside seeds in `db.js`:`testConnection()` —
-they run on every Render restart so newly-added seeds always materialize
-and stale rows get reactivated.
+**A3. Auto-promotion from feedback.** `sourceDiscovery.js` Pass 4 runs
+inside Pipeline 3 (yes — it's a feedback loop). Mines venue URLs from
+events extracted from Tier-A/B aggregator sources. Promotes a host
+when:
 
-**C. Auto-promotion from discovery feedback (§8).**
-The closed loop. Aggregator events that link out to non-aggregator
-hosts get mined for new sources. Single-aggregator hits with a non-
-singular-event host name → auto-add to `sources`. Multi-aggregator hits
-→ auto-add. Singular-event-flagged hits (festival, fest, marathon,
-gala) → write to `source_suggestions` for admin review.
+- ≥ 2 distinct aggregators mentioned it, OR
+- 1 aggregator mentioned it AND the host name doesn't trip the
+  singular-event filter (festival/fest/expo/marathon/gala/parade with
+  count = 1 distinct title)
 
-Today this pathway provides ~12-18 new sources per month with zero
-manual effort. The bulk of long-tail venue coverage comes from here.
+Promoted sources go directly into `sources` with `source_type='venue'`,
+`source_tier='C'`, `active=false` until validated. Non-promoted
+candidates write to `source_suggestions` for admin review.
 
-### 3.2 Sponsored seed events (separate but related)
+In practice today this provides ~12-18 new sources/month with zero
+manual effort.
 
-`rotateSponsored()` is a heal, not a source pathway, but worth noting
-here. 8 sponsored event placeholders live in `events` directly (poker
-night at Adam's, ice cream with Kailee, etc.) — not in `sources`. The
-heal picks one per week (week-of-year mod 8) and `active=true`s it
-while deactivating the others. They re-stamp themselves to the upcoming
-weekend's Fri/Sat/Sun based on which day-of-week they're scheduled for.
+### 3.2 Stage 1B — Validation
 
-These bypass scrape and extract entirely — they're written directly to
-`events` by a one-time SQL seed in the admin UI. Mentioned here because
-they appear in the feed alongside scraped events and can confuse the
-"why did this row appear?" diagnosis.
+> **Status:** stub today. Sources are added with `active=true` and
+> immediately flow into Pipeline 3, where they may quietly fail for
+> weeks. The validation stage should gate that.
 
-### 3.3 What the table promises
+Goal: confirm the URL actually works and produces something extractable
+BEFORE shipping it to Pipeline 3.
 
-After Stage 0, every row in `sources` has:
+Probe checklist:
 
-- `name` — human-readable label
-- `url` — the canonical URL (or hub URL, for `type='pattern'`)
-- `type` — scrape strategy: `scrape` / `pattern` / `api`
-- `source_type` — taxonomy: `aggregator` / `venue` / `editorial`
-- `category_hint` — fallback bucket when extractor returns null
-- `source_tier` — A/B/C/D, scoring weight
-- `active` — master kill switch
-- `zip_code` — geo scope (always `dc-metro` today; multi-region future)
+1. **HTTP probe** — does the URL respond? What status? What content-type?
+2. **Render probe** — is the page server-rendered or JS-rendered? If
+   the response is mostly `<div id="root">` + script tags, it needs
+   either web-search routing or a headless browser.
+3. **Structured data probe** — does it have JSON-LD events? Open Graph
+   meta? Microdata? Each is a strong signal that a generic primitive
+   can extract reliably.
+4. **Yield probe** — run a one-off Haiku extraction against the page.
+   Did it produce ≥ 1 valid event with title + date?
 
-Plus optional bookkeeping: `last_extracted_hash`, `last_extracted_weekend`,
-`last_ok`, `last_error`, `consecutive_empty_runs`, `field_contract`.
+Output: a `source_validation_report` row with the probe results,
+recommended `extractor` strategy (`auto-jsonld`, `auto-microdata`,
+`needs-custom`, `haiku-only`), and recommended `type` (`scrape` /
+`pattern`).
 
-### 3.4 Coverage as a leading indicator
+API surface: `POST /api/admin/sources/validate` with `{sourceId}`.
+Returns the report. Operator reviews and either accepts the
+recommendation or flags for custom-extractor authoring.
 
-Three states a source can be in (queryable via `GET /admin/sources/coverage`):
+### 3.3 Stage 1C — Categorization
 
-- **Producing** — has at least one active event extracted from it ever.
-- **Empty-track** — `consecutive_empty_runs > 0` but never auto-paused
-  (auto-pause was deliberately not built; operator decides).
-- **Never produced** — has run scrape attempts but never extracted an
-  event. Either: (a) site is JS-rendered/blocked, (b) URL is stale,
-  (c) genuinely has nothing this week.
+> **Status:** manual today; admin enters `source_type`, `source_tier`,
+> `category_hint` at add time.
 
-Healthy ratio target: **producing > 50% of active sources.** Below that,
-something structural is wrong (deploy stuck, BLOCKED_SITES needs
-expansion, web search apology rate spiking).
+Future: derive from the validation probe. If the page is a single
+venue with one address visible across all events → `source_type='venue'`.
+If events span ≥ 5 different venues → `source_type='aggregator'`. If
+the article URL pattern matches editorial publication patterns →
+`source_type='editorial'`.
+
+`source_tier` follows source_type plus regex-matched authority signal
+(WaPo / Washingtonian → A, DCist / Eater / Time Out → B, default C).
+
+`category_hint` from URL path (`/things-to-do/` → mixed; `/concerts/`
+→ music; `/galleries/` → arts).
+
+### 3.4 Stage 1D — Custom Extractor Authoring
+
+> **Status:** one custom function exists (`parseSmithsonian`). The path
+> to scale: LLM-aided authoring + a declarative DSL for the easy 60%.
+
+Three authoring tiers, in order of automation:
+
+**D1. Generic primitives (no code).**
+For sources with clean JSON-LD, microdata, or Tribe Events Calendar
+markup, just configure `siteParsers.js` with `primitives:
+['jsonLd', 'microdata', 'tribe']`. The first one to find ≥ 1 event
+wins. Plus optional `defaults: { venue, neighborhood }` to fill blanks.
+Already the path for ~50 sources.
+
+**D2. Declarative config (extractor_config JSONB).**
+For sources with structured but non-schema HTML (e.g. repeating
+`<article class="event-card">` blocks). Operator writes:
+
+```json
+{
+  "container": "article.event-card",
+  "fields": {
+    "title": ".event-title",
+    "venue": ".event-venue",
+    "start_date": { "selector": ".event-date", "transform": "parseDate" },
+    "url": { "selector": "a", "attr": "href" },
+    "description": ".event-blurb"
+  }
+}
+```
+
+Generic engine reads the config and applies the selectors. ~80% of
+single-venue sources should fit this pattern. Not built yet.
+
+**D3. Hand-written / LLM-authored function.**
+For sources with weird structure or anti-scraping. `siteParsers.js`
+exports a function. LLM-authored workflow: feed Claude the page HTML +
+a few example desired-output rows, ask it to write a parser, run
+against the test cases, iterate.
+
+Validation step is mandatory: each custom parser ships with a fixture
+HTML file and 1-3 expected event objects. Pipeline 2 re-runs these
+fixtures daily to catch parser drift.
+
+### 3.5 Stage 1E — Activation
+
+Once the custom extractor passes its fixtures, flip `active=true`. The
+next Pipeline 3 cycle picks it up. Source enters production.
 
 ---
 
-## 4. Stage 1 — Scrape
+## 4. Pipeline 2 — Health & Maintenance
 
-### 3.1 Strategies, ordered by cost
+> **Cadence:** daily cron.
+> **Status:** mostly unbuilt. `consecutive_empty_runs` exists but
+> nothing currently flips `active=false` on it. `last_error` is
+> populated but not surfaced for diagnosis.
+> **Goal:** detect drift before it becomes a feed-empty incident.
+
+### 4.1 Stage 2A — HTTP probe
+
+For each `active=true` source, do a lightweight HEAD/GET. Record:
+
+- Status code
+- Response time (p50/p99)
+- Content-type
+- Approximate response size (chars after htmlToText)
+
+Compare to baseline (rolling 7-day median). Flag deviations:
+
+- Status went from 200 → 403/404/429 → `parser_health = 'broken'`
+- Response size dropped > 50% → `parser_health = 'drifted'`
+- Content-type changed from `text/html` to `application/json` (site
+  rebuild) → `parser_health = 'drifted'`
+
+### 4.2 Stage 2B — Structure-drift detection
+
+For sources with custom extractors, run the parser against today's
+HTML and compare against the fixture's expected output:
+
+- Parser threw → `parser_health = 'broken'`
+- Parser returned 0 events when fixture expected ≥ 1 → `'drifted'`
+- Parser returned events but key fields are now null → `'drifted'`
+
+For sources using generic primitives, check that the primitive that
+last succeeded is still present:
+
+- JSON-LD block present and parses?
+- Microdata `itemscope` count within ±50% of baseline?
+
+### 4.3 Stage 2C — Yield monitoring
+
+Rolling 7-day count of events extracted per source. Compare to the
+prior 7-day window. Flag:
+
+- Yield dropped from N to 0 → `parser_health = 'broken'`
+- Yield dropped > 50% → `parser_health = 'drifted'`
+- Yield is flat-zero for ≥ 14 days AND source was previously producing
+  → eligible for auto-pause review
+
+### 4.4 Stage 2D — Triage
+
+A nightly summary email/dashboard:
+
+```
+Pipeline 2 health report — 2026-05-10
+─────────────────────────────────────
+broken (3):
+  - Round House Theatre        last_ok 2026-04-20, 403 since 2026-04-22
+  - Bowl America Falls Church  last_ok 2026-03-15, parser drift
+  - Pearl Street Warehouse     last_ok 2026-04-30, redirect loop
+
+drifted (5): ...
+healthy (158): no action needed
+```
+
+Operator reviews `broken` list daily, decides for each:
+- Re-onboard via Pipeline 1 (URL changed, parser needs update)
+- Auto-pause (`active=false`) if site is gone
+- Defer if temporary (Cloudflare flap, holiday closure)
+
+### 4.5 Stage 2E — Logic update path
+
+When a custom parser is broken, drop it back into Pipeline 1 stage 1D
+(custom-extractor authoring) for revision. The fixture is updated with
+the new HTML; the parser is rewritten; the new version ships and
+Pipeline 2 verifies on the next cycle.
+
+---
+
+## 5. Pipeline 3 — Runtime
+
+> **Cadence:** every 1-4 hours (configurable per cron schedule).
+> **Status:** fully built. This is what's running today.
+> **Constraint:** must be cheap and idempotent. Re-running against
+> same input → same output (modulo Haiku non-determinism).
+
+```
+sources (active=true) → SCRAPE → scraped_content
+                                     │
+                                     ▼
+                                 EXTRACT
+                              ┌─────┴─────┐
+                              ▼           ▼
+                          custom        Haiku fallback
+                          extractor     (when extractor='haiku' OR
+                              │          custom failed)
+                              └─────┬─────┘
+                                    ▼
+                                events (raw)
+                                    │
+                                    ▼
+                                BACKFILL ─── 3 retries × 6h cooldown
+                                    │
+                                    ▼
+                                 MERGE ── 3 bucketing strategies
+                                    │
+                                    ▼
+                              events (canonical)
+                                    │
+                          ┌─────────┼─────────┐
+                          ▼         ▼         ▼
+                        feed     telemetry   discovery
+                                              (→ Pipeline 1)
+```
+
+### 5.1 Stage 3A — Scrape
+
+Three strategies, ordered by cost:
 
 ```
 isBlocked(source) ── yes ──▶ webSearchScrape (Haiku web_search tool)
+       │                         │
+       no                        ▼
+       ▼                    return null on apology
+   directScrape          ── fail ──▶ webSearchScrape
        │
-       no
-       ▼
-   directScrape          ── fail (any reason) ──▶ webSearchScrape
-       │                        (last_error logged on first failure)
        success
        ▼
-   ┌── parsedEvents (per-site HTML parser)
-   └── text (htmlToText)
+   ┌── parsedEvents (from custom extractor; primary path soon)
+   └── text (cleaned for Haiku fallback)
 ```
 
-`isBlocked` is a manual allowlist of sources known to be JS-rendered SPAs
-or Cloudflare-protected. As of this writing, 65 entries — every theatre,
-most music venues, library calendars, brewery event pages, cinema chains.
-For these, direct HTTP returns either a JS shell (`<div id="root">`) or a
-403, so we skip the futile attempt and route straight to web search.
+`isBlocked` is a manual allowlist of 65+ sources known to be JS-rendered
+SPAs or Cloudflare-protected. Direct HTTP returns either a JS shell or
+a 403, so we skip the futile attempt and route straight to web search.
 
-### 3.2 directScrape
+`directScrape`:
+1. `axios.get` with 12s timeout, 3 retries (0/1.2s/3.5s backoff).
+2. HTML → JSON-LD events + structured hints (OG meta, microdata,
+   `<address>`, `<time>`).
+3. Per-site parser if `extractor` column says `custom:<fn_name>`.
+4. `htmlToText` for the Haiku fallback path. Capped at 40K chars
+   (15K with JSON-LD; structured data is canonical).
 
-For `type='scrape'`: tries `source.url` directly.
+Output: `{ text, parsedEvents }` where `parsedEvents` is non-null when
+a custom parser yielded ≥ 1 event.
 
-For `type='pattern'`: calls a per-source resolver function in
-`PATTERN_RESOLVERS` that fetches a hub page, finds matching article-link
-patterns, and returns the latest 1-3 article URLs to scrape. Used for
-weekly publications (Washingtonian Weekly, WaPo Going Out Guide, DCist
-Weekend Events, etc.) whose canonical URL changes every issue.
+`webSearchScrape`: Anthropic Haiku with the `web_search_20250305` tool.
+Per-source query template in `getWebSearchQuery(source, dateRange)`.
+Strong queries use `site:venue.com OR site:ticketmaster.com` hints +
+ticket/show keywords.
 
-For each resolved URL:
+Stage 3A writes one `scraped_content` row per source per pass with 25h
+TTL.
 
-1. `axios.get` with 12s timeout, 3 retries, exponential backoff (0/1.2s/3.5s).
-2. Returned HTML goes through:
-   - `extractJsonLdEvents` — pulls schema.org/Event from `<script>` tags.
-   - `extractStructuredHints` — pulls Open Graph meta, microdata, `<address>`,
-     `<time datetime>`.
-   - Per-site parser if one exists (`siteParsers.js`). First strategy that
-     yields ≥1 events wins; remaining strategies skipped.
-   - `htmlToText` — strips scripts/styles/nav/footer, preserves `<a href>` as
-     `[URL:…]` markers, collapses whitespace. Capped at 40K chars (15K when
-     JSON-LD is present — the structured data is canonical, prose is fluff).
-3. Output: `{ text: "JSON-LD preamble + Structured Hints + prose", parsedEvents }`.
+### 5.2 Stage 3B — Extract
 
-If the for-each loop produces zero usable text (every retry failed across
-every URL), throws `"All resolved URLs failed"`. Caller catches and falls
-through to web search.
+**Primary path: custom extractor.** When `parsedEvents` is populated
+from the per-site parser, those rows go directly into events with
+zero LLM involvement.
 
-### 3.3 webSearchScrape
+**Fallback path: Haiku.** When parser yielded nothing, send `text` to
+Haiku with the cached static rules. Used today for 90%+ of sources;
+target after the custom-extractor build-out is < 30%.
 
-Uses Anthropic Haiku with the `web_search_20250305` tool. Per-source query
-template lives in `getWebSearchQuery(source, dateRange)`. Strong queries use
-`site:venue.com OR site:ticketmaster.com` hints + ticket/show keywords. Weak
-queries (just the venue name) tend to trip apology patterns.
+Haiku call:
+- `STATIC_EXTRACTION_RULES` (~1.5K tokens, prompt-cached, ~95% hit rate)
+- Dynamic context: source name, weekend dates, raw text
+- `max_tokens: 8000` (raised from 3000 on 2026-05-10 to fit 27-item
+  listicles; 3000 was truncating mid-array)
+- Returns JSON array of events
 
-`max_tokens: 4000` for web_search responses. Returns null on:
+Output processing per event:
+1. Title normalization (`normalizeTitleForHash`) — strip promotional
+   prefixes ("Spotlight:", "Throwback:") and trailing qualifiers.
+2. `contentHash` = MD5(`normalized_title + '::' + (recurring ?
+   'recurring' : start_date)`). Venue intentionally excluded.
+3. `calculateBaseScore` from completeness + tier + confidence + venue
+   keyword.
+4. `expires_at` = end_date 23:59:59 OR start_date 23:59:59 OR NOW + 30d.
+5. UPSERT with `ON CONFLICT (content_hash) DO UPDATE` that prefers
+   non-null fields, picks longer descriptions, makes `is_recurring`
+   monotonic, takes `GREATEST(base_score)`.
 
-- text length < 100 chars
-- `isApologyResponse(text)` returns true (preamble like "I can't use site:",
-  hedge phrasing like "could not find any events", or wrong-region drift like
-  "Arlington, Texas")
+### 5.3 Stage 3C — Backfill
 
-### 3.4 Per-site parsers
+Decoupled queue model (see SCRAPING_PIPELINE prior version §6 for
+full mechanics — unchanged):
 
-`siteParsers.js` defines per-source HTML extraction primitives. Each source's
-config picks an ordered list — first non-empty result wins.
+- Per-event `backfill_attempts` + `backfill_last_at` columns
+- 3 attempts × 6h cooldown
+- Honors source's `field_contract.never_provides` to skip search calls
+- Last-resort drop only when all 3 attempts exhausted AND missing all
+  of (venue, date, url)
 
-Primitives:
+Triggered as Pass 2 inside `runExtractionPass` AND independently via
+`POST /api/cron/backfill`.
 
-- `jsonLd` — pull schema.org/Event JSON-LD blocks.
-- `microdata` — `<div itemscope itemtype="schema.org/Event">` blocks.
-- `tribe` — WordPress Tribe Events Calendar tooltip data.
-- `articleList` — generic `<article>`, `<li class="event">`, `<div class="event-item">` containers.
-- `custom` — named function (e.g. `parseSmithsonian`).
+### 5.4 Stage 3D — Merge
 
-Plus 50+ source-specific `defaults: { venue, neighborhood }` blocks that
-fill the venue field when the parser doesn't find one. Categorically NOT
-allowed: `defaults: { categories: [...] }` — that bypasses Haiku and was
-the source of the Smithsonian-arts bug. Removed 2026-04-30.
+Three bucketing strategies in `mergeDuplicateEvents`:
 
-When a parser yields events, those skip the Haiku extraction call entirely
-and feed straight into the upsert.
-
-### 3.5 Output
-
-Stage 1 writes one row per source per scrape pass to `scraped_content`:
-
-```sql
-INSERT INTO scraped_content (source_id, raw_text, parsed_events, scraped_at, success, expires_at)
-VALUES ($1, $2, $3, NOW(), true, NOW() + INTERVAL '25 hours');
-```
-
-The 25h TTL gives stage 2 a window to re-process if extraction crashed. On
-success, sources get `last_ok = NOW(), last_error = NULL`. On fail,
-`last_error = <message>`.
-
----
-
-## 5. Stage 2 — Extract
-
-### 4.1 Prompt structure
-
-Two-block prompt for cache efficiency:
-
-- **`STATIC_EXTRACTION_RULES`** (~1.5K tokens) — cached via Anthropic prompt
-  cache. Rules block, category definitions, the cardinal "no crossed wires"
-  rule, listicle expansion, retail-store skip, etc. Cache hit rate ~95% in
-  practice; only invalidates when the rules text itself changes.
-- **Dynamic context** — source name, weekend dates, raw text. Not cached.
-
-`max_tokens: 8000` (raised from 3000 on 2026-04-30). A 27-item listicle at
-~200 tokens per row needs 5400+; 3000 truncated mid-array, which manifested
-as the LLM emitting just the article headline and nothing else. 8000 covers
-a 30-item listicle with margin.
-
-### 4.2 Rule highlights (categorization-relevant)
-
-The full prompt is in `extractor.js` lines 140-220. Key rules:
-
-- **0a — Cardinal rule (no crossed wires).** Every field for an event must
-  come from the same paragraph/block. Never mix title from event A with
-  date from event B. This is what stops the "Best of the Apollo at
-  Nationals Park" failure mode.
-- **0b — No hallucination.** If a fact isn't directly visible in the prose
-  near the title, set it to null. The backfill pass resolves later.
-- **0c — Required fields.** Title + start_date are mandatory for emission.
-  Venue is preferred but optional.
-- **0d — Apology/prose-dump suspicion.** When the source text starts with
-  apology preambles, be extra suspicious — that's web-search drift.
-- **0e — Listicle expansion (THE most important rule).** Aggregator articles
-  embed 10-25 events inside one article body. Each item is a row. The
-  article HEADLINE goes nowhere. Spelled out with concrete worked examples
-  (Washingtonian's "27 Things to Do") and recognition patterns (numbered,
-  day-grouped, bold-heading, bullet, prose).
-- **3 — Three-tier venue rule.** Single-venue → fill from source default.
-  Small-area aggregator → fill venue + neighborhood from area name.
-  Large/dispersed → only fill when prose explicitly names a venue.
-- **5b — Retail store skip.** No Sephora/Anthropologie marketing events.
-- **9 — Categories.** 8 buckets with explicit precedence: when venue and
-  activity disagree, activity wins. Trivia at a brewery → nightlife.
-
-### 4.3 Output processing
-
-For each event in the LLM's JSON array:
-
-1. `normalizeTitleForHash` — strip promotional prefixes ("Spotlight:",
-   "Throwback:") and trailing qualifiers ("(matinee)", "(rescheduled)").
-2. `contentHash` — MD5 of `normalized_title + '::' + (recurring ?
-   'recurring' : start_date)`. **Venue intentionally excluded** — same
-   event from 4 sources reports 4 venue strings ("Kennedy Center", "Trump
-   Kennedy Center", "Trump Kennedy Center Grand Foyer", null) and we want
-   them to collapse.
-3. `calculateBaseScore` — starting at 0.5, adds confidence + completeness
-   + ticket URL + description quality + cost + venue-keyword boost.
-4. `expires_at` — end_date 23:59:59 if present, else start_date 23:59:59,
-   else NOW + 30d.
-5. UPSERT with `ON CONFLICT (content_hash) DO UPDATE SET …` that:
-   - Prefers non-null fields from whichever source had them
-   - Picks the longer description
-   - Promotes `confidence='confirmed'` if any source confirms
-   - Takes `GREATEST(base_score)`
-   - Makes `is_recurring` monotonic (`OR` semantics) — once any source
-     flags an event recurring, it stays recurring
-
-### 4.4 Output
-
-Inserts/updates rows in `events`. Tracks per-source telemetry: events
-extracted, events skipped (duplicate hash), events cache-skipped (raw_text
-hash matches `last_extracted_hash`).
-
----
-
-## 6. Stage 3 — Backfill
-
-Decoupled from extraction so transient failures don't drop events.
-
-### 5.1 Queue model
-
-Two columns on `events`:
-
-- `backfill_attempts INT DEFAULT 0` — bumped each time backfill runs against
-  this row, regardless of success.
-- `backfill_last_at TIMESTAMPTZ` — wall-clock timestamp of last attempt.
-
-### 5.2 Selection
-
-```sql
-SELECT … FROM events e LEFT JOIN sources s ON s.id = e.source_id
-WHERE active=true
-  AND (url IS NULL OR venue IS NULL OR start_date IS NULL OR neighborhood IS NULL OR description IS NULL)
-  AND COALESCE(backfill_attempts, 0) < 3
-  AND (backfill_last_at IS NULL OR backfill_last_at < NOW() - INTERVAL '6 hours')
-ORDER BY base_score DESC NULLS LAST
-LIMIT BACKFILL_MAX;
-```
-
-3 attempts × 6h cooldown = up to 18h of retries before giving up.
-
-### 5.3 Per-event backfill
-
-`backfillOneEvent(evt)` calls Haiku with `web_search` tool. Asks for any
-of the missing fields. Honors the source's `field_contract.never_provides`
-to skip fields the source structurally doesn't carry (e.g. WaPo roundup
-columns never have ticket URLs — searching for one wastes credits and
-risks scraping the wrong link).
-
-Returns a partial object with only fields the search verified. Updates
-proceed via dynamic UPDATE that ONLY sets fields still null (concurrency
-guard).
-
-### 5.4 Drop policy
-
-Last-resort drop — events that exhausted all 3 retries AND still lack ALL
-THREE of (venue, date, url) get `active=false`. Anything with at least 2
-of 3, or with retries remaining, stays.
-
-### 5.5 Trigger
-
-Runs as Pass 2 inside `runExtractionPass` AND independently via
-`POST /api/cron/backfill` (recommended every 6h via cron-job.org).
-
----
-
-## 7. Stage 4 — Cross-source Merge
-
-### 6.1 Why content_hash isn't enough
-
-`content_hash` collapses events with identical normalized titles. But
-cross-source variants survive:
-
-- "Spirit vs Current" (WaPo) + "Throwback Night: Spirit vs Current"
-  (Ticketmaster) + "Washington Spirit Game" (washington.org)
-- AFI Silver multiplex with two different films at the same time
-- Pinstripes Bowling + Pinstripes Bowling & Bocce + Pinstripes DC Bowling
-
-### 6.2 Three bucketing strategies
-
-1. **Ticket URL bucket** (`tk::canonical_url::date`) — strongest. Same
-   ticketing page = same event by definition.
+1. **Ticket URL bucket** (`tk::canonical_url::date`) — same ticket
+   page = same event by definition.
 2. **Venue+date+time bucket** (`vts::venue::date::time`) — strong, but
-   needs title-similarity guard. Without it, two different movies at the
-   same multiplex same start time would falsely merge.
-3. **Venue-only bucket** (`v::venue`) — weakest. Catches recurring weekly
-   events ("Bowling at Pinstripes" / "Pinstripes Bowling Night") that
-   lack start_time and have drifting is_recurring flags. Gated by:
-   - Title similarity check (transitive)
-   - 21-day window OR is_recurring=true on at least one row in cluster
+   needs title-similarity guard (multiplex problem).
+3. **Venue-only bucket** (`v::venue`) — weakest. For recurring weekly
+   events that lack start_time. Gated by title similarity AND (21-day
+   window OR is_recurring).
 
-### 6.3 Merge mechanics
+Winner is richest row by field-completeness score. COALESCE losers'
+fields into winner. DELETE losers.
 
-For each cluster of 2+ rows:
+### 5.5 Stage 3E — Telemetry + feedback
 
-1. Sort by richness (count of non-null/non-empty informative fields +
-   base_score + confidence weight).
-2. Winner is the richest row.
-3. For each loser, COALESCE non-null fields into winner. Description: pick
-   the longer one. is_recurring: OR semantics.
-4. UPDATE winner with merged fields. DELETE losers.
-
-### 6.4 Trigger
-
-Pass 3 of `runExtractionPass`, immediately after backfill. Also runs in
-isolation when cron heals fire (no separate trigger; the merge logic is
-also re-applied via `mergeDuplicateEvents` if called directly).
+After merge:
+- Write per-pipeline-run heartbeat + finish-marker rows to
+  `pipeline_telemetry_v2`.
+- Update sources' `last_extracted_weekend`, `last_extracted_hash`,
+  `last_ok`, `last_error`, `consecutive_empty_runs`.
+- Run `sourceDiscovery.js` Pass 4 → feeds back into Pipeline 1 stage
+  1A (auto-promotion or `source_suggestions`).
 
 ---
 
-## 8. Stage 5 — Discovery (feedback loop into §3 sourcing)
+## 6. Custom Extractors — Patterns and Authoring
 
-`sourceDiscovery.js` Pass 4. The closed-loop feedback that grows the
-source list without manual curation. Mines venue URLs out of events
-extracted from aggregator sources, decides which hosts deserve to be
-their own scrape target, and either auto-adds them to `sources`
-(closing the loop into Stage 0) or queues them in `source_suggestions`
-for admin review.
+> The biggest unbuilt piece. Today only Smithsonian Associates has a
+> hand-written parser. Target: ~80% of sources have either a generic
+> primitive that works cleanly OR a custom extractor.
 
-This is what scales the source list. Manual seeding (§3.1A) and
-hand-curated seeds (§3.1B) hit a ceiling — there are too many DC
-venues for a human to type in. Discovery handles the long tail.
+### 6.1 When to use which tier
 
-### 8.1 Mechanism
-
-1. Pull all events from Tier-A/B aggregator sources extracted in the
-   last N days.
-2. For each event with a non-null `url`, parse the host.
-3. Skip-filter:
-   - Hosts in `SKIP_HOSTS` (~30 ticket platforms, social, CDN, search
-     engines, generic blog hosts).
-   - Hosts already present in `sources`.
-4. Group surviving URLs by host. Count distinct aggregators that
-   mentioned each.
-5. Singular-event detection: hosts whose name OR title contains
-   `festival`, `fest`, `expo`, `marathon`, `gala`, `parade` AND whose
-   count of distinct titles is 1 → flag as a one-off event, not a
-   recurring-venue source.
-6. Auto-promote rule:
-   - ≥ 2 distinct aggregators mentioned the host → auto-add to
-     `sources` with `source_type='venue'`, `source_tier='C'`,
-     `active=true`. Goes into Stage 1 of the next pipeline run.
-   - 1 aggregator mentioned the host AND it's not flagged singular →
-     auto-add.
-   - Otherwise → write to `source_suggestions` with
-     `status='pending_review'` for admin to approve / reject.
-
-### 8.2 Reconciliation
-
-Final pass syncs drift between `source_suggestions.status` and
-`sources` membership — if a suggestion was auto-promoted but the
-suggestion row still says `pending`, flip it to `auto_approved`. This
-keeps the admin UI's "pending suggestions" queue clean.
-
-### 8.3 Why this is a loop, not a sink
-
-A new source promoted in run N becomes input to run N+1. Run N+1
-extracts events from that source, those events have URLs pointing at
-yet more hosts, those hosts get fed back into stage 5 of run N+2.
-
-In practice the loop converges quickly: the "DC venue universe" is a
-finite set, and after ~3-4 cycles the discovery pass surfaces mostly
-hosts that fail filters (already-known, skip-listed, or singular
-events). New genuine venues appear as the long-tail aggregators
-(washington.org, FXVA, Visit-* tourism boards) update their content.
-
-### 8.4 Admin endpoints for the loop
-
-```
-GET  /api/admin/source-suggestions               list pending
-POST /api/admin/source-suggestions/:id/approve    promote to sources
-POST /api/admin/source-suggestions/:id/reject     mark rejected
-POST /api/admin/source-suggestions/backfill       re-mine historical events
-```
-
----
-
-## 9. Region/Distance Filter
-
-`distance.js` computes one-way drive minutes from DC metro for each event.
-
-### 8.1 Heuristic
-
-Text scan of `venue + address + neighborhood` against:
-
-- `WRONG_REGION_TOKENS` (Bush Library TX, Arlington WA, presidential
-  libraries, etc.) → returns 999 → forces hide.
-- `STADIUM_DRIVE_MINUTES` (Wrigley Field 600m, Yankee Stadium 240m, etc.).
-  Beats city tokens — handles "Nationals @ White Sox at Guaranteed Rate
-  Field" where address is null.
-- `CITY_DRIVE_MINUTES` — 6 buckets (20/30/50/90/150/240) covering DC
-  metro core, inner suburbs, day-trip range, distant.
-- `SOURCE_NAME_HINTS` — fallback when address is sparse but source name
-  is regional ("Visit Charlottesville" → 150min).
-
-### 8.2 Filter policy
-
-```js
-if (minutes == null) keep;                 // unknown — assume local
-if (minutes <= 120)  keep;                 // anything within 2h
-if (score >= 0.85)   keep with reason;     // headliner override
-else                 hide;                 // far + low score
-```
-
-The "headliner override" exists so e.g. a great Charlottesville winery
-festival with score 0.9 still surfaces despite being 150min out.
-
-### 8.3 V2 region gate
-
-`v2/region.js` runs an earlier, harder gate at extraction time. Drops
-events whose venue/address/title contains wrong-region tokens before
-they get persisted. Belt-and-suspenders.
-
----
-
-## 10. Heals
-
-7 idempotent passes that run on boot AND every cron tick (`/api/cron/heal`,
-recommended every 2h).
-
-| Heal | What |
+| Source pattern | Extraction tier |
 |---|---|
-| `healStaleEventExpiry` | `active=false` where `expires_at < NOW()` |
-| `healNullCategoryEvents` | Set `category` from `categories[0]` when null |
-| `healMissingVenuesFromSourceDefaults` | Fill venue from per-source defaults (7 mappings) |
-| `healMissingDatesForRecurringVenues` | Pin `start_date` to upcoming Sat/Sun for is_recurring rows |
-| `healEventCategoriesToOption2` | Legacy 21-bucket → 8-bucket remap (`comedy → nightlife`, `theater → arts`, etc.) |
-| `healCategoriesByPattern` | Venue-AGNOSTIC pattern recategorization (concerts → music, tours → trips, trivia → nightlife, races → outdoors, static-art → arts, indoor-leisure → nightlife) |
-| `healArticleTitleEvents` | Deactivate listicle-style titles that slipped past rule 0e |
-| `rotateSponsored` | Keep 1 of 8 sponsored seeds active per week |
+| Has clean schema.org/Event JSON-LD | D1 generic (`jsonLd`) |
+| Has microdata `itemscope` blocks | D1 generic (`microdata`) |
+| WordPress + Tribe Events Calendar | D1 generic (`tribe`) |
+| Repeating `<article class="event-card">` style | D2 declarative |
+| Custom HTML, consistent structure | D3 hand-written / LLM-authored |
+| Editorial roundup (varies week to week) | Haiku fallback |
+| Listicle ("X Things to Do") | Haiku + rule 0e expansion |
 
-Order matters: stale-expiry runs first (reactivates upcoming events),
-sponsored rotation runs last.
+### 6.2 Hand-written example: Smithsonian
+
+`parseSmithsonian(html, sourceUrl)` in `siteParsers.js` reads
+Smithsonian Associates' specific repeating block structure:
+
+- Each event lives in a `<div class="program-listing">` block
+- Title in `<h3>`, date in `<span class="program-date">`
+- Cost in `<span class="program-price">`
+- Venue is always "Smithsonian" (filled by source defaults)
+
+~100 lines of JavaScript. Brittle to redesigns. Pipeline 2 fixture
+catches drift the day it happens.
+
+### 6.3 Declarative DSL example (target state)
+
+Hypothetical config for a similar source, no code:
+
+```json
+{
+  "extractor": "auto:declarative",
+  "extractor_config": {
+    "container": "div.program-listing",
+    "fields": {
+      "title": "h3",
+      "start_date": {
+        "selector": "span.program-date",
+        "transform": "parseDate",
+        "format": "MMMM D, YYYY"
+      },
+      "cost_display": "span.program-price",
+      "url": { "selector": "a.program-link", "attr": "href", "absolute": true }
+    },
+    "defaults": { "venue": "Smithsonian", "neighborhood": "National Mall" }
+  }
+}
+```
+
+Generic engine reads the config, applies the selectors via cheerio,
+runs the named transforms, fills in defaults. Operator updates the
+selectors when the site changes — no JavaScript needed.
+
+### 6.4 LLM-authored workflow
+
+For sources where neither generic primitives nor a simple selector
+config fits:
+
+1. Save a fixture HTML file (`fixtures/<source>.html`).
+2. Write expected output as JSON (`fixtures/<source>.expected.json`,
+   1-3 example events).
+3. Ask Claude: "given this HTML, write a JavaScript function
+   `parse<Name>(html, sourceUrl)` that returns the expected events."
+4. Run the result against the fixture; iterate until it matches.
+5. Commit the function + fixture + expected JSON.
+6. Pipeline 2 daily fixture-replay catches drift.
+
+This is the path for the 100+ long-tail single-venue sources that
+don't have schema.org markup. Probably 20-30 minutes of human time
+per source the first time, near-zero ongoing if the site is stable.
+
+### 6.5 Fixture-driven testing
+
+Every custom extractor (D2 + D3) ships with:
+
+- `fixtures/<source>.html` — actual scraped HTML, frozen
+- `fixtures/<source>.expected.json` — expected events array
+- Test that runs the extractor against the fixture and asserts equality
+  on title + start_date + venue (other fields tolerant)
+
+Pipeline 2 replays these fixtures daily against today's HTML — if the
+fixture passes against last-week's HTML but fails against today's, the
+site changed. That's the signal to re-onboard.
 
 ---
 
-## 11. Drop Points (where events vanish)
+## 7. Region/Distance Filter
 
-Catalog of every place a row gets deactivated or never lands. Useful for
-"why is the feed thin?" diagnosis.
+(Unchanged from prior version. `distance.js` heuristic with
+WRONG_REGION_TOKENS, STADIUM_DRIVE_MINUTES, CITY_DRIVE_MINUTES,
+SOURCE_NAME_HINTS. Filter policy: ≤ 120min keep, > 120min hide unless
+`base_score ≥ 0.85` headliner override.)
+
+---
+
+## 8. Heals (cross-cutting)
+
+Run on boot and via `/api/cron/heal` (recommended every 2h). Order:
+
+1. `healStaleEventExpiry` — deactivate where `expires_at < NOW()`
+2. `healNullCategoryEvents` — set `category` from `categories[0]`
+3. `healMissingVenuesFromSourceDefaults` — fill venue from per-source
+   defaults (7 mappings)
+4. `healMissingDatesForRecurringVenues` — pin recurring start_date to
+   upcoming Sat/Sun
+5. `healEventCategoriesToOption2` — legacy 21-bucket → 8-bucket remap
+6. `healCategoriesByPattern` — venue-AGNOSTIC pattern recategorization
+   (concerts → music, tours → trips, trivia → nightlife, races →
+   outdoors, static-art → arts, indoor-leisure → nightlife)
+7. `healArticleTitleEvents` — kill listicle headlines that slipped
+   past rule 0e
+8. `rotateSponsored` — keep 1 of 8 sponsored seeds active per week
+
+Heals belong to Pipeline 3 in the sense that they run alongside
+extraction, but they're cross-cutting — they touch rows from any
+source.
+
+---
+
+## 9. Drop Points (where events vanish)
+
+Diagnostic catalog. Useful for "why is the feed thin?" investigations.
 
 ### Pre-extraction
 - HTTP timeout (12s × 3 retries with backoff)
-- Web search apology detection (`isApologyResponse` returns true)
+- Web search apology detection
 - 40K char text cap (15K with JSON-LD)
 - JSON-LD events truncated to first 60
 
 ### Extraction
-- Haiku output truncation (was 3000 max_tokens, now 8000 — 3000 caused
-  silent drop of all rows past the truncation point)
-- Cardinal Rule 0a (no crossed wires) — conservative LLM may skip ambiguous
-  events
-- Rule 0e (article-title rejection) — correctly skips listicle headlines,
-  may also skip legit "10th Annual X Festival" titles
+- Haiku output truncation (was 3000 max_tokens, now 8000)
+- Cardinal Rule 0a (no crossed wires)
+- Rule 0e (article-title rejection)
 - Rule 5b (retail store events skip)
-- Malformed JSON from Haiku → 0 events from that source for the run
+- Malformed JSON from Haiku
+- Custom parser threw an exception → falls back to Haiku (no drop)
 
 ### Post-extraction
 - `expires_at < NOW()` on insert (recurring events with past start_date
-  land inactive — fixed via is_recurring persistence + monotonic UPSERT)
-- `content_hash` UPSERT collapses title+date duplicates (intentional)
+  land inactive)
+- `content_hash` UPSERT collapses title+date duplicates
 - `mergeDuplicateEvents` Pass 3 DELETEs loser rows
 - Backfill drop: missing all of (venue, date, url) after 3 retries × 6h
 
 ### Filter / display
-- Region/distance: `WRONG_REGION_TOKENS` → 999 → hidden. `>120 min + score
-  <0.85` → hidden.
-- Frontend `isFrontendBlocked`: title=venue suppression + article-headline
-  patterns
+- Region/distance: `WRONG_REGION_TOKENS` → 999 → hidden. > 120 min +
+  score < 0.85 → hidden.
+- Frontend `isFrontendBlocked`: title=venue suppression + article-
+  headline patterns
 
 ---
 
-## 12. Configuration / Tuning Knobs
+## 10. Configuration / Tuning Knobs
 
 | Knob | File | Default | Effect |
 |---|---|---|---|
@@ -663,105 +652,150 @@ Catalog of every place a row gets deactivated or never lands. Useful for
 | `BACKFILL_MAX` | extractor.js | 120 | Max events per backfill pass |
 | `BACKFILL_MAX_ATTEMPTS` | extractor.js | 3 | Retry budget per event |
 | `BACKFILL_COOLDOWN_HOURS` | extractor.js | 6 | Min wait between attempts |
-| `BATCH_SIZE` (scraper) | scraper.js | 8 | Sources scraped in parallel |
-| `BATCH_SIZE` (extractor) | extractor.js | 10 | Sources extracted in parallel |
-| `max_tokens` extraction | extractor.js | 8000 | Haiku response budget |
-| `max_tokens` web_search | scraper.js | 4000 | Haiku web_search response |
-| `max_tokens` backfill | extractor.js | 600 | Haiku per-event backfill |
-| Distance cap | distance.js | 120min | Soft cap; >120min hidden unless score≥0.85 |
+| BATCH_SIZE (scraper) | scraper.js | 8 | Sources scraped in parallel |
+| BATCH_SIZE (extractor) | extractor.js | 10 | Sources extracted in parallel |
+| max_tokens extraction | extractor.js | 8000 | Haiku response budget |
+| max_tokens web_search | scraper.js | 4000 | Haiku web_search response |
+| max_tokens backfill | extractor.js | 600 | Haiku per-event backfill |
+| Distance cap | distance.js | 120min | > cap hidden unless score ≥ 0.85 |
 | Astronomical threshold | distance.js | 0.85 | Score that bypasses distance cap |
 | `BLOCKED_SITES` | scraper.js | 65 entries | Sources that skip direct HTTP |
 
 ---
 
-## 13. Telemetry
+## 11. Telemetry
 
-Every pipeline run writes rows to `pipeline_telemetry_v2`:
+`pipeline_telemetry_v2` — heartbeat + finish-marker rows per run with
+per-source success/fail/method, per-stage counts, durations. Surfaced
+via `GET /api/admin/v2/telemetry` and `GET /api/admin/dashboard`.
 
-- Heartbeat row at start.
-- Per-source success/fail/method (direct, search, parser+search, etc.).
-- Per-stage counts: scraped, extracted, backfilled, merged, discovered.
-- Finish-marker row with totals + duration.
+**Pipeline 2 health report** (when built) should produce:
+- Per-source `parser_health` ENUM
+- Per-source 7-day yield delta
+- Top 10 broken / drifted sources for triage
+- Median time to recover (broken → healthy)
 
-Surfaced via `GET /api/admin/v2/telemetry` and `GET /api/admin/dashboard`.
-Used to diagnose "did the pipeline actually run?" and "which sources are
-failing?"
-
-Coverage report at `GET /api/admin/sources/coverage` shows
-producing / empty-track / never-produced breakdown — the headline metric
-for "is the source list healthy?" Audit threshold: producing should be
->50% of active. Below that, something structural is broken (deploy stuck,
-BLOCKED_SITES needs expansion, web search apology rate spiking, etc.).
+Coverage report at `GET /api/admin/sources/coverage`. Healthy ratio
+target: producing > 50% of active.
 
 ---
 
-## 14. Costs
+## 12. Costs
 
-Per pipeline run (typical ~166 sources):
+Per Pipeline 3 run (typical ~166 sources):
 
 - Scrape stage: ~30 web_search calls × $0.01 = $0.30
-- Extract stage: ~100 Haiku calls × $0.005 = $0.50 (heavy cache-hit
-  reduces effective input cost)
+- Extract stage: ~100 Haiku calls × $0.005 = $0.50 (heavy cache-hit)
 - Backfill stage: ~30 web_search calls × $0.01 = $0.30
 - **Per run: ~$1.10**
 - **Per day at 4 runs/day: ~$4.40**
 - **Per month: ~$130**
 
-Anthropic prompt cache TTL is 5 minutes — keeping pipeline cadence under
-that window dramatically reduces extraction cost (the 1.5K-token rules
-block hits cache on every call after the first).
+After custom-extractor build-out (target: 30% Haiku use vs 90%
+today), extract stage drops to ~$0.15/run, total ~$50/month.
+
+Pipeline 2 daily fixture replay: ~$0.01/run × 60 sources × 1/day ≈
+$18/month.
+
+Pipeline 1 LLM-authored extractor sessions: bursty, ~$2-5 per new
+source onboarded.
 
 ---
 
-## 15. Failure Modes Quick Reference
+## 13. Failure Modes Quick Reference
 
-| Symptom | Likely cause | Diagnose with |
-|---|---|---|
-| Feed empty for current weekend | Listicles got correctly killed but per-item rows didn't materialize → check max_tokens, prompt rule 0e | `SELECT COUNT(*) WHERE start_date BETWEEN <fri> AND <sun>` |
-| 88% sources never_produced | JS-rendered SPAs failing direct HTTP | `GET /admin/sources/coverage` |
-| Same event appearing 12× | content_hash drift across sources | `SELECT venue, COUNT(*) FROM events GROUP BY venue HAVING COUNT(*) > 5` |
-| Wrong region drift | venue/address contains non-DC tokens | check `WRONG_REGION_TOKENS` list |
-| All sources "All resolved URLs failed" | Render not redeployed OR scraper crashed before write | `MAX(scraped_at)` on `scraped_content` |
-| Haiku returns just article headline | max_tokens too low for listicle | Expected: 8000+ |
-| Nothing in `is_this_weekend=true` | Date computation drifted | Check `getWeekendDateRange` vs `getWindowDates` |
-| Recurring event pinned to NEXT weekend | Date-pinning function jumps forward on Sat/Sun | Sat → -1, Sun → -2 in date helpers |
+| Symptom | Likely cause | Pipeline | Diagnose with |
+|---|---|---|---|
+| Feed empty for current weekend | Listicles correctly killed but per-item rows didn't materialize | 3 | Check `max_tokens`, prompt rule 0e |
+| 88% sources never_produced | JS-rendered SPAs failing direct HTTP | 1 (validation) | `GET /admin/sources/coverage` |
+| Same event 12× | content_hash drift across sources | 3 | `SELECT venue, COUNT(*) GROUP BY HAVING > 5` |
+| Wrong region drift | Venue/address contains non-DC tokens | 3 | Check `WRONG_REGION_TOKENS` |
+| All sources "All resolved URLs failed" | Render not redeployed OR scraper crashed | 3 | `MAX(scraped_at)` |
+| Source went from 20 events/wk to 0 | Site redesigned, parser broke | 2 | Pipeline 2 fixture replay |
+| Custom parser throws exception | HTML structure changed | 2 → 1D | Re-onboard with new fixture |
+| Recurring event pinned to NEXT weekend | Date helper jumps forward on Sat/Sun | 3 | Check Sat → -1, Sun → -2 |
 
 ---
 
-## 16. Glossary
+## 14. Glossary
 
+- **Custom extractor:** A per-source function or declarative config
+  that turns scraped HTML into events without LLM involvement.
+- **Generic primitive:** A reusable extraction strategy (jsonLd,
+  microdata, tribe, articleList) configured per source.
+- **Fixture:** Saved HTML + expected output, used for parser tests
+  and Pipeline 2 drift detection.
 - **Content hash:** MD5 of normalized_title + date. Primary dedup key.
-- **Pattern source:** A source whose canonical URL changes per issue;
-  uses a resolver function to find the latest.
-- **Pre-parsed event:** Event extracted by a per-site HTML parser before
-  Haiku gets involved; bypasses extraction.
-- **Listicle expansion:** The behavior of extracting per-item event rows
-  from inside an aggregator article body, instead of emitting the
-  article's headline as one row.
-- **Spanning event:** An event whose `start_date < target_window_start`
-  but `end_date >= target_window_start` — an ongoing run (theater,
-  exhibit, residency).
-- **Headliner override:** Distance filter bypass for events with
-  `base_score >= 0.85`. Lets faraway-but-amazing events still surface.
-- **Source contract:** JSONB `field_contract` per source declaring what
-  fields it provides / never provides. Used to skip backfill calls.
+- **Pattern source:** A source whose canonical URL changes per issue.
+- **Pre-parsed event:** Event extracted by custom or generic primitive
+  before Haiku gets involved.
+- **Listicle expansion:** Extract per-item rows from inside an
+  aggregator article body, not the article's headline.
+- **Spanning event:** start_date < target window but end_date >=
+  target window. Ongoing run.
+- **Headliner override:** Distance filter bypass for `base_score ≥
+  0.85`.
+- **Source contract:** Per-source `field_contract` JSONB declaring
+  what fields it provides / never provides.
+- **Parser drift:** Custom extractor's fixture passes last week's HTML
+  but fails today's HTML.
 
 ---
 
-## 17. Versions
+## 15. Versions
 
-This doc reflects the pipeline as of 2026-05-10. Changes worth flagging
-in future revisions:
-
-- 2026-05-10: max_tokens extraction 3000 → 8000; rule 0e flipped
-  to lead-with-listicle-expansion.
-- 2026-04-30: BLOCKED_SITES expanded 22 → 65; per-venue web-search
-  queries tuned; admin sweep + coverage endpoints added; Smithsonian
-  arts-default removed.
-- 2026-04-29: Persistent backfill queue (3 × 6h); cron-driven heals;
-  per-source field contracts; embassies + cultural sources seeded;
-  warmer endpoint + cron-job.org documentation; venue+activity merge
-  bucket; is_recurring persistence + monotonic UPSERT.
-- 2026-04-28: V2 shadow pipeline; source self-discovery (Pass 4);
+- **2026-05-10:** Architecture restructured into three pipelines
+  (Onboarding / Health / Runtime). Custom-extractor shift documented
+  as the primary path going forward. Listicle expansion shipped
+  (max_tokens 3000→8000, rule 0e flipped).
+- **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
+  queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
+  default removed; venue-agnostic categorization; pattern-based heal.
+- **2026-04-29:** Persistent backfill queue (3 × 6h); cron-driven
+  heals; per-source field contracts; embassies + cultural sources
+  seeded; warmer endpoint; venue+activity merge bucket; is_recurring
+  persistence + monotonic UPSERT.
+- **2026-04-28:** V2 shadow pipeline; source self-discovery (Pass 4);
   Option-2 8-bucket categorization; article-title rejection (rule 0e);
   major venue keyword scoring boost.
+
+---
+
+## Appendix A — What's built vs. aspirational
+
+| Pipeline | Stage | Status |
+|---|---|---|
+| 1 | 1A Discovery — admin add | ✅ built |
+| 1 | 1A Discovery — boot seeds | ✅ built |
+| 1 | 1A Discovery — auto-promotion | ✅ built |
+| 1 | 1B Validation | ❌ stub |
+| 1 | 1C Categorization | ⚠️ manual |
+| 1 | 1D Custom extractor — generic primitives | ✅ built |
+| 1 | 1D Custom extractor — declarative DSL | ❌ not built |
+| 1 | 1D Custom extractor — hand-written | ⚠️ 1 source (Smithsonian) |
+| 1 | 1D Custom extractor — LLM-authored workflow | ❌ not built |
+| 1 | 1E Activation | ⚠️ manual |
+| 2 | 2A HTTP probe | ❌ stub |
+| 2 | 2B Structure-drift | ❌ not built |
+| 2 | 2C Yield monitoring | ⚠️ data exists, no triage |
+| 2 | 2D Triage report | ❌ not built |
+| 2 | 2E Logic update path | ❌ not built |
+| 3 | 3A Scrape | ✅ built |
+| 3 | 3B Extract — Haiku | ✅ built |
+| 3 | 3B Extract — custom primary | ⚠️ 1 source |
+| 3 | 3C Backfill | ✅ built |
+| 3 | 3D Merge | ✅ built |
+| 3 | 3E Telemetry + feedback | ✅ built |
+
+The build-out priority order (highest ROI first):
+
+1. **Pipeline 2 stage 2C yield monitoring + 2D triage** — surface broken
+   sources daily so we don't discover them via empty feeds.
+2. **Pipeline 1 stage 1D2 declarative DSL** — unlocks fast onboarding
+   for the long-tail single-venue sources.
+3. **Pipeline 2 stage 2B fixture-based drift detection** — catches
+   parser breaks on the day they happen.
+4. **Pipeline 1 stage 1B validation** — gates new sources before they
+   land in production.
+5. **Pipeline 1 stage 1D3 LLM-authored workflow** — for sources too
+   weird for the DSL.
