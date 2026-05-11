@@ -16,6 +16,7 @@
 // shell (header, tab strip, auth gate, hash routing).
 
 import { useEffect, useState } from 'react';
+import OverviewTab     from './OverviewTab';
 import HealthTab       from './HealthTab';
 import CronTab         from './CronTab';
 import TablesTab       from './TablesTab';
@@ -23,10 +24,11 @@ import SqlTab          from './SqlTab';
 import SourcesTab      from './SourcesTab';
 import SuggestionsTab  from './SuggestionsTab';
 
-// Admin gate. Tolerates capitalization + whitespace in the signed-in email
-// (Google sometimes preserves the case the user typed when they signed up)
-// and accepts either Adam's gmail or the @locale.app domain placeholder
-// used in earlier testing. Update the set if co-admins ever join.
+// Admin gate. Permissive on purpose — any logged-in Google account whose
+// email contains 'adamcrubin' OR matches the @locale.app placeholder
+// gets in. Handles case variations, plus-addressing (adamcrubin+x@
+// gmail), and Google-token quirks where the email comes back with
+// unexpected casing/whitespace.
 export const ADMIN_EMAILS = new Set([
   'adamcrubin@gmail.com',
   'adam@locale.app',
@@ -34,16 +36,22 @@ export const ADMIN_EMAILS = new Set([
 
 function isAdmin(user) {
   const email = (user?.email || '').trim().toLowerCase();
-  return ADMIN_EMAILS.has(email);
+  if (!email) return false;
+  if (ADMIN_EMAILS.has(email)) return true;
+  // Substring fallback — catches plus-addressing (adamcrubin+work@gmail)
+  // and any Google-name-aliasing weirdness.
+  if (email.includes('adamcrubin')) return true;
+  return false;
 }
 
 const TABS = [
+  { id: 'overview',    label: 'Overview',    icon: '📊', component: OverviewTab },
   { id: 'health',      label: 'Health',      icon: '🏥', component: HealthTab },
+  { id: 'sources',     label: 'Sources',     icon: '🔌', component: SourcesTab },
+  { id: 'suggestions', label: 'Suggestions', icon: '💡', component: SuggestionsTab },
   { id: 'cron',        label: 'Cron',        icon: '⚙',  component: CronTab },
   { id: 'tables',      label: 'Tables',      icon: '🗃', component: TablesTab },
   { id: 'sql',         label: 'SQL',         icon: '🔍', component: SqlTab },
-  { id: 'sources',     label: 'Sources',     icon: '🔌', component: SourcesTab },
-  { id: 'suggestions', label: 'Suggestions', icon: '💡', component: SuggestionsTab },
 ];
 
 function readHashTab() {
@@ -51,7 +59,7 @@ function readHashTab() {
     const raw = window.location.hash || '';
     // Strip leading '#' then take the first segment (handles '#health?foo=bar')
     const id = raw.replace(/^#/, '').split(/[?/]/)[0];
-    return TABS.find(t => t.id === id)?.id || 'health';
+    return TABS.find(t => t.id === id)?.id || 'overview';
   } catch { return 'health'; }
 }
 
@@ -138,7 +146,7 @@ export default function AdminConsole({ user, authLoading, signInWithGoogle }) {
     );
   }
 
-  const Tab = TABS.find(t => t.id === activeTab)?.component || HealthTab;
+  const Tab = TABS.find(t => t.id === activeTab)?.component || OverviewTab;
 
   return (
     <div style={shellStyle}>
