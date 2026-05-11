@@ -219,11 +219,26 @@ becomes a status badge showing `validated · auto-jsonld` (or whatever
 the recommendation is). Click the badge to open a modal with the full
 probe breakdown and a recommended next step for the operator.
 
-**v1 is advisory, not gating.** New admin-added sources still land with
-`active=true` and immediately flow into Pipeline 3. A later iteration
-will flip new sources to `active=false` until validation passes — but
-the existing behavior is preserved for now so legacy add workflows
-don't break.
+**Enforcing as of 2026-05-11.** `POST /admin/sources/add` runs the
+validation probe inline before inserting the row. If the recommendation
+is `blocked` or `no-events`, the source lands with `active=false` and
+`validation_status='failed'`. Operator can manually flip `active=true`
+in the Sources tab to override.
+
+Other recommendations (`auto-jsonld` / `auto-microdata` / `auto-tribe` /
+`needs-declarative` / `haiku-only` / `auto-<primitive>`) land
+`active=true` with `validation_status='validated'`. `needs-headless`
+recommendation additionally auto-flips `use_headless=true` so the
+scraper routes through the headless service immediately.
+
+Bypass: include `skipValidation: true` in the POST body to skip the
+probe (useful when re-adding a known-good source from a recovery
+script).
+
+UI surfaces the verdict — AddSourceModal shows a "Validation result"
+step after save with the recommendation, reason, and a per-probe
+summary. Auto-gated rows get a yellow "landed inactive" banner with
+instructions for manual override.
 
 ### 3.3 Stage 1C — Categorization
 

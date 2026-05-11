@@ -18,11 +18,12 @@ const SOURCE_TYPES = [
 ];
 
 export default function AddSourceModal({ onClose, onAdded }) {
-  const [step, setStep] = useState('url');   // 'url' | 'confirm' | 'saving'
+  const [step, setStep] = useState('url');   // 'url' | 'confirm' | 'saving' | 'result'
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState(null);
+  const [addResult, setAddResult] = useState(null); // { source, validation, auto_gated }
 
   const classify = async () => {
     if (!url.trim()) return;
@@ -54,11 +55,20 @@ export default function AddSourceModal({ onClose, onAdded }) {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
-      onAdded(data.source);
+      // Show the auto-gate validation result instead of closing immediately.
+      // Operator gets a chance to read the recommendation + see whether the
+      // source landed active or auto-gated to inactive.
+      setAddResult(data);
+      setStep('result');
     } catch (e) {
       setError(e.message);
       setStep('confirm');
     }
+  };
+
+  const finish = () => {
+    if (addResult?.source) onAdded(addResult.source);
+    else onClose();
   };
 
   return (
@@ -78,7 +88,9 @@ export default function AddSourceModal({ onClose, onAdded }) {
             </div>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', marginTop: 3 }}>
               {step === 'url' ? 'Paste a URL — Haiku auto-classifies' :
-               step === 'confirm' ? 'Review and confirm details' :
+               step === 'confirm' ? 'Review · save triggers a validation probe' :
+               step === 'saving' ? 'Saving + validating…' :
+               step === 'result' ? 'Validation result' :
                'Saving…'}
             </div>
           </div>
@@ -145,10 +157,82 @@ export default function AddSourceModal({ onClose, onAdded }) {
         {step === 'saving' && (
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>⏳</div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)' }}>Saving source…</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)' }}>Saving + validating…</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 6 }}>
+              (~5-10s; runs HTTP + render + structured + yield probes)
+            </div>
+          </div>
+        )}
+
+        {step === 'result' && addResult && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ResultBanner result={addResult} />
+            {addResult.validation && (
+              <div style={{
+                background: 'rgba(255,255,255,.03)', border: '0.5px solid rgba(255,255,255,.08)',
+                borderRadius: 8, padding: 10, fontSize: 11,
+              }}>
+                <div style={{ color: 'rgba(255,255,255,.5)', marginBottom: 6 }}>
+                  Probe summary
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 10, rowGap: 3, color: 'rgba(255,255,255,.7)' }}>
+                  <span style={{ color: 'rgba(255,255,255,.45)' }}>HTTP</span>
+                  <span>{addResult.validation.http?.status ?? '—'} · {addResult.validation.http?.content_type || 'no content-type'}</span>
+                  <span style={{ color: 'rgba(255,255,255,.45)' }}>Render</span>
+                  <span>{addResult.validation.render?.kind ?? '—'}{addResult.validation.render?.framework ? ` (${addResult.validation.render.framework})` : ''}</span>
+                  <span style={{ color: 'rgba(255,255,255,.45)' }}>JSON-LD events</span>
+                  <span>{addResult.validation.structured?.jsonld_events ?? 0}</span>
+                  <span style={{ color: 'rgba(255,255,255,.45)' }}>Microdata</span>
+                  <span>{addResult.validation.structured?.microdata ?? 0}</span>
+                  <span style={{ color: 'rgba(255,255,255,.45)' }}>Yield</span>
+                  <span>
+                    {addResult.validation.yield?.primitive_events != null
+                      ? `${addResult.validation.yield.primitive_events} via ${addResult.validation.yield.used}`
+                      : addResult.validation.yield?.haiku_events != null
+                      ? `${addResult.validation.yield.haiku_events} via Haiku`
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+            )}
+            <button onClick={finish} style={{ ...primaryBtn, width: '100%' }}>
+              Done
+            </button>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ResultBanner({ result }) {
+  const rec = result.validation?.recommendation;
+  const gated = result.auto_gated;
+  const color = gated ? '#ef4444'
+              : rec === 'haiku-only' || rec === 'needs-declarative' ? '#F59E0B'
+              : '#22c55e';
+  const bg = gated ? 'rgba(239,68,68,.1)'
+           : rec === 'haiku-only' || rec === 'needs-declarative' ? 'rgba(245,158,11,.1)'
+           : 'rgba(34,197,94,.1)';
+  const headline = gated
+    ? '⚠ Auto-gated — landed as inactive'
+    : `✓ Added · ${rec || 'no validation'}`;
+  return (
+    <div style={{
+      background: bg, border: `0.5px solid ${color}55`, color,
+      borderRadius: 8, padding: 12,
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{headline}</div>
+      {result.validation?.reason && (
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)' }}>
+          {result.validation.reason}
+        </div>
+      )}
+      {gated && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', marginTop: 6, lineHeight: 1.5 }}>
+          The source row was saved but <code>active=false</code>. Click ⊘/✓ in the Sources tab to enable it manually if you want Pipeline 3 to scrape it anyway.
+        </div>
+      )}
     </div>
   );
 }
