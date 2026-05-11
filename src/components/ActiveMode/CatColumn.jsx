@@ -21,7 +21,7 @@ function sourceCatIcon(act) {
   return '✨';
 }
 
-export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn, categoryPhotos = {} }) {
+export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, weatherDim, weatherBoost, homeAddress, profileId, spotlightMode, isMobile, isTablet, timeFilters = [], priceFilters = [], hasConflict, crossCatSeen, curatedMode, viewMode = 'standard', isGuest = false, onGuestSignIn, categoryPhotos = {} }) {
   // Memoize the filter chain — runs on every render of any sibling
   // column (e.g. when a user toggles a chip in another column). Without
   // memo, dedupeActivities + 4 filters re-run for every column on every
@@ -81,11 +81,11 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
 
   return (
     <div style={{display:'flex',flexDirection:'column',borderRight:'0.5px solid var(--border)',minWidth:0,minHeight:0,overflow:'hidden',opacity:isDimmed?0.65:1,transition:'opacity .3s'}}>
-      <div className={`${cat.cls}`} style={{padding:'10px 20px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:3,flexShrink:0}}>
+      <div className={`${cat.cls}`} style={{padding: isTablet ? '14px 22px 12px' : '10px 20px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:3,flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:9,width:'100%'}}>
-          <span style={{fontSize:14}}>{cat.icon}</span>
-          <span style={{fontSize:12,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',textAlign:'center',flex:1}}>{cat.label}</span>
-          <span style={{fontSize:14}}>{cat.icon}</span>
+          <span style={{fontSize: isTablet ? 18 : 14}}>{cat.icon}</span>
+          <span style={{fontSize: isTablet ? 15 : 12,fontWeight:700,letterSpacing:'.07em',textTransform:'uppercase',textAlign:'center',flex:1}}>{cat.label}</span>
+          <span style={{fontSize: isTablet ? 18 : 14}}>{cat.icon}</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:5}}>
           {isBoosted&&<span style={{fontSize:9,background:'rgba(0,0,0,.12)',padding:'1px 5px',borderRadius:99}}>☀ great today</span>}
@@ -93,7 +93,7 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
           <span style={{fontSize:10,opacity:.45}}>{allActs.length}</span>
         </div>
       </div>
-      <div style={{flex:1,overflowY:'auto',padding:'10px 8px',display:'flex',flexDirection:'column',gap:8,background:columnBg,minHeight:0}}>
+      <div style={{flex:1,overflowY:'auto',padding: isTablet ? '14px 12px' : '10px 8px',display:'flex',flexDirection:'column',gap: isTablet ? 12 : 8,background:columnBg,minHeight:0}}>
         {showHero && <SpotlightHero activities={{[cat.id]:allActs}} onCal={onCal} />}
         {allActs.length===0
           ? <div style={{padding:'12px 4px',fontSize:11,color:'#B8B3AA',fontStyle:'italic'}}>Nothing here -- check back Thursday</div>
@@ -130,6 +130,7 @@ export function CatColumn({ cat, activities, removed, onCal, onRemove, onHeart, 
                 cardBg={isCurated && !isSpotlightCard ? curatedCardBg : undefined}
                 photo={cardPhoto}
                 isMobile={isMobile}
+                isTablet={isTablet}
                 onCal={onCal}
                 onRemove={()=>onRemove(cat.id,a)}
                 onHeart={()=>onHeart(cat.id,a)}

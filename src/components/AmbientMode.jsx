@@ -114,9 +114,28 @@ function PhotoCarousel({ photos }) {
   );
 }
 
+// ── Rotation timing ──────────────────────────────────────────────────────
+// The ambient view alternates between a big clock+weather "home" panel
+// and a full-page weekend calendar. Operator-set timing (2026-05-11):
+// 60 seconds on home, 20 seconds on calendar, looping. Tuned for an
+// iPad-on-a-counter use case — most of the time you want the clock; the
+// calendar peek nudges you to actually plan something.
+const AMBIENT_HOME_MS = 60_000;
+const AMBIENT_CAL_MS  = 20_000;
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AmbientMode({ city, weather = [], activities = {}, photos = [], calQueue = [], activeProfile, settings = {}, onActivate, onWeather }) {
   const { timeStr, dateStr } = useClock();
+
+  // View rotation state. 'home' = clock + weather. 'calendar' = full-page
+  // weekend events. Timer alternates them on the AMBIENT_HOME_MS /
+  // AMBIENT_CAL_MS cadence.
+  const [view, setView] = useState('home');
+  useEffect(() => {
+    const delay = view === 'home' ? AMBIENT_HOME_MS : AMBIENT_CAL_MS;
+    const iv = setTimeout(() => setView(v => v === 'home' ? 'calendar' : 'home'), delay);
+    return () => clearTimeout(iv);
+  }, [view]);
 
   // Live weather with fallback
   const liveWeather = weather.length > 0 ? weather : WEATHER;
@@ -162,371 +181,221 @@ export default function AmbientMode({ city, weather = [], activities = {}, photo
     return () => clearInterval(iv);
   }, []);
 
+  // ── Weekend events (rotation-target view) ──────────────────────────────
+  // Compute Fri/Sat/Sun anchors for THIS weekend (matching getWeekendDates
+  // semantics elsewhere in the app — step backward on Sat/Sun).
+  const weekend = (() => {
+    const now = new Date();
+    const dow = now.getDay();
+    let daysToFri;
+    if (dow === 5) daysToFri = 0;       // Fri
+    else if (dow === 6) daysToFri = -1; // Sat → Fri was yesterday
+    else if (dow === 0) daysToFri = -2; // Sun → Fri was 2 days ago
+    else                daysToFri = 5 - dow;
+    const fri = new Date(now); fri.setDate(now.getDate() + daysToFri); fri.setHours(0,0,0,0);
+    const sat = new Date(fri); sat.setDate(fri.getDate() + 1);
+    const sun = new Date(fri); sun.setDate(fri.getDate() + 2);
+    const toKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const byDate = { [toKey(fri)]: [], [toKey(sat)]: [], [toKey(sun)]: [] };
+    for (const e of (calQueue || [])) {
+      if (byDate[e.date] !== undefined) byDate[e.date].push(e);
+    }
+    return { fri, sat, sun, byDate, toKey };
+  })();
+
   return (
     <div
       onClick={onActivate}
       style={{ position:'absolute', inset:0, cursor:'pointer', overflow:'hidden', background:'#0a0a0a' }}
     >
-      {/* ── Full bleed photo background ── */}
       <PhotoCarousel photos={photos} />
 
-      {/* ── Gradient overlays for legibility ── */}
-      {/* Top bar */}
-      <div style={{ position:'absolute', inset:0, zIndex:1, background:`
-        linear-gradient(to bottom, rgba(0,0,0,.72) 0%, rgba(0,0,0,.15) 22%, transparent 40%),
-        linear-gradient(to top, rgba(0,0,0,.88) 0%, rgba(0,0,0,.4) 28%, transparent 55%)
-      `}} />
+      {/* Darker overlay than before — large type needs to dominate, photo
+          is just texture. */}
+      <div style={{
+        position:'absolute', inset:0, zIndex:1,
+        background:'linear-gradient(135deg, rgba(0,0,0,.78) 0%, rgba(0,0,0,.55) 50%, rgba(0,0,0,.78) 100%)',
+      }} />
 
-      {/* ── 7-day weather + calendar grid — top banner ── */}
-      {(() => {
-        const now = new Date();
-        const toKey = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        const dates = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(now); d.setDate(now.getDate() + i); return d;
-        });
-        const eventsByDate = {};
-        for (const e of (calQueue || [])) {
-          if (e.date) { if (!eventsByDate[e.date]) eventsByDate[e.date] = []; eventsByDate[e.date].push(e); }
-        }
-        // Helper: bucket an event into Morning/Afternoon/Evening based on its
-        // displayed time string. Anything before noon = morning; noon-5pm =
-        // afternoon; 5pm+ = evening; no time = treated as anytime (drops into
-        // afternoon by default since that's the most common all-day slot).
-        const partOfDay = (timeStr) => {
-          if (!timeStr) return 'aft';
-          const m = String(timeStr).toLowerCase().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-          if (!m) return 'aft';
-          let h = parseInt(m[1], 10);
-          const mer = m[3];
-          if (mer === 'pm' && h !== 12) h += 12;
-          if (mer === 'am' && h === 12) h = 0;
-          if (h < 12) return 'mor';
-          if (h < 17) return 'aft';
-          return 'eve';
-        };
-        const bucket = (evts) => {
-          const out = { mor: [], aft: [], eve: [] };
-          for (const e of evts) out[partOfDay(e.time)].push(e);
-          return out;
-        };
-        const PART_LABELS = { mor: 'Morning', aft: 'Afternoon', eve: 'Evening' };
-        return (
-          <div onClick={e => e.stopPropagation()} style={{
-            position:'absolute', top:0, left:0, right:0, zIndex:4,
-            padding:'10px 20px 8px',
-            background:'rgba(0,0,0,.52)',
-            backdropFilter:'blur(14px)',
-            WebkitBackdropFilter:'blur(14px)',
-            borderBottom:'0.5px solid rgba(255,255,255,.08)',
-            display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6,
+      {/* HOME view — massive clock left, massive weather right */}
+      {view === 'home' && (
+        <div key="home" style={{
+          position:'absolute', inset:0, zIndex:2,
+          display:'grid', gridTemplateColumns:'1fr 1fr',
+          animation:'ambientFadeIn 700ms ease both',
+        }}>
+          {/* Left half — clock */}
+          <div style={{
+            display:'flex', flexDirection:'column',
+            justifyContent:'center', alignItems:'center',
+            padding:'40px 32px',
+            borderRight:'0.5px solid rgba(255,255,255,.08)',
+            pointerEvents:'none',
           }}>
-            {dates.map((d, i) => {
-              const w    = liveWeather[i] || {};
-              const key  = toKey(d);
-              const evts = eventsByDate[key] || [];
-              const isToday = i === 0;
-              const dayLabel = isToday ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
-              const dateLabel = `${d.getMonth()+1}/${d.getDate()}`;
+            <div style={{
+              fontFamily:"'DM Sans', sans-serif",
+              fontSize:'min(28vw, 280px)',
+              fontWeight:200,
+              color:'#fff', lineHeight:0.95,
+              letterSpacing:'-.05em',
+              fontVariantNumeric:'tabular-nums',
+              textShadow:'0 4px 80px rgba(0,0,0,.7)',
+              whiteSpace:'nowrap',
+            }}>{timeStr}</div>
+            <div style={{
+              fontSize:'min(2.6vw, 26px)',
+              color:'rgba(255,255,255,.72)',
+              letterSpacing:'.18em', textTransform:'uppercase',
+              marginTop:24, textAlign:'center',
+              fontWeight:400,
+              textShadow:'0 2px 16px rgba(0,0,0,.8)',
+            }}>{dateStr}</div>
+          </div>
+
+          {/* Right half — weather */}
+          <div style={{
+            display:'flex', flexDirection:'column',
+            justifyContent:'center', alignItems:'center',
+            padding:'40px 32px', pointerEvents:'none', textAlign:'center',
+          }}>
+            <div style={{ fontSize:'min(22vw, 220px)', lineHeight:1, marginBottom:24, textShadow:'0 4px 60px rgba(0,0,0,.5)' }}>
+              <WeatherIcon icon={today.icon} desc={today.desc} size={'min(22vw, 220px)'} />
+            </div>
+            <div style={{
+              fontFamily:"'DM Sans', sans-serif",
+              fontSize:'min(22vw, 200px)',
+              fontWeight:200, color:'#fff', lineHeight:0.95,
+              letterSpacing:'-.04em',
+              fontVariantNumeric:'tabular-nums',
+              textShadow:'0 4px 80px rgba(0,0,0,.7)',
+            }}>
+              {today.hi != null ? `${today.hi}°` : '—'}
+            </div>
+            <div style={{
+              fontSize:'min(2.4vw, 24px)',
+              color:'rgba(255,255,255,.7)',
+              letterSpacing:'.14em', textTransform:'uppercase',
+              marginTop:14, fontWeight:400,
+              textShadow:'0 2px 16px rgba(0,0,0,.8)',
+            }}>
+              {today.desc || 'Clear'}
+            </div>
+            {today.lo != null && (
+              <div style={{
+                fontSize:'min(2.0vw, 20px)',
+                color:'rgba(255,255,255,.45)',
+                marginTop:10, fontWeight:300, letterSpacing:'.06em',
+              }}>
+                H {today.hi}° · L {today.lo}°
+              </div>
+            )}
+            {today.precip != null && today.precip > 0 && (
+              <div style={{
+                fontSize:'min(1.8vw, 18px)',
+                color:'rgba(96,165,250,.85)',
+                marginTop:8, fontWeight:500, letterSpacing:'.06em',
+              }}>
+                {today.precip}% rain
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* CALENDAR view — full-page weekend grid */}
+      {view === 'calendar' && (
+        <div key="calendar" style={{
+          position:'absolute', inset:0, zIndex:2,
+          padding:'48px 36px 36px',
+          animation:'ambientFadeIn 700ms ease both',
+          display:'flex', flexDirection:'column',
+          pointerEvents:'none',
+        }}>
+          <div style={{
+            fontSize:'min(2.4vw, 26px)',
+            color:'rgba(255,255,255,.7)',
+            letterSpacing:'.18em', textTransform:'uppercase',
+            marginBottom:24, fontWeight:600,
+            textShadow:'0 2px 16px rgba(0,0,0,.8)',
+          }}>
+            This Weekend · {weekend.fri.toLocaleDateString('en-US', { month:'long', day:'numeric' })}–{weekend.sun.toLocaleDateString('en-US', { day:'numeric' })}
+          </div>
+          <div style={{
+            flex:1,
+            display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:24,
+            minHeight:0,
+          }}>
+            {[
+              { d: weekend.fri, label:'Friday' },
+              { d: weekend.sat, label:'Saturday' },
+              { d: weekend.sun, label:'Sunday' },
+            ].map(({ d, label }) => {
+              const evts = (weekend.byDate[weekend.toKey(d)] || []).slice(0, 6);
               return (
-                <div key={i} style={{ display:'flex', flexDirection:'column', gap:3, minWidth:0 }}>
-                  {/* Row 1: day + date */}
-                  <div style={{ fontSize:13, fontWeight:700, color: isToday ? '#C9A84C' : 'rgba(255,255,255,.55)', textTransform:'uppercase', letterSpacing:'.05em', whiteSpace:'nowrap' }}>
-                    {dayLabel} <span style={{ fontWeight:400, opacity:.7 }}>{dateLabel}</span>
-                  </div>
-                  {/* Row 2: weather pill */}
-                  <div onClick={() => onWeather(i)} style={{
-                    display:'inline-flex', alignItems:'center', gap:4,
-                    background:'rgba(255,255,255,.09)', border:'0.5px solid rgba(255,255,255,.12)',
-                    borderRadius:99, padding:'4px 10px', cursor:'pointer',
-                    transition:'background .12s', width:'fit-content',
-                  }}
-                    onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,.18)'}
-                    onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,.09)'}
-                  >
-                    <WeatherIcon icon={w.icon} desc={w.desc} size={14} />
-                    <span style={{ fontSize:13, color:'rgba(255,255,255,.85)', fontWeight:500, whiteSpace:'nowrap' }}>{w.hi}°/{w.lo}°</span>
-                    {w.precip > 20 && <span style={{ fontSize:11, color:'#93C5FD' }}>{w.precip}%</span>}
-                  </div>
-                  {/* Row 3: calendar events bucketed by Morning/Afternoon/
-                      Evening so the strip reads like an actual calendar
-                      timeline rather than a flat event list. We always show
-                      all three day-part labels in dim type — empty parts
-                      get a thin "—" placeholder so columns visually align
-                      across days. */}
-                  {(() => {
-                    const buckets = bucket(evts);
-                    return (['mor','aft','eve']).map(part => {
-                      const list = buckets[part];
-                      const hasAny = list.length > 0;
-                      return (
-                        <div key={part} style={{ marginTop: 2 }}>
+                <div key={label} style={{
+                  display:'flex', flexDirection:'column', minHeight:0,
+                  background:'rgba(0,0,0,.32)',
+                  border:'0.5px solid rgba(255,255,255,.08)',
+                  borderRadius:14, padding:'18px 18px 12px',
+                  backdropFilter:'blur(6px)',
+                }}>
+                  <div style={{
+                    fontSize:'min(3vw, 32px)', fontWeight:600, color:'#C9A84C',
+                    letterSpacing:'-.01em', marginBottom:4,
+                  }}>{label}</div>
+                  <div style={{
+                    fontSize:'min(1.4vw, 14px)', color:'rgba(255,255,255,.4)',
+                    letterSpacing:'.06em', marginBottom:14,
+                  }}>{d.toLocaleDateString('en-US', { month:'short', day:'numeric' })}</div>
+                  <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10, overflow:'hidden' }}>
+                    {evts.length === 0 ? (
+                      <div style={{ fontSize:'min(1.5vw, 16px)', color:'rgba(255,255,255,.3)', fontStyle:'italic' }}>
+                        Nothing on your calendar yet.
+                      </div>
+                    ) : evts.map((e, i) => (
+                      <div key={i} style={{
+                        display:'flex', gap:10, alignItems:'baseline',
+                        padding:'6px 0',
+                        borderBottom: i < evts.length - 1 ? '0.5px solid rgba(255,255,255,.05)' : 'none',
+                      }}>
+                        <div style={{
+                          fontSize:'min(1.5vw, 15px)', fontWeight:600,
+                          color:'#C9A84C', minWidth:50, fontVariantNumeric:'tabular-nums',
+                        }}>{e.time || '—'}</div>
+                        <div style={{ flex:1, minWidth:0 }}>
                           <div style={{
-                            fontSize: 9, color: hasAny ? 'rgba(201,168,76,.7)' : 'rgba(255,255,255,.18)',
-                            fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase',
-                            marginBottom: 1,
-                          }}>{PART_LABELS[part]}</div>
-                          {hasAny
-                            ? list.slice(0, 2).map((e, j) => (
-                                <div key={j} style={{ fontSize:11, color:'rgba(255,255,255,.7)', lineHeight:1.3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'baseline', gap:4 }}>
-                                  <span style={{ color:'rgba(255,255,255,.4)', flexShrink:0 }}>•</span>
-                                  <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
-                                    {e.time ? <span style={{ color:'rgba(255,255,255,.4)', marginRight:3, fontSize:10 }}>{e.time}</span> : null}
-                                    {e.title || e.name}
-                                  </span>
-                                </div>
-                              ))
-                            : <div style={{ fontSize:10, color:'rgba(255,255,255,.18)', lineHeight:1.3, paddingLeft:8 }}>—</div>
-                          }
+                            fontSize:'min(1.8vw, 18px)', color:'rgba(255,255,255,.9)',
+                            fontWeight:500, lineHeight:1.25, overflow:'hidden',
+                            textOverflow:'ellipsis', whiteSpace:'nowrap',
+                          }}>{e.title}</div>
+                          {(e.where || e.venue) && (
+                            <div style={{
+                              fontSize:'min(1.3vw, 13px)', color:'rgba(255,255,255,.4)',
+                              marginTop:1, overflow:'hidden',
+                              textOverflow:'ellipsis', whiteSpace:'nowrap',
+                            }}>{e.where || e.venue}</div>
+                          )}
                         </div>
-                      );
-                    });
-                  })()}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
           </div>
-        );
-      })()}
+        </div>
+      )}
 
-      {/* ── Location — top right ── */}
-      <div style={{ position:'absolute', top:108, right:28, zIndex:3, textAlign:'right' }}>
-        <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', letterSpacing:'.12em', textTransform:'uppercase', fontWeight:500 }}>{city}</div>
-      </div>
-
-      {/* Today's weather card moved into the chart panel (right side) so the
-          current temp + chart read as one cohesive weather block. The
-          previous top-left placement felt orphaned. See the chart code below. */}
-
-      {/* ── Big hourly weather chart — right side, vertically centered.
-          Fixed axes (0-100°F, 0-100%) so visual height of the lines reads
-          cleanly across days. Vertical "now" marker at current hour. ── */}
-      {today.hours && today.hours.length >= 2 && (() => {
-        const parseHour = (lbl) => {
-          if (lbl == null) return null;
-          const s = String(lbl).toLowerCase().trim();
-          const m = s.match(/^(\d{1,2})\s*(am|pm)$/);
-          if (!m) return null;
-          let h = parseInt(m[1], 10);
-          if (m[2] === 'am') return h === 12 ? 0 : h;
-          return h === 12 ? 12 : h + 12;
-        };
-        const slots = Array.from({ length: 25 }, () => ({ temp: null, p: null }));
-        for (const h of today.hours) {
-          const idx = parseHour(h?.t);
-          if (idx == null) continue;
-          slots[idx] = { temp: h.temp ?? null, p: h.p ?? null };
-        }
-
-        // Fixed axes: 0-100 for both temp (°F) and precip (%).
-        // padR bumped from 14 → 32 so the right-side precip-% labels (100%)
-        // don't get clipped by the panel edge.
-        const W = 520, H = 320;
-        const padL = 42, padR = 32, padT = 16, padB = 28;
-        const plotW = W - padL - padR;
-        const plotH = H - padT - padB;
-        const xAt = i => padL + (i / 24) * plotW;
-        const yAtTemp = t => padT + (1 - Math.max(0, Math.min(100, t)) / 100) * plotH;
-        const yAtP    = p => padT + (1 - Math.max(0, Math.min(100, p)) / 100) * plotH;
-
-        // 0 / 25 / 50 / 75 / 100 gridlines for shared axis.
-        const yTicks = [0, 25, 50, 75, 100];
-        const xTicks = [0, 6, 12, 18, 24];
-        const xLabel = h => h === 0 || h === 24 ? '12a' : h === 12 ? '12p' : h < 12 ? `${h}a` : `${h-12}p`;
-
-        // Temp polyline — skip nulls so gaps stay blank instead of spiking to 0.
-        const segments = [];
-        let cur = [];
-        for (let i = 0; i <= 24; i++) {
-          if (slots[i].temp == null) {
-            if (cur.length > 1) segments.push(cur);
-            cur = [];
-          } else {
-            cur.push(`${xAt(i)},${yAtTemp(slots[i].temp)}`);
-          }
-        }
-        if (cur.length > 1) segments.push(cur);
-
-        const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
-        const nowX = xAt(nowHour);
-
-        return (
-          <div style={{
-            position:'absolute', right:28, top:'50%', transform:'translateY(-50%)',
-            zIndex:3,
-            background:'rgba(0,0,0,.46)', backdropFilter:'blur(14px)',
-            WebkitBackdropFilter:'blur(14px)',
-            borderRadius:16, padding:'16px 20px 12px',
-            border:'0.5px solid rgba(255,255,255,.10)',
-          }}>
-            {/* Combined current-weather summary above the chart. Sized up
-                so the header reads as the headline of the panel rather
-                than a footnote. Three columns: icon | current+desc | H/L. */}
-            <div style={{ display:'flex', alignItems:'center', gap:24, marginBottom:18, paddingBottom:14, borderBottom:'0.5px solid rgba(255,255,255,.08)' }}>
-              <WeatherIcon icon={currentHourData?.icon || today.icon} desc={currentHourData?.desc || today.desc} size={84} />
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'baseline', gap:6 }}>
-                  <span style={{ fontFamily:"'DM Sans', sans-serif", fontSize:80, fontWeight:200, color:'#fff', lineHeight:.9, letterSpacing:'-.04em', fontVariantNumeric:'tabular-nums' }}>
-                    {currentHourData?.temp ?? today.current ?? today.feel ?? today.hi}°
-                  </span>
-                  <span style={{ fontSize:18, color:'rgba(255,255,255,.4)', paddingBottom:10, fontWeight:300 }}>F</span>
-                </div>
-                <div style={{ fontSize:15, color:'rgba(255,255,255,.78)', letterSpacing:'.01em', marginTop:6, lineHeight:1.3 }}>
-                  {currentHourData?.desc || today.desc}
-                </div>
-              </div>
-              <div style={{
-                textAlign:'right', borderLeft:'0.5px solid rgba(255,255,255,.12)',
-                paddingLeft:20, lineHeight:1.1, minWidth:78,
-              }}>
-                <div>
-                  <span style={{ fontSize:10, color:'rgba(252,211,77,.6)', fontWeight:700, letterSpacing:'.1em' }}>HIGH</span>
-                  <div style={{ fontSize:30, fontWeight:600, color:'rgba(252,211,77,.95)', fontFamily:"'DM Sans', sans-serif", fontVariantNumeric:'tabular-nums', marginTop:2 }}>
-                    {today.hi != null ? `${today.hi}°` : '—'}
-                  </div>
-                </div>
-                <div style={{ marginTop:10 }}>
-                  <span style={{ fontSize:10, color:'rgba(147,197,253,.6)', fontWeight:700, letterSpacing:'.1em' }}>LOW</span>
-                  <div style={{ fontSize:30, fontWeight:600, color:'rgba(147,197,253,.95)', fontFamily:"'DM Sans', sans-serif", fontVariantNumeric:'tabular-nums', marginTop:2 }}>
-                    {today.lo != null ? `${today.lo}°` : '—'}
-                  </div>
-                </div>
-                <div style={{ fontSize:11, color:'rgba(96,165,250,.85)', marginTop:10, fontWeight:600, letterSpacing:'.04em' }}>{today.precip ?? 0}% rain</div>
-              </div>
-            </div>
-            <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase', color:'rgba(255,255,255,.55)', marginBottom:6 }}>
-              Hourly — {today.full || today.day}
-            </div>
-            <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
-              {/* Y-axis gridlines + labels (°F left, % right) */}
-              {yTicks.map(t => {
-                const y = yAtTemp(t);
-                return (
-                  <g key={`yt-${t}`}>
-                    <line x1={padL} x2={W-padR} y1={y} y2={y} stroke="rgba(255,255,255,.10)" strokeWidth={0.5} />
-                    <text x={padL-6} y={y+3} textAnchor="end" fontSize={10} fill="rgba(252,211,77,.7)" fontFamily="DM Sans, sans-serif">{t}°</text>
-                    <text x={W-padR+6} y={y+3} textAnchor="start" fontSize={10} fill="rgba(96,165,250,.7)" fontFamily="DM Sans, sans-serif">{t}%</text>
-                  </g>
-                );
-              })}
-              {/* Precip bars */}
-              {slots.map((s, i) => s.p == null || s.p === 0 ? null : (
-                <rect key={`p-${i}`} x={xAt(i)-6} y={yAtP(s.p)} width={12} height={H-padB-yAtP(s.p)} fill="rgba(96,165,250,.32)" rx={2} />
-              ))}
-              {/* Temp segments */}
-              {segments.map((pts, i) => (
-                <polyline key={`seg-${i}`} points={pts.join(' ')} fill="none" stroke="rgba(252,211,77,.9)" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-              ))}
-              {/* Current-time vertical marker */}
-              <line x1={nowX} x2={nowX} y1={padT} y2={H-padB} stroke="rgba(255,255,255,.55)" strokeWidth={1.5} strokeDasharray="3 3" />
-              <text x={nowX} y={padT-4} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,.7)" fontFamily="DM Sans, sans-serif" fontWeight={600}>NOW</text>
-              {/* Baseline x-axis */}
-              <line x1={padL} x2={W-padR} y1={H-padB} y2={H-padB} stroke="rgba(255,255,255,.18)" strokeWidth={0.5} />
-              {xTicks.map(h => (
-                <text key={`xt-${h}`} x={xAt(h)} y={H-8} textAnchor="middle" fontSize={10} fill="rgba(255,255,255,.45)" fontFamily="DM Sans, sans-serif">{xLabel(h)}</text>
-              ))}
-            </svg>
-            <div style={{ display:'flex', gap:14, fontSize:10, color:'rgba(255,255,255,.5)', marginTop:4, justifyContent:'center' }}>
-              <span><span style={{ color:'rgba(252,211,77,.9)' }}>—</span>&nbsp;Temp °F</span>
-              <span><span style={{ color:'rgba(96,165,250,.7)' }}>▋</span>&nbsp;Precip %</span>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Clock — centered (offset down slightly so it clears the top grid) ── */}
-      <div style={{
-        position:'absolute', top:'calc(50% + 40px)', left:'50%',
-        transform:'translate(-50%, -50%)',
-        zIndex:3, textAlign:'center', pointerEvents:'none',
-        padding:'20px 36px 24px',
-        borderRadius:24,
-        background:'rgba(0,0,0,.22)',
-        backdropFilter:'blur(4px)',
-        WebkitBackdropFilter:'blur(4px)',
-      }}>
+      {/* Tap-hint — appears only on home view to avoid clutter */}
+      {view === 'home' && (
         <div style={{
-          // Match the font family used by the HIGH/LOW labels so the clock
-          // reads as part of the same "system" instead of an editorial
-          // serif lifted from a different design language. Cormorant looks
-          // pretty but feels off for digital time.
-          fontFamily:"'DM Sans', sans-serif",
-          fontSize:'min(20vw, 140px)',
-          fontWeight:300, color:'#fff', lineHeight:1,
-          letterSpacing:'-.04em',
-          fontVariantNumeric:'tabular-nums',
-          textShadow:'0 2px 60px rgba(0,0,0,.6), 0 0 120px rgba(0,0,0,.3)',
-        }}>{timeStr}</div>
-        <div style={{
-          fontSize:14, color:'rgba(255,255,255,.6)',
-          letterSpacing:'.18em', textTransform:'uppercase', marginTop:12,
-          textShadow:'0 1px 12px rgba(0,0,0,.8)',
-        }}>{dateStr}</div>
-      </div>
-
-      {/* ── Bottom: featured activity ── */}
-      <div style={{
-        position:'absolute', bottom:44, left:30, right:28, zIndex:3,
-        display:'grid', gridTemplateColumns:'1fr', gap:24, alignItems:'end',
-      }}>
-        {/* Featured rotating activity */}
-        {feature && (
-          <div key={animKey} style={{ animation:'ambientSlideUp 600ms cubic-bezier(0.16,1,0.3,1) both' }}>
-            <div style={{
-              fontSize:11, fontWeight:700, letterSpacing:'.12em', textTransform:'uppercase',
-              color: feature.expires ? '#C9A84C' : 'rgba(255,255,255,.4)',
-              marginBottom:8, display:'flex', alignItems:'center', gap:8,
-            }}>
-              <span className={feature.cat?.cls || ''} style={{ padding:'3px 9px', borderRadius:99, fontSize:10 }}>
-                {feature.cat?.icon} {feature.cat?.label}
-              </span>
-              {feature.expires && <span style={{ color:'#C9A84C' }}>· expiring soon</span>}
-            </div>
-            <div style={{
-              fontFamily:'Cormorant Garamond, serif',
-              fontSize:'min(4.5vw, 38px)', fontWeight:400,
-              color:'#fff', lineHeight:1.15, marginBottom:8,
-              textShadow:'0 2px 20px rgba(0,0,0,.6)',
-            }}>{feature.title}</div>
-            <div style={{ fontSize:14, color:'rgba(255,255,255,.55)', letterSpacing:'.03em', marginBottom:5 }}>
-              {feature.when} · {feature.where} · {feature.cost}
-            </div>
-            <div style={{ fontSize:13, color:'rgba(255,255,255,.38)', fontStyle:'italic', lineHeight:1.55 }}>
-              {feature.why}
-            </div>
-          </div>
-        )}
-
-      </div>
-
-      {/* ── Fun fact ticker — bottom strip ── */}
-      <div style={{
-        position:'absolute', bottom:0, left:0, right:0, zIndex:4,
-        height:34, background:'rgba(0,0,0,.6)',
-        borderTop:'0.5px solid rgba(255,255,255,.07)',
-        display:'flex', alignItems:'center', padding:'0 28px', gap:12,
-        overflow:'hidden',
-        backdropFilter:'blur(8px)',
-      }} onClick={e => e.stopPropagation()}>
-        <span style={{
-          fontSize:9, fontWeight:700, letterSpacing:'.1em', textTransform:'uppercase',
-          padding:'2px 8px', borderRadius:99, flexShrink:0,
-          background:'rgba(201,168,76,.15)', color:'#C9A84C',
-          border:'0.5px solid rgba(201,168,76,.2)',
-        }}>FUN FACT</span>
-        <span key={factKey} style={{
-          fontSize:12, color:'rgba(255,255,255,.5)',
-          flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-          animation:'tickerSlide 400ms ease both',
-        }}>{FUN_FACTS[factIdx]}</span>
-      </div>
-
-      {/* ── Tap hint — left side vertical ── */}
-      <div style={{
-        position:'absolute', top:'50%', left:14, zIndex:3,
-        writingMode:'vertical-rl', transform:'translateY(-50%) rotate(180deg)',
-        fontSize:9, color:'rgba(255,255,255,.18)', letterSpacing:'.14em', textTransform:'uppercase',
-        pointerEvents:'none',
-      }}>tap to explore</div>
+          position:'absolute', bottom:18, left:'50%',
+          transform:'translateX(-50%)', zIndex:3,
+          fontSize:11, color:'rgba(255,255,255,.22)',
+          letterSpacing:'.16em', textTransform:'uppercase',
+          pointerEvents:'none',
+        }}>tap to explore</div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   isFrontendBlocked, getWeatherBoost, getWeekendWeather,
   sortCategoriesByRelevancy,
 } from './ActiveMode/utils';
-import { useIsMobile } from './ActiveMode/useIsMobile';
+import { useIsMobile, useIsTablet } from './ActiveMode/useIsMobile';
 import ReserveModal from './ActiveMode/ReserveModal';
 import AskClaude from './ActiveMode/AskClaude';
 import { CatColumn, StackedColumn } from './ActiveMode/CatColumn';
@@ -101,6 +101,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
   const curatedMode  = settings?.curatedMode  || false;
 
   const isMobile = useIsMobile();
+  const isTablet = useIsTablet();
 
   const removeAct  = (catId,act) => setRemoved(r=>({...r,[`${catId}::${act.title}`]:true}));
   const heartAct   = (catId,act) => onSaveItem?.({...act,catId});
@@ -169,7 +170,10 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
     visibleCats = [...curated, ...populated, ...otherSlot];
   }
 
-  const COLS_PER_PAGE = isMobile ? 1 : 4;
+  // Mobile = 1 column. Tablet (≤1366px) = 3 columns (per 2026-05-11 iPad
+  // sizing — fingers need bigger tap targets + bigger card text). Wider
+  // desktops keep the original 4-column packed layout.
+  const COLS_PER_PAGE = isMobile ? 1 : isTablet ? 3 : 4;
   const numPages = Math.max(1, Math.ceil(visibleCats.length/COLS_PER_PAGE));
   const safePage = Math.min(colPage, numPages - 1);
   const pageCats = visibleCats.slice(safePage*COLS_PER_PAGE, safePage*COLS_PER_PAGE+COLS_PER_PAGE);
@@ -183,7 +187,7 @@ export default function ActiveMode({ settings, activeProfile, calQueue, activiti
 
   const crossCatSeen = new Set();
 
-  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather, viewMode, isGuest: isDemo, onGuestSignIn: onLoginPrompt, categoryPhotos };
+  const colProps = { removed, onCal:onCalendar, onRemove:removeAct, onHeart:heartAct, onThumbUp:thumbUp, onThumbDown:thumbDown, onReserve:gateDemo('reserve',(act,cid)=>setReserveAct({act,catId:cid})), weatherDim:dim, weatherBoost:boost, homeAddress, profileId:activeProfile?.id||'default', spotlightMode, activities: effectiveActivities, isMobile, isTablet, timeFilters, setTimeFilters, priceFilters, setPriceFilters, onOpenFilter, hasConflict: calendar?.hasConflict, crossCatSeen, curatedMode, weather, onWeather, viewMode, isGuest: isDemo, onGuestSignIn: onLoginPrompt, categoryPhotos };
 
   return (
     <div className="fade-enter" style={{display:'grid',gridTemplateRows:'auto auto 1fr auto',height:'100%',background:'var(--bg)',overflow:'hidden',fontFamily:'var(--font-body)'}}>

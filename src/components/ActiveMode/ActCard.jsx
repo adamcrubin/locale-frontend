@@ -23,7 +23,13 @@ function formatInterestedLine(friends) {
   return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length > 3 ? 's' : ''} are interested in this event`;
 }
 
-export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo = null, isMobile = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, viewMode = 'standard' }) {
+export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo = null, isMobile = false, isTablet = false, onCal, onRemove, onHeart, onThumbUp, onThumbDown, onReserve, homeAddress, profileId, viewMode = 'standard' }) {
+  // Tablet sizing — fingers tap, not mice click. Bump title font, meta
+  // font, vertical padding, and minHeight ~25% so cards are comfortable
+  // on iPad without breaking desktop.
+  const sz = isTablet
+    ? { title: 17, meta: 14, pad: '11px 14px', minH: 56 }
+    : { title: 14, meta: 12, pad: '7px 10px',  minH: 44 };
   // Default-expand depends on view mode:
   // - magazine: every card expanded
   // - compact:  every card collapsed
@@ -143,10 +149,10 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo
       <div
         onClick={toggle}
         style={{
-          padding: isCompact ? '7px 10px' : '9px 12px 6px',
+          padding: isCompact ? sz.pad : (isTablet ? '13px 16px 8px' : '9px 12px 6px'),
           display: 'flex', alignItems: 'center', gap: 8,
           cursor: 'pointer',
-          minHeight: 44,
+          minHeight: sz.minH,
           background: baseBg,
           userSelect: 'none',
         }}
@@ -162,12 +168,12 @@ export default function ActCard({ act, catId, cardBg, isSpotlight = false, photo
           <span title="Always available — no specific date" style={{ fontSize: 9, flexShrink: 0, color: '#6B7280', letterSpacing: '.04em' }}>∞</span>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1A17', lineHeight: 1.3,
+          <div style={{ fontSize: sz.title, fontWeight: 600, color: '#1C1A17', lineHeight: 1.3,
             overflow: isCompact ? 'hidden' : 'visible',
             textOverflow: isCompact ? 'ellipsis' : 'clip',
             whiteSpace: isCompact ? 'nowrap' : 'normal',
           }}>{act.title}</div>
-          <div style={{ fontSize: 12, color: '#6B6560', marginTop: 2,
+          <div style={{ fontSize: sz.meta, color: '#6B6560', marginTop: 2,
             overflow: isCompact ? 'hidden' : 'visible',
             textOverflow: isCompact ? 'ellipsis' : 'clip',
             whiteSpace: isCompact ? 'nowrap' : 'normal',

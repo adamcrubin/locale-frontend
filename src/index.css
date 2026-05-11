@@ -116,6 +116,7 @@ textarea:focus::placeholder {
 @keyframes photoFadeIn   { from { opacity:0 } to { opacity:1 } }
 @keyframes photoFadeOut  { from { opacity:1 } to { opacity:0 } }
 @keyframes ambientSlideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }
+@keyframes ambientFadeIn  { from { opacity:0 } to { opacity:1 } }
 @keyframes tickerSlide   { from { opacity:0; transform:translateX(10px) } to { opacity:1; transform:translateX(0) } }
 
 .slide-in  { animation: slideInRight 400ms cubic-bezier(.4,0,.2,1) both; }
