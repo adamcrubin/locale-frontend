@@ -450,6 +450,14 @@ export default function App() {
       <OnboardingFlow
         showDemoButton={false}
         onComplete={(patch) => update({ ...patch, onboardingDone: true })}
+        onCancel={() => {
+          // Drop both demo flag and any active session so the welcome
+          // screen's render condition (!user && !demoMode) becomes true.
+          // Demo-mode users get the safer no-op signOut() call — it
+          // returns early when there's no session to clear.
+          setDemoMode(false);
+          signOut?.();
+        }}
       />
     );
   }

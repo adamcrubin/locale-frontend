@@ -364,7 +364,7 @@ function StepCategories({ data, onChange, onFinish, onBack }) {
 }
 
 // ── Main onboarding component ─────────────────────────────────────────────────
-export default function OnboardingFlow({ onComplete, showDemoButton = true }) {
+export default function OnboardingFlow({ onComplete, onCancel = null, showDemoButton = true }) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState({
     householdName: '',
@@ -411,6 +411,20 @@ export default function OnboardingFlow({ onComplete, showDemoButton = true }) {
       <div style={{ position:'absolute', inset:0, background:'radial-gradient(ellipse 70% 50% at 50% -10%, rgba(201,168,76,.09) 0%, transparent 60%)', pointerEvents:'none' }} />
 
       <div style={{ width:'100%', maxWidth:480, position:'relative' }}>
+
+        {/* Cancel / back-to-welcome — only on step 0. Once the user has
+            committed any data on later steps, they go via the per-step
+            'Back' button instead. */}
+        {onCancel && step === 0 && (
+          <button onClick={onCancel} style={{
+            position:'absolute', top:-8, left:0, zIndex:10,
+            fontSize:11, padding:'5px 12px', borderRadius:99,
+            background:'rgba(255,255,255,.06)',
+            border:'0.5px solid rgba(255,255,255,.12)',
+            color:'rgba(255,255,255,.55)', cursor:'pointer',
+            fontFamily:'DM Sans, sans-serif', letterSpacing:'.04em',
+          }}>← Back to welcome</button>
+        )}
 
         {/* Demo button — top right corner */}
         {showDemoButton && (
