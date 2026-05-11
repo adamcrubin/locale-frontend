@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import ExtractorEditor from './ExtractorEditor';
+import ValidationModal from './ValidationModal';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -22,7 +23,9 @@ export default function SourcesTab() {
   const [filter, setFilter] = useState('all'); // all | active | broken | drifted | inactive
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('events'); // events | tier | last_ok | name
-  const [editing, setEditing] = useState(null); // source object whose extractor we're editing
+  const [editing, setEditing] = useState(null); // source whose extractor we're editing
+  const [validating, setValidating] = useState(null); // source id currently being validated
+  const [validationModal, setValidationModal] = useState(null); // { source, report }
 
   useEffect(() => {
     setLoading(true); setError(null);
@@ -35,6 +38,28 @@ export default function SourcesTab() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const runValidation = async (source) => {
+    setValidating(source.id);
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}/validate`, { method: 'POST' });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      // Refresh the source row in state
+      setData(d => ({
+        ...d,
+        sources: d.sources.map(s => s.id === source.id
+          ? { ...s, validation_status: j.status, validation_report: j, validation_at: j.probed_at }
+          : s),
+      }));
+      // Auto-open the modal so the operator sees the recommendation
+      setValidationModal({ source, report: j });
+    } catch (e) {
+      alert(`Validation failed: ${e.message}`);
+    } finally {
+      setValidating(null);
+    }
+  };
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'rgba(255,255,255,.4)' }}>Loading sources…</div>;
   if (error) return <ErrorBox msg={error} />;
@@ -98,6 +123,7 @@ export default function SourcesTab() {
               <Th align="right">total</Th>
               <Th>last_ok</Th>
               <Th>extractor</Th>
+              <Th>validation</Th>
               <Th>diagnosis</Th>
             </tr>
           </thead>
@@ -122,6 +148,14 @@ export default function SourcesTab() {
                     fontFamily: 'inherit',
                   }}>{s.extractor_config ? '✓ edit' : '+ add'}</button>
                 </Td>
+                <Td>
+                  <ValidationCell
+                    source={s}
+                    busy={validating === s.id}
+                    onValidate={() => runValidation(s)}
+                    onView={() => setValidationModal({ source: s, report: s.validation_report })}
+                  />
+                </Td>
                 <Td><span style={{ fontSize: 10, color: 'rgba(255,255,255,.5)' }}>
                   {s.parser_health_reason || s.last_error || '—'}
                 </span></Td>
@@ -144,6 +178,47 @@ export default function SourcesTab() {
           }}
         />
       )}
+
+      {validationModal && (
+        <ValidationModal
+          source={validationModal.source}
+          report={validationModal.report}
+          onClose={() => setValidationModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ValidationCell({ source, busy, onValidate, onView }) {
+  const status = source.validation_status;
+  const rec = source.validation_report?.recommendation;
+  const colorMap = {
+    validated: { bg: 'rgba(34,197,94,.12)',  bd: 'rgba(34,197,94,.4)',  fg: '#22c55e' },
+    failed:    { bg: 'rgba(239,68,68,.12)',  bd: 'rgba(239,68,68,.4)',  fg: '#ef4444' },
+    pending:   { bg: 'rgba(245,158,11,.12)', bd: 'rgba(245,158,11,.4)', fg: '#F59E0B' },
+  };
+  const c = colorMap[status] || { bg: 'rgba(255,255,255,.04)', bd: 'rgba(255,255,255,.12)', fg: 'rgba(255,255,255,.5)' };
+  return (
+    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+      {status ? (
+        <button onClick={onView} style={{
+          background: c.bg, border: `0.5px solid ${c.bd}`, color: c.fg,
+          padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+          fontFamily: 'inherit',
+        }} title={`Recommendation: ${rec || '?'}\nClick to view report`}>
+          {status}{rec ? ` · ${rec}` : ''}
+        </button>
+      ) : (
+        <span style={{ color: 'rgba(255,255,255,.3)', fontSize: 10 }}>—</span>
+      )}
+      <button onClick={onValidate} disabled={busy} style={{
+        background: 'rgba(99,102,241,.12)', border: '0.5px solid rgba(99,102,241,.4)',
+        color: '#A5B4FC', padding: '2px 8px', borderRadius: 4, fontSize: 10,
+        cursor: 'pointer', fontFamily: 'inherit',
+      }} title="Probe URL + structured data + run a sample extraction">
+        {busy ? '…' : status ? '↻' : 'probe'}
+      </button>
     </div>
   );
 }

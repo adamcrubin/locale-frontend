@@ -162,35 +162,68 @@ candidates write to `source_suggestions` for admin review.
 In practice today this provides ~12-18 new sources/month with zero
 manual effort.
 
-### 3.2 Stage 1B — Validation
+### 3.2 Stage 1B — Validation (built 2026-05-11)
 
-> **Status:** stub today. Sources are added with `active=true` and
-> immediately flow into Pipeline 3, where they may quietly fail for
-> weeks. The validation stage should gate that.
+Probes a URL before / shortly after it lands in `sources` to confirm
+it's worth scraping and recommend the right extractor strategy.
+Operator clicks a "probe" button in `/admin#sources`; validation also
+runs on demand for arbitrary URLs (pre-add diagnostic).
 
-Goal: confirm the URL actually works and produces something extractable
-BEFORE shipping it to Pipeline 3.
+**Four probes** — `services/validationProbe.js`:
 
-Probe checklist:
+1. **HTTP** — `axios.get` with 15s timeout, 5 redirects, captures status,
+   content-type, body size, final URL, elapsed_ms. Errors caught with
+   network-error code rather than throwing.
+2. **Render** — heuristic SPA detection. Strips scripts, counts visible
+   text length, computes script-byte ratio. Markers: `<div id="root">`,
+   `__NEXT_DATA__`, `window.__NUXT__`, `ng-app`. SPA shell verdict =
+   text < 2000 chars AND script ratio > 50% AND a known shell marker.
+3. **Structured** — counts JSON-LD `@type=Event` blocks, microdata
+   `itemtype=…/Event` blocks, Open Graph meta tags, and Tribe Events
+   Calendar markers.
+4. **Yield** — actually runs the dispatcher. Generic primitives first
+   (which honors any existing `extractor_config`). If primitives yield
+   zero, falls back to a cheap Haiku call (max_tokens=1500, body
+   capped at 4K chars, ~$0.001/probe) that just counts event-like rows
+   and returns up to 3 sample titles.
 
-1. **HTTP probe** — does the URL respond? What status? What content-type?
-2. **Render probe** — is the page server-rendered or JS-rendered? If
-   the response is mostly `<div id="root">` + script tags, it needs
-   either web-search routing or a headless browser.
-3. **Structured data probe** — does it have JSON-LD events? Open Graph
-   meta? Microdata? Each is a strong signal that a generic primitive
-   can extract reliably.
-4. **Yield probe** — run a one-off Haiku extraction against the page.
-   Did it produce ≥ 1 valid event with title + date?
+**Recommendation logic** maps probe results to one of:
 
-Output: a `source_validation_report` row with the probe results,
-recommended `extractor` strategy (`auto-jsonld`, `auto-microdata`,
-`needs-custom`, `haiku-only`), and recommended `type` (`scrape` /
-`pattern`).
+| Recommendation | When | Next step |
+|---|---|---|
+| `blocked` | HTTP error, 4xx, 5xx, or non-HTML content-type | Add to `BLOCKED_SITES` → web-search route |
+| `needs-headless` | SPA shell detected (thin text, dominant scripts, framework marker) | Web search now; headless browser later |
+| `no-events` | Loaded fine but no event-like content found | Check URL — wrong page, or source is currently empty |
+| `auto-jsonld` | ≥ 1 JSON-LD `@type=Event` block | No config needed; generic primitive handles it |
+| `auto-microdata` | ≥ 1 microdata Event itemscope | Generic primitive handles it |
+| `auto-tribe` | Tribe Events Calendar markup | Generic primitive handles it |
+| `auto-<primitive>` | Generic dispatcher already yielded events | No config needed |
+| `needs-declarative` | Haiku found 1-2 events but no structured markers | Author a declarative `extractor_config` (Pipeline 1 D2) |
+| `haiku-only` | Haiku found ≥ 3 events, no structure | Editorial roundup — Haiku is the only path |
 
-API surface: `POST /api/admin/sources/validate` with `{sourceId}`.
-Returns the report. Operator reviews and either accepts the
-recommendation or flags for custom-extractor authoring.
+**Storage:** results go to `sources.validation_status` /
+`validation_at` / `validation_report` JSONB. Status is one of
+`pending` / `validated` / `failed`. The full probe report is preserved
+so the operator can re-read it without re-running probes.
+
+**Endpoints:**
+
+```
+POST /api/admin/sources/:id/validate       run probes, save to row, return report
+POST /api/admin/sources/validate-url       body: { url } — diagnostic for pre-add candidates
+```
+
+**UX:** every row in `/admin#sources` gets a `probe` button. After the
+probe runs (~3-5s for HTTP + render + structured + Haiku), the button
+becomes a status badge showing `validated · auto-jsonld` (or whatever
+the recommendation is). Click the badge to open a modal with the full
+probe breakdown and a recommended next step for the operator.
+
+**v1 is advisory, not gating.** New admin-added sources still land with
+`active=true` and immediately flow into Pipeline 3. A later iteration
+will flip new sources to `active=false` until validation passes — but
+the existing behavior is preserved for now so legacy add workflows
+don't break.
 
 ### 3.3 Stage 1C — Categorization
 
@@ -867,6 +900,12 @@ source onboarded.
   detection built** (`source_fixtures` table, `services/fixtureRunner.js`,
   cron + admin endpoints, drift signal feeds Pipeline 2 classifier as
   the highest-priority input, UI fixtures panel in ExtractorEditor).
+- **2026-05-11:** Pipeline 1 stage 1B validation gate built
+  (`services/validationProbe.js` runs HTTP + render-detect + structured-
+  data + yield probes against any URL, returns a recommendation from a
+  10-entry table). ValidationModal in `/admin#sources` surfaces the full
+  probe breakdown + next-step copy. Advisory only; auto-gating new
+  sources deferred until legacy add flows are migrated.
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
@@ -887,7 +926,7 @@ source onboarded.
 | 1 | 1A Discovery — admin add | ✅ built |
 | 1 | 1A Discovery — boot seeds | ✅ built |
 | 1 | 1A Discovery — auto-promotion | ✅ built |
-| 1 | 1B Validation | ❌ stub |
+| 1 | 1B Validation | ✅ built (2026-05-11) |
 | 1 | 1C Categorization | ⚠️ manual |
 | 1 | 1D Custom extractor — generic primitives | ✅ built |
 | 1 | 1D Custom extractor — declarative DSL | ✅ built (2026-05-10) |
