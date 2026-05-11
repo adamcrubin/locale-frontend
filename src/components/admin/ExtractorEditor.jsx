@@ -38,6 +38,12 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
   const [fixtures, setFixtures] = useState([]);
   const [fixturesLoading, setFixturesLoading] = useState(false);
   const [fixtureBusy, setFixtureBusy] = useState(null); // fixture id currently replaying/deleting
+  const [authorOpen, setAuthorOpen] = useState(false);
+  const [authorHints, setAuthorHints] = useState('');
+  const [authorExamples, setAuthorExamples] = useState('');
+  const [authoring, setAuthoring] = useState(false);
+  const [authorResult, setAuthorResult] = useState(null);
+  const [authorError, setAuthorError] = useState(null);
 
   const loadFixtures = async () => {
     setFixturesLoading(true);
@@ -92,6 +98,45 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
     } finally {
       setFixtureBusy(null);
     }
+  };
+
+  const runAuthor = async () => {
+    setAuthoring(true); setAuthorError(null); setAuthorResult(null);
+    try {
+      // Parse examples if operator provided JSON-array text
+      let examples = null;
+      if (authorExamples.trim()) {
+        try {
+          examples = JSON.parse(authorExamples);
+          if (!Array.isArray(examples)) examples = [examples];
+        } catch {
+          throw new Error('Examples field must be JSON: an event object or array of them');
+        }
+      }
+      const res = await fetch(`${BASE}/admin/sources/${source.id}/author-extractor`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          examples,
+          hints: authorHints || null,
+          useCurrent: !!source.extractor_config,
+        }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error || 'author call failed');
+      setAuthorResult(j);
+    } catch (e) {
+      setAuthorError(e.message);
+    } finally {
+      setAuthoring(false);
+    }
+  };
+
+  const useAuthored = () => {
+    if (!authorResult?.config) return;
+    setJson(JSON.stringify(authorResult.config, null, 2));
+    setAuthorOpen(false);
+    setAuthorResult(null);
   };
 
   const parseJson = () => {
@@ -176,6 +221,7 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
         background: '#1C1A17', border: '0.5px solid rgba(255,255,255,.1)',
         borderRadius: 12, width: '90vw', maxWidth: 1100, height: '88vh',
         display: 'flex', flexDirection: 'column', fontFamily: 'DM Sans, sans-serif',
+        position: 'relative',
       }}>
         {/* Header */}
         <div style={{
@@ -221,12 +267,15 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
                 padding: '6px 8px', background: 'rgba(239,68,68,.08)', borderRadius: 4,
               }}>{parseError}</div>
             )}
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={runTest} disabled={testing} style={btnPrimary}>
                 {testing ? 'Testing…' : '▶ Test against source URL'}
               </button>
               <button onClick={save} disabled={saving} style={btnGreen}>
                 {saving ? 'Saving…' : '💾 Save config'}
+              </button>
+              <button onClick={() => setAuthorOpen(true)} style={btnPurple} title="Ask Claude Sonnet to author or patch this config from the live page HTML">
+                🤖 Generate with Claude
               </button>
               <button onClick={clearConfig} disabled={saving} style={btnGhost}>
                 Clear
@@ -359,11 +408,115 @@ export default function ExtractorEditor({ source, onClose, onSaved }) {
           </div>
           </div>
         </div>
+
+        {/* Author dialog (overlays on top of editor) */}
+        {authorOpen && (
+          <div onClick={() => setAuthorOpen(false)} style={{
+            position: 'absolute', inset: 0, background: 'rgba(0,0,0,.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+            borderRadius: 12,
+          }}>
+            <div onClick={e => e.stopPropagation()} style={{
+              background: '#0F0E0C', border: '0.5px solid rgba(139,92,246,.4)',
+              borderRadius: 10, width: '100%', maxWidth: 760, maxHeight: '100%',
+              display: 'flex', flexDirection: 'column', padding: 18, gap: 12,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="serif" style={{ fontSize: 16, fontWeight: 300, color: '#C4B5FD' }}>
+                  🤖 Author with Claude
+                </span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
+                  {source.extractor_config ? 'Patch existing config' : 'Generate from scratch'}
+                </span>
+                <button onClick={() => setAuthorOpen(false)} style={{
+                  marginLeft: 'auto', background: 'rgba(255,255,255,.07)',
+                  border: '0.5px solid rgba(255,255,255,.1)', borderRadius: 7,
+                  padding: '3px 10px', fontSize: 13, cursor: 'pointer', color: 'rgba(255,255,255,.5)',
+                }}>✕</button>
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', lineHeight: 1.5 }}>
+                Claude Sonnet will fetch the live HTML, identify the repeating event container, and propose a declarative config. Optionally narrow the task with hints + example output.
+              </div>
+
+              <label style={lblStyle}>
+                Hints (optional) — free text describing what you want
+                <textarea value={authorHints} onChange={e => setAuthorHints(e.target.value)}
+                  placeholder="e.g. 'events are in the upcoming-shows tab, not the calendar grid'"
+                  rows={2} style={textareaStyle} />
+              </label>
+
+              <label style={lblStyle}>
+                Examples (optional) — JSON array of events you want extracted
+                <textarea value={authorExamples} onChange={e => setAuthorExamples(e.target.value)}
+                  placeholder={'[\n  { "title": "Bruno Mars", "start_date": "2026-05-09", "venue": "Cap One Arena" }\n]'}
+                  rows={4} style={{ ...textareaStyle, fontFamily: 'monospace' }} />
+              </label>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={runAuthor} disabled={authoring} style={btnPurple}>
+                  {authoring ? 'Thinking… (~10s)' : '✨ Generate config'}
+                </button>
+                {authorResult?.config && (
+                  <button onClick={useAuthored} style={btnGreen}>
+                    ✓ Use this config
+                  </button>
+                )}
+              </div>
+
+              {authorError && (
+                <div style={{
+                  fontSize: 11, color: '#ef4444', fontFamily: 'monospace',
+                  padding: '8px', background: 'rgba(239,68,68,.08)', borderRadius: 6,
+                }}>{authorError}</div>
+              )}
+
+              {authorResult && (
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0, overflow: 'hidden',
+                }}>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.7)' }}>
+                    <strong>Result:</strong> {authorResult.preview?.matched_containers ?? 0} containers · {authorResult.preview?.emitted ?? 0} events emitted
+                    {authorResult.preview?.dropped > 0 && <span style={{ color: '#F59E0B' }}> · {authorResult.preview.dropped} dropped</span>}
+                    · {authorResult.timing?.llm_ms}ms Claude · {authorResult.timing?.html_chars?.toLocaleString()} HTML chars
+                  </div>
+                  <pre style={{
+                    margin: 0, padding: 10, background: 'rgba(0,0,0,.4)',
+                    border: '0.5px solid rgba(255,255,255,.08)', borderRadius: 6,
+                    fontSize: 10, color: 'rgba(255,255,255,.75)', overflow: 'auto',
+                    maxHeight: 200, fontFamily: 'monospace',
+                  }}>{JSON.stringify(authorResult.config, null, 2)}</pre>
+                  {authorResult.preview?.events?.length > 0 && (
+                    <details>
+                      <summary style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', cursor: 'pointer' }}>
+                        Sample extracted events ({authorResult.preview.events.length})
+                      </summary>
+                      <pre style={{
+                        margin: '6px 0 0', padding: 8, background: 'rgba(0,0,0,.3)', borderRadius: 4,
+                        fontSize: 10, color: 'rgba(255,255,255,.6)', fontFamily: 'monospace',
+                        maxHeight: 150, overflow: 'auto',
+                      }}>{JSON.stringify(authorResult.preview.events, null, 2)}</pre>
+                    </details>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
+const lblStyle = {
+  display: 'flex', flexDirection: 'column', gap: 4,
+  fontSize: 11, color: 'rgba(255,255,255,.6)',
+};
+const textareaStyle = {
+  background: '#0F0E0C', border: '0.5px solid rgba(255,255,255,.12)',
+  borderRadius: 6, padding: 8, color: 'rgba(255,255,255,.85)',
+  fontSize: 11, lineHeight: 1.5, outline: 'none', resize: 'vertical',
+  fontFamily: 'inherit',
+};
 const fixBtn = {
   background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.12)',
   color: 'rgba(255,255,255,.7)', padding: '2px 7px', borderRadius: 4,
@@ -384,4 +537,9 @@ const btnGhost = {
   background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.12)',
   color: 'rgba(255,255,255,.5)', padding: '7px 14px', borderRadius: 8, fontSize: 12,
   cursor: 'pointer', fontFamily: 'inherit',
+};
+const btnPurple = {
+  background: 'rgba(139,92,246,.18)', border: '0.5px solid rgba(139,92,246,.45)',
+  color: '#C4B5FD', padding: '7px 14px', borderRadius: 8, fontSize: 12,
+  fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
 };

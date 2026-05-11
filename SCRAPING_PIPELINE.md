@@ -686,23 +686,87 @@ Generic engine reads the config, applies the selectors via cheerio,
 runs the named transforms, fills in defaults. Operator updates the
 selectors when the site changes — no JavaScript needed.
 
-### 6.4 LLM-authored workflow
+### 6.4 LLM-authored workflow (built 2026-05-11)
 
-For sources where neither generic primitives nor a simple selector
-config fits:
+For the long tail of single-venue sources where neither generic
+primitives nor a simple hand-written selector config fits, Claude
+Sonnet authors the declarative config from the live page HTML.
 
-1. Save a fixture HTML file (`fixtures/<source>.html`).
-2. Write expected output as JSON (`fixtures/<source>.expected.json`,
-   1-3 example events).
-3. Ask Claude: "given this HTML, write a JavaScript function
-   `parse<Name>(html, sourceUrl)` that returns the expected events."
-4. Run the result against the fixture; iterate until it matches.
-5. Commit the function + fixture + expected JSON.
-6. Pipeline 2 daily fixture-replay catches drift.
+**End-to-end flow:**
 
-This is the path for the 100+ long-tail single-venue sources that
-don't have schema.org markup. Probably 20-30 minutes of human time
-per source the first time, near-zero ongoing if the site is stable.
+1. Operator opens `/admin#sources`, clicks "+ add" / "✓ edit" on a row
+   that needs a config.
+2. In the ExtractorEditor modal, clicks **🤖 Generate with Claude**.
+3. Optional inputs in the author dialog:
+   - **Hints** — free text. "Events are in the upcoming-shows tab,
+     not the past-events grid." Helps Claude disambiguate when the
+     page has multiple repeating sections.
+   - **Examples** — JSON array of 1-3 events the operator wants
+     extracted. Claude uses them to verify the container selector
+     matches each example row and field selectors yield matching
+     titles / dates / venues.
+4. Clicks ✨ **Generate config**. Backend:
+   - Fetches the live HTML (or uses cached if recently scraped).
+   - Strips scripts/styles/comments/SVG, isolates `<body>`, caps at
+     25K chars.
+   - Asks Claude Sonnet (`claude-sonnet-4-5-20250929`,
+     `max_tokens: 2000`) to author a config matching the
+     `declarativeParser.js` schema. The prompt includes the full
+     field-spec reference, transform library, and existing config if
+     the operator chose "patch mode."
+   - Parses the JSON response (handles fenced / unfenced / prose-
+     wrapped variants).
+   - Validates the schema (container present, fields non-empty, each
+     field spec is a string or `{selector: …}` object).
+   - Dry-runs the config against the same HTML via `parseDeclarative`.
+5. UI shows the proposed config + preview (matched containers, emitted
+   count, dropped count, first 10 events).
+6. Click **✓ Use this config** → swaps into the JSON editor. Operator
+   can refine selectors by hand, hit Test, then Save.
+
+**Modes:**
+
+- **From scratch** (no existing config) — Claude generates from the
+  HTML alone. Best for new sources.
+- **Patch mode** (existing config present, drift detected) — paste the
+  current config; Claude corrects only the broken selectors without
+  restructuring fields. Backend sends `useCurrent: true` when the
+  source already has an `extractor_config`.
+
+**Endpoints:**
+
+```
+POST /api/admin/sources/:id/author-extractor
+     body: { examples?, hints?, useCurrent? }
+     → { ok, config, preview: { matched_containers, emitted, dropped, events }, timing }
+
+POST /api/admin/extractor/author
+     body: { url, examples?, hints? }
+     → same shape, no source required (pre-add diagnostic)
+```
+
+**Cost:** ~$0.04-0.08 per author call (Sonnet 4.5: ~$3/M input × ~7K
+tokens context = $0.02; ~$15/M output × ~1K tokens JSON = $0.015).
+Bursty / one-off per source. Every Pipeline 3 run downstream then
+uses the declarative path at $0 Anthropic cost for that source.
+
+**Why Sonnet, not Haiku** — selector authoring needs reasoning about
+HTML structure, CSS specificity, and matching example outputs back to
+DOM elements. Haiku produces syntactically valid configs but often
+picks the wrong container (e.g. the outer `<section>` instead of each
+`<article>` inside), leading to a single mega-event with concatenated
+fields. Sonnet handles this reliably.
+
+**Failure modes the validator catches:**
+- Missing `container`
+- Empty `fields` object
+- Malformed field specs (objects without `.selector`)
+- Non-parseable JSON
+- Claude refused to respond / returned prose
+
+When validation fails, the UI shows the raw response so the operator
+can see what Claude did. Common fix: add a hint ("the events are in
+`.events-list li`") and retry.
 
 ### 6.5 Fixture-driven testing
 
@@ -905,7 +969,11 @@ source onboarded.
   data + yield probes against any URL, returns a recommendation from a
   10-entry table). ValidationModal in `/admin#sources` surfaces the full
   probe breakdown + next-step copy. Advisory only; auto-gating new
-  sources deferred until legacy add flows are migrated.
+  sources deferred until legacy add flows are migrated. **Pipeline 1 D3
+  LLM-authored extractor workflow built** (`services/extractorAuthor.js`
+  uses Sonnet to author or patch declarative configs from live HTML;
+  validates schema; dry-runs against same HTML; UI surfaces proposed
+  config + preview in the ExtractorEditor author dialog).
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
@@ -931,7 +999,7 @@ source onboarded.
 | 1 | 1D Custom extractor — generic primitives | ✅ built |
 | 1 | 1D Custom extractor — declarative DSL | ✅ built (2026-05-10) |
 | 1 | 1D Custom extractor — hand-written | ⚠️ 1 source (Smithsonian) |
-| 1 | 1D Custom extractor — LLM-authored workflow | ❌ not built |
+| 1 | 1D Custom extractor — LLM-authored workflow | ✅ built (2026-05-11) |
 | 1 | 1E Activation | ⚠️ manual |
 | 2 | 2A HTTP probe | ❌ stub |
 | 2 | 2B Structure-drift (fixture replay) | ✅ built (2026-05-10) |
