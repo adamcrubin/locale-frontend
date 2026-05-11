@@ -23,13 +23,18 @@ import SqlTab          from './SqlTab';
 import SourcesTab      from './SourcesTab';
 import SuggestionsTab  from './SuggestionsTab';
 
-// SINGLE-USER admin gate. Update if you ever bring on co-admins; today only
-// adamcrubin@gmail.com gets in. Anything else (logged in or not) gets the
-// stub screen with a sign-in prompt.
-export const ADMIN_EMAIL = 'adamcrubin@gmail.com';
+// Admin gate. Tolerates capitalization + whitespace in the signed-in email
+// (Google sometimes preserves the case the user typed when they signed up)
+// and accepts either Adam's gmail or the @locale.app domain placeholder
+// used in earlier testing. Update the set if co-admins ever join.
+export const ADMIN_EMAILS = new Set([
+  'adamcrubin@gmail.com',
+  'adam@locale.app',
+]);
 
 function isAdmin(user) {
-  return (user?.email || '').toLowerCase() === ADMIN_EMAIL;
+  const email = (user?.email || '').trim().toLowerCase();
+  return ADMIN_EMAILS.has(email);
 }
 
 const TABS = [
@@ -115,8 +120,13 @@ export default function AdminConsole({ user, authLoading, signInWithGoogle }) {
           <div className="serif" style={{ fontSize: 28, fontWeight: 300, color: 'rgba(255,255,255,.9)', marginBottom: 8 }}>
             Admin only
           </div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', marginBottom: 24 }}>
-            This page is restricted. Signed in as {user.email}.
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', marginBottom: 8 }}>
+            This page is restricted.
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.35)', marginBottom: 24, fontFamily: 'monospace' }}>
+            Signed in as: <strong style={{ color: 'rgba(255,255,255,.55)' }}>{user.email || '(no email)'}</strong>
+            <br />
+            Allowed: <span style={{ color: 'rgba(255,255,255,.45)' }}>{[...ADMIN_EMAILS].join(' · ')}</span>
           </div>
           <a href="/" style={{
             background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.12)',
