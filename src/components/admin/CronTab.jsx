@@ -37,6 +37,10 @@ const JOBS = [
     id: 'warm', label: 'Wake dyno', method: 'GET', path: '/events?warm=1',
     desc: 'Cheap probe that touches DB but skips weather/scoring. Same endpoint the keep-warm cron pings every 5 min.',
   },
+  {
+    id: 'stale-undated', label: 'Kill stale undated events', method: 'POST', path: '/admin/cleanup/stale-undated',
+    desc: 'Deactivate rows with start_date in past AND end_date null. Catches series wrappers (Sunset Cinema at The Wharf, etc.) the stale-expiry heal misses because their expires_at is 30 days from start_date.',
+  },
 ];
 
 export default function CronTab() {

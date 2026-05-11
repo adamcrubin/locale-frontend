@@ -8,10 +8,51 @@ import { useEffect, useState } from 'react';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// One-tap operational jobs surfaced in the Overview tab so the operator
+// can recover from the iPad without dropping to curl. Each entry is a
+// POST against an existing admin endpoint; result text appears inline.
+const QUICK_FIXES = [
+  {
+    id: 'pipeline',
+    label: '🔥 Run full pipeline (force)',
+    path: '/admin/refresh/scrape',
+    body: { force: true },
+    desc: 'Scrape + extract + backfill + merge against every active source. Bypasses the same-content hash skip. ~$1 in Anthropic credits per run.',
+  },
+  {
+    id: 'health',
+    label: '🏥 Source health probe',
+    path: '/cron/source-health',
+    desc: 'Classify every active source as healthy/drifted/broken/unknown. Updates parser_health columns so the Health tab + Sources tab show triage state.',
+  },
+  {
+    id: 'heal',
+    label: '🩹 Run all heals',
+    path: '/cron/heal',
+    desc: 'Stale-expiry, null categories, missing venues, Option-2 remap, pattern recategorization, article-title kill, sponsored rotation. Idempotent.',
+  },
+  {
+    id: 'sweep',
+    label: '🪣 Sweep never-produced sources',
+    path: '/admin/sources/sweep',
+    body: { filter: 'never-produced' },
+    desc: 'Targeted scrape against sources that have never produced events. Useful after BLOCKED_SITES updates or new source seeds.',
+  },
+  {
+    id: 'stale',
+    label: '🧹 Kill stale undated events',
+    path: '/admin/cleanup/stale-undated',
+    desc: 'Deactivate rows with start_date in past + end_date null. Catches series wrappers (e.g. Sunset Cinema at The Wharf) that escape the stale-expiry heal.',
+    confirm: true,
+  },
+];
+
 export default function OverviewTab() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [fixResults, setFixResults] = useState({});
+  const [fixRunning, setFixRunning] = useState(null);
 
   const load = async () => {
     setLoading(true); setError(null);
@@ -28,6 +69,38 @@ export default function OverviewTab() {
   };
 
   useEffect(() => { load(); }, []);
+
+  const runFix = async (fix) => {
+    if (fix.confirm && !confirm(`Run "${fix.label}"? ${fix.desc}`)) return;
+    setFixRunning(fix.id);
+    setFixResults(r => ({ ...r, [fix.id]: { running: true } }));
+    const start = Date.now();
+    try {
+      const res = await fetch(`${BASE}${fix.path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: fix.body ? JSON.stringify(fix.body) : '{}',
+      });
+      const j = await res.json().catch(() => ({ ok: false, error: 'invalid JSON' }));
+      const elapsed = Math.round((Date.now() - start) / 1000);
+      setFixResults(r => ({
+        ...r,
+        [fix.id]: {
+          ok: !!j.ok,
+          ts: new Date().toLocaleTimeString(),
+          elapsed,
+          summary: j.summary || j,
+          error: j.ok ? null : (j.error || `HTTP ${res.status}`),
+        },
+      }));
+      // Refresh the overview data after a successful op so the cards reflect it
+      if (j.ok) load();
+    } catch (e) {
+      setFixResults(r => ({ ...r, [fix.id]: { ok: false, error: e.message, ts: new Date().toLocaleTimeString() } }));
+    } finally {
+      setFixRunning(null);
+    }
+  };
 
   if (loading && !data) return <Skeleton />;
   if (error) return <ErrorBox msg={error} onRetry={load} />;
@@ -46,6 +119,68 @@ export default function OverviewTab() {
         </span>
         <button onClick={load} style={refreshBtn}>↻ Refresh</button>
       </div>
+
+      {/* Quick fixes — operator-tappable from the iPad without curl */}
+      <Card title="Quick fixes · one-tap ops" accent="#C4B5FD">
+        <div style={{ display: 'grid', gap: 8 }}>
+          {QUICK_FIXES.map(fix => {
+            const r = fixResults[fix.id];
+            return (
+              <div key={fix.id} style={{
+                background: 'rgba(255,255,255,.03)', border: '0.5px solid rgba(255,255,255,.08)',
+                borderRadius: 8, padding: 10,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <button onClick={() => runFix(fix)} disabled={fixRunning === fix.id || r?.running}
+                    style={{
+                      background: r?.ok === false ? 'rgba(239,68,68,.15)'
+                                : r?.ok === true ? 'rgba(34,197,94,.15)'
+                                : 'rgba(139,92,246,.18)',
+                      border: `0.5px solid ${r?.ok === false ? 'rgba(239,68,68,.4)'
+                                          : r?.ok === true ? 'rgba(34,197,94,.4)'
+                                          : 'rgba(139,92,246,.45)'}`,
+                      color: r?.ok === false ? '#ef4444'
+                           : r?.ok === true ? '#22c55e'
+                           : '#C4B5FD',
+                      padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit', minWidth: 220, textAlign: 'left',
+                    }}>
+                    {r?.running ? 'Running…' : fix.label}
+                  </button>
+                  {r?.ts && (
+                    <span style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>
+                      {r.ok ? '✓' : '✕'} {r.ts}{r.elapsed != null ? ` (${r.elapsed}s)` : ''}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', lineHeight: 1.5, marginLeft: 0 }}>
+                  {fix.desc}
+                </div>
+                {r?.error && (
+                  <div style={{
+                    marginTop: 6, padding: '5px 8px',
+                    background: 'rgba(239,68,68,.08)', borderRadius: 4,
+                    fontSize: 10, color: '#ef4444', fontFamily: 'monospace',
+                  }}>{r.error}</div>
+                )}
+                {r?.summary && r.ok && (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ fontSize: 9, color: 'rgba(255,255,255,.4)', cursor: 'pointer' }}>
+                      Result
+                    </summary>
+                    <pre style={{
+                      margin: '4px 0 0', padding: 6, background: 'rgba(0,0,0,.3)',
+                      borderRadius: 3, fontSize: 9, fontFamily: 'monospace',
+                      color: 'rgba(255,255,255,.55)', maxHeight: 180, overflowY: 'auto',
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+                    }}>{JSON.stringify(r.summary, null, 2)}</pre>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
 
       {/* Row 1 — This weekend by category */}
       <Card title={`This weekend's events · ${totalCats} total`} accent="#C9A84C">
