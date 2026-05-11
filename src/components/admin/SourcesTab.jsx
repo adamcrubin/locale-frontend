@@ -26,6 +26,8 @@ export default function SourcesTab() {
   const [editing, setEditing] = useState(null); // source whose extractor we're editing
   const [validating, setValidating] = useState(null); // source id currently being validated
   const [validationModal, setValidationModal] = useState(null); // { source, report }
+  const [headlessStatus, setHeadlessStatus] = useState(null); // { configured, provider }
+  const [headlessToggling, setHeadlessToggling] = useState(null);
 
   useEffect(() => {
     setLoading(true); setError(null);
@@ -37,7 +39,36 @@ export default function SourcesTab() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+
+    // One-time check for headless config so we can show a warning when
+    // sources have use_headless=true but no provider is set server-side.
+    fetch(`${BASE}/admin/headless/status`)
+      .then(r => r.json())
+      .then(j => j.ok && setHeadlessStatus(j))
+      .catch(() => {});
   }, []);
+
+  const toggleHeadless = async (source) => {
+    setHeadlessToggling(source.id);
+    const next = !source.use_headless;
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ use_headless: next }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      setData(d => ({
+        ...d,
+        sources: d.sources.map(s => s.id === source.id ? { ...s, use_headless: next } : s),
+      }));
+    } catch (e) {
+      alert(`Toggle failed: ${e.message}`);
+    } finally {
+      setHeadlessToggling(null);
+    }
+  };
 
   const runValidation = async (source) => {
     setValidating(source.id);
@@ -85,8 +116,20 @@ export default function SourcesTab() {
   };
   sources = [...sources].sort(sortFns[sort] || sortFns.events);
 
+  const headlessNeedingConfig = sources.some(s => s.use_headless) && headlessStatus && !headlessStatus.configured;
+
   return (
     <div>
+      {headlessNeedingConfig && (
+        <div style={{
+          marginBottom: 12, padding: '10px 14px',
+          background: 'rgba(245,158,11,.1)', border: '0.5px solid rgba(245,158,11,.4)',
+          borderRadius: 8, fontSize: 12, color: '#F59E0B',
+        }}>
+          ⚠️ One or more sources have <code style={{ background: 'rgba(0,0,0,.2)', padding: '1px 5px', borderRadius: 3 }}>use_headless=true</code> but no headless provider is configured server-side.
+          Set <code style={{ background: 'rgba(0,0,0,.2)', padding: '1px 5px', borderRadius: 3 }}>HEADLESS_PROVIDER</code> and <code style={{ background: 'rgba(0,0,0,.2)', padding: '1px 5px', borderRadius: 3 }}>HEADLESS_API_KEY</code> on Render. Until then those sources fall back to web search.
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search name or URL…"
@@ -123,6 +166,7 @@ export default function SourcesTab() {
               <Th align="right">total</Th>
               <Th>last_ok</Th>
               <Th>extractor</Th>
+              <Th>headless</Th>
               <Th>validation</Th>
               <Th>diagnosis</Th>
             </tr>
@@ -147,6 +191,19 @@ export default function SourcesTab() {
                     padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
                     fontFamily: 'inherit',
                   }}>{s.extractor_config ? '✓ edit' : '+ add'}</button>
+                </Td>
+                <Td>
+                  <button onClick={() => toggleHeadless(s)} disabled={headlessToggling === s.id}
+                    title={s.use_headless ? 'Routes through HEADLESS_PROVIDER. Click to disable.' : 'Use direct HTTP. Click to route through headless browser (for SPAs).'}
+                    style={{
+                      background: s.use_headless ? 'rgba(139,92,246,.15)' : 'rgba(255,255,255,.04)',
+                      border: `0.5px solid ${s.use_headless ? 'rgba(139,92,246,.45)' : 'rgba(255,255,255,.12)'}`,
+                      color: s.use_headless ? '#C4B5FD' : 'rgba(255,255,255,.4)',
+                      padding: '2px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}>
+                    {s.use_headless ? '🌐 on' : 'off'}
+                  </button>
                 </Td>
                 <Td>
                   <ValidationCell

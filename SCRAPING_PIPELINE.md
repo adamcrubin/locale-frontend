@@ -519,13 +519,21 @@ sources (active=true) → SCRAPE → scraped_content
 
 ### 5.1 Stage 3A — Scrape
 
-Three strategies, ordered by cost:
+Four strategies, ordered by descending information quality (decreasing
+cost is a side effect):
 
 ```
-isBlocked(source) ── yes ──▶ webSearchScrape (Haiku web_search tool)
-       │                         │
-       no                        ▼
-       ▼                    return null on apology
+use_headless OR isBlocked, AND headless provider configured?
+       │
+       yes ──▶ fetchWithHeadless ── ok ──▶ rendered HTML → parser/text
+       │            │                                          │
+       no           fail (or unconfigured)                      success
+       │            │                                          ▼
+       ▼            ▼                                          done
+   isBlocked? ── yes ──▶ webSearchScrape
+       │                       │
+       no                      ▼
+       ▼                  return null on apology
    directScrape          ── fail ──▶ webSearchScrape
        │
        success
@@ -534,15 +542,46 @@ isBlocked(source) ── yes ──▶ webSearchScrape (Haiku web_search tool)
    └── text (cleaned for Haiku fallback)
 ```
 
+**`fetchWithHeadless`** (built 2026-05-11): wraps a hosted headless-
+browser service via env vars:
+
+```
+HEADLESS_PROVIDER=scrapingbee   # or 'browserless' / 'zenrows' / 'none' (default)
+HEADLESS_API_KEY=<key>
+HEADLESS_TIMEOUT_MS=30000        # optional, default 30s
+```
+
+Provider tradeoffs:
+
+| Provider | Free tier | Paid entry | Notes |
+|---|---|---|---|
+| ScrapingBee | 1000 credits | $50/mo for 50K | Simplest API; default choice. ~5 credits per JS-rendered page = ~200 free pages/month. |
+| Browserless | 6 hours/mo | $50/mo for 50h | Returns rendered HTML via /content endpoint. Most generous free tier in volume. |
+| ZenRows | Trial only | $69/mo for 250K | Best at bypassing anti-bot / Cloudflare. Premium-only. |
+
+Default (no env vars set): headless path is disabled. Scraper behaves
+as if it didn't exist — `isBlocked` sources still route through web
+search exactly as before. Setting the provider opts in.
+
+Per-source toggle: each row has `sources.use_headless BOOL`. Auto-flips
+to `true` when the validation probe returns `needs-headless`. Operator
+can manually toggle in `/admin#sources` (purple "🌐 on" badge).
+
+Telemetry note: `pipeline_telemetry_v2.sources[].method` distinguishes
+`scrape`, `parser+scrape`, `search`, `parser+search`, `headless`,
+`parser+headless`. Visible in the admin dashboard.
+
 `isBlocked` is a manual allowlist of 65+ sources known to be JS-rendered
 SPAs or Cloudflare-protected. Direct HTTP returns either a JS shell or
-a 403, so we skip the futile attempt and route straight to web search.
+a 403, so we skip the futile attempt and route straight to headless
+(if configured) or web search.
 
 `directScrape`:
 1. `axios.get` with 12s timeout, 3 retries (0/1.2s/3.5s backoff).
 2. HTML → JSON-LD events + structured hints (OG meta, microdata,
    `<address>`, `<time>`).
-3. Per-site parser if `extractor` column says `custom:<fn_name>`.
+3. Per-site parser if `extractor` column says `custom:<fn_name>` OR
+   the source has an `extractor_config`.
 4. `htmlToText` for the Haiku fallback path. Capped at 40K chars
    (15K with JSON-LD; structured data is canonical).
 
@@ -556,6 +595,11 @@ ticket/show keywords.
 
 Stage 3A writes one `scraped_content` row per source per pass with 25h
 TTL.
+
+`GET /api/admin/headless/status` returns `{ configured, provider }`.
+The SourcesTab surfaces a warning when any source has `use_headless=true`
+but no provider is configured server-side (otherwise those sources
+would silently fall back to web search).
 
 ### 5.2 Stage 3B — Extract
 
@@ -973,7 +1017,12 @@ source onboarded.
   LLM-authored extractor workflow built** (`services/extractorAuthor.js`
   uses Sonnet to author or patch declarative configs from live HTML;
   validates schema; dry-runs against same HTML; UI surfaces proposed
-  config + preview in the ExtractorEditor author dialog).
+  config + preview in the ExtractorEditor author dialog). **Headless
+  browser fallback built** — `services/headlessBrowser.js` wraps
+  ScrapingBee/Browserless/ZenRows; `sources.use_headless` toggle per
+  source; auto-set by validation probe when SPA detected; scraper
+  routes through it first when configured. Default-off via env so
+  zero risk to existing deploys.
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
