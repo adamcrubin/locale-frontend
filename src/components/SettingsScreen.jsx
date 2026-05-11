@@ -4,8 +4,9 @@ import ThemeToggle, { useTheme } from './ThemeToggle';
 import NeighborhoodPicker from './NeighborhoodPicker';
 import { useFriends } from '../hooks/useFriends';
 
-// Admin is determined by email membership. Keep in sync with the list in
-// SourcesScreen.jsx — both files gate the same audience.
+// Admin is determined by email membership. SettingsScreen uses the
+// broader list (intermediate trust) — the standalone /admin console
+// at AdminConsole.jsx is stricter (single email).
 const ADMIN_EMAILS = new Set([
   'adam@locale.app',
   'adamcrubin@gmail.com',
@@ -199,7 +200,7 @@ function ProfileEditor({ profile, onUpdate, onDelete, canDelete, profileColors }
   );
 }
 
-export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowSources, onShowPage, calendar, onRestartTour }) {
+export default function SettingsScreen({ settings, onSave, activeProfile, updateProfile, addProfile, removeProfile, onClose, user, onSignOut, onShowPage, calendar, onRestartTour }) {
   const isAdmin = isAdminUser(user);
   const [city,          setCity]        = useState(settings.city);
   const [homeAddress,   setHomeAddress] = useState(settings.homeAddress || '');
@@ -396,18 +397,20 @@ export default function SettingsScreen({ settings, onSave, activeProfile, update
         {/* ── Friends ── */}
         {user && <FriendsSection user={user} />}
 
-        {/* ── Data Sources ── */}
-        {onShowSources && (
+        {/* ── Data Sources (admin only — opens the standalone admin console) ── */}
+        {isAdmin && (
           <Section title="Data Sources">
-            <button onClick={() => { onClose(); onShowSources(); }} style={{
+            <a href="/admin#sources" style={{
               display:'flex', alignItems:'center', gap:8,
               width:'100%', padding:'9px 12px', borderRadius:9,
-              background:'rgba(255,255,255,.05)', border:'0.5px solid rgba(255,255,255,.12)',
-              color:'rgba(255,255,255,.7)', fontSize:12, cursor:'pointer',
-              fontFamily:'DM Sans, sans-serif', textAlign:'left',
+              background:'rgba(201,168,76,.12)', border:'0.5px solid rgba(201,168,76,.3)',
+              color:'#C9A84C', fontSize:12, cursor:'pointer',
+              fontFamily:'DM Sans, sans-serif', textAlign:'left', textDecoration:'none',
+              boxSizing:'border-box',
             }}>
-              📡 <span>Manage sources</span>
-            </button>
+              🛠 <span>Open admin console</span>
+              <span style={{ marginLeft:'auto', fontSize:10, color:'rgba(201,168,76,.6)' }}>/admin →</span>
+            </a>
           </Section>
         )}
 

@@ -8,7 +8,6 @@ import CalendarModal             from './components/CalendarModal';
 import EditCalendarEventModal    from './components/EditCalendarEventModal';
 import SettingsScreen       from './components/SettingsScreen';
 import ProfilePicker        from './components/ProfilePicker';
-import SourcesScreen        from './components/SourcesScreen';
 import WelcomeScreen        from './components/WelcomeScreen';
 import SavedPage            from './components/SavedPage';
 import OnboardingFlow       from './components/OnboardingFlow';
@@ -236,7 +235,6 @@ export default function App() {
   const [weatherDay,    setWeatherDay]    = useState(null);
   const [calModal,      setCalModal]      = useState(null);
   const [settingsOpen,  setSettingsOpen]  = useState(false);
-  const [showSources,   setShowSources]   = useState(false);
   // Which About/Terms/Privacy/etc. static page is open (null = none)
   const [staticPageId,  setStaticPageId]  = useState(null);
   const [showPicker,    setShowPicker]    = useState(false);
@@ -608,10 +606,6 @@ export default function App() {
         />
       )}
 
-      {showSources && (
-        <SourcesScreen user={user} settings={settings} onClose={() => setShowSources(false)} />
-      )}
-
       {staticPageId && (
         <StaticPage pageId={staticPageId} onClose={() => setStaticPageId(null)} />
       )}
@@ -645,7 +639,6 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
           user={user}
           onSignOut={signOut}
-          onShowSources={() => setShowSources(true)}
           onShowPage={setStaticPageId}
           calendar={calendar}
           onRestartTour={() => { resetTour(); setTourOpen(true); }}

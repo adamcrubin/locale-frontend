@@ -1,11 +1,12 @@
-// Sources tab — list of all sources with tier / health / event count / last_error.
-// Lighter than the legacy SourcesScreen overlay — focused on diagnosis, not adding.
-// (Add-source workflow lives in Sources screen for now; Suggestions tab handles
-// auto-discovered candidates.)
+// Sources tab — canonical source admin: list, add, test, edit extractor,
+// toggle headless, run validation probe, replay fixtures, enable/disable.
+// The Suggestions tab handles the auto-discovered candidates queue.
 
 import { useEffect, useState } from 'react';
 import ExtractorEditor from './ExtractorEditor';
 import ValidationModal from './ValidationModal';
+import AddSourceModal from './AddSourceModal';
+import TestSourceModal from './TestSourceModal';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -28,6 +29,9 @@ export default function SourcesTab() {
   const [validationModal, setValidationModal] = useState(null); // { source, report }
   const [headlessStatus, setHeadlessStatus] = useState(null); // { configured, provider }
   const [headlessToggling, setHeadlessToggling] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [testing, setTesting] = useState(null); // source being tested
+  const [toggling, setToggling] = useState(null); // source id currently being active-toggled
 
   useEffect(() => {
     setLoading(true); setError(null);
@@ -47,6 +51,29 @@ export default function SourcesTab() {
       .then(j => j.ok && setHeadlessStatus(j))
       .catch(() => {});
   }, []);
+
+  const reload = () => {
+    fetch(`${BASE}/admin/sources/health`).then(r => r.json()).then(j => j.ok && setData(j));
+  };
+
+  const toggleActive = async (source) => {
+    const next = !source.active;
+    setToggling(source.id);
+    try {
+      const res = await fetch(`${BASE}/admin/sources/${source.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ active: next }),
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
+      setData(d => ({ ...d, sources: d.sources.map(s => s.id === source.id ? { ...s, active: next } : s) }));
+    } catch (e) {
+      alert(`Toggle failed: ${e.message}`);
+    } finally {
+      setToggling(null);
+    }
+  };
 
   const toggleHeadless = async (source) => {
     setHeadlessToggling(source.id);
@@ -148,6 +175,11 @@ export default function SourcesTab() {
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'rgba(255,255,255,.4)' }}>
           {sources.length} matching
         </span>
+        <button onClick={() => setAddOpen(true)} style={{
+          background: 'rgba(201,168,76,.2)', border: '0.5px solid rgba(201,168,76,.45)',
+          color: '#C9A84C', padding: '5px 12px', borderRadius: 6, fontSize: 11,
+          fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+        }}>+ Add source</button>
       </div>
 
       <div style={{
@@ -169,6 +201,7 @@ export default function SourcesTab() {
               <Th>headless</Th>
               <Th>validation</Th>
               <Th>diagnosis</Th>
+              <Th>actions</Th>
             </tr>
           </thead>
           <tbody>
@@ -216,6 +249,17 @@ export default function SourcesTab() {
                 <Td><span style={{ fontSize: 10, color: 'rgba(255,255,255,.5)' }}>
                   {s.parser_health_reason || s.last_error || '—'}
                 </span></Td>
+                <Td>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => setTesting(s)} title="Run test scrape + extract"
+                      style={iconBtn('#60A5FA')}>🧪</button>
+                    <button onClick={() => toggleActive(s)} disabled={toggling === s.id}
+                      title={s.active ? 'Disable source' : 'Enable source'}
+                      style={iconBtn(s.active ? '#ef4444' : '#22c55e')}>
+                      {s.active ? '⊘' : '✓'}
+                    </button>
+                  </div>
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -243,8 +287,27 @@ export default function SourcesTab() {
           onClose={() => setValidationModal(null)}
         />
       )}
+
+      {addOpen && (
+        <AddSourceModal
+          onClose={() => setAddOpen(false)}
+          onAdded={() => { setAddOpen(false); reload(); }}
+        />
+      )}
+
+      {testing && (
+        <TestSourceModal source={testing} onClose={() => setTesting(null)} />
+      )}
     </div>
   );
+}
+
+function iconBtn(color) {
+  return {
+    background: `${color}1f`, border: `0.5px solid ${color}66`, color,
+    padding: '2px 7px', borderRadius: 4, fontSize: 11, cursor: 'pointer',
+    fontFamily: 'inherit', minWidth: 26,
+  };
 }
 
 function ValidationCell({ source, busy, onValidate, onView }) {

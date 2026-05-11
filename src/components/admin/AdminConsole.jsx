@@ -9,7 +9,7 @@
 //   /admin#cron        → manual pipeline trigger buttons
 //   /admin#tables      → DB table viewer (scraped_content, events, sources, etc.)
 //   /admin#sql         → read-only SQL playground
-//   /admin#sources     → source list (migrated from SourcesScreen)
+//   /admin#sources     → source list + add / test / extractor / health
 //   /admin#suggestions → source_suggestions queue
 //
 // Each tab is its own component in this directory. AdminConsole is just the
