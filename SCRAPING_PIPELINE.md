@@ -601,6 +601,60 @@ The SourcesTab surfaces a warning when any source has `use_headless=true`
 but no provider is configured server-side (otherwise those sources
 would silently fall back to web search).
 
+#### Reddit ingestion (built 2026-05-11)
+
+Reddit hosts the long tail of hyperlocal DC weekend signal: pop-up flea
+markets, neighborhood block parties, free yoga, run clubs, weekend
+megathreads. No editorial aggregator captures it.
+
+`services/redditFetcher.js` plugs in BEFORE the headless / direct
+routing. Detection is by URL host (`isRedditUrl`).
+
+Flow:
+
+1. Convert any subreddit URL to its `.json?limit=50` variant
+   (e.g. `https://reddit.com/r/washingtondc/top/?t=week` →
+   `.../top.json?t=week&limit=50`). Preserves sort + time-window
+   querystring.
+2. Fetch with `User-Agent: locale-dc/1.0`. The open Reddit API is
+   rate-limited to 60 req/min for unauthenticated reads — comfortably
+   above our 6-subreddit, 4-hour cadence.
+3. Filter posts by an event-relevance heuristic:
+   - Flair contains 'event' / 'announc' / 'free' / 'meetup' →
+     short-circuit accept.
+   - Otherwise title or selftext must match `EVENT_HINTS` regex
+     (saturday / sunday / tonight / festival / popup / "May N" / "7pm" /
+     "free yoga" / "run club" / "at the wharf" / etc.).
+   - Skip NSFW + stickied posts (the latter are mod announcements).
+4. Render survivors as plain text with `POST: …` / `Text: …` / `URL:`
+   lines. Selftext capped at 3K chars per post so a single megathread
+   doesn't crowd out other posts.
+5. Pass through extractor with the new prompt rule 0f: treat Reddit
+   posts as user posts (not curated listings); only emit a row when the
+   post has BOTH a specific date/day AND a venue/place.
+
+**Cost: $0.** The Reddit JSON API is free; the extractor uses the same
+Haiku path as any other scrape source.
+
+**Seeded subreddits** (`seedRedditSources()` in db.js):
+- r/washingtondc top of week + hot
+- r/washingtondc weekend megathread search
+- r/nova top of week
+- r/Arlington top of week
+- r/AlexandriaVA top of week
+- r/dcfood top of week
+
+**Yield expectation:** ~10-15 event-relevant posts per subreddit per
+fetch survive the keyword filter; ~3-8 become events after Haiku's
+date-and-venue check. Across 7 subreddits, expect 20-40 new events
+per week, weighted toward genuinely-local content the editorial
+aggregators don't cover.
+
+**Failure mode:** Reddit occasionally returns 429 (rate-limited) when
+too many concurrent fetches happen in a single pipeline pass. The
+scraper catches this gracefully — the source just produces zero
+events for that run and the next pass picks it up.
+
 ### 5.2 Stage 3B — Extract
 
 **Primary path: custom extractor.** When `parsedEvents` is populated
@@ -1022,7 +1076,13 @@ source onboarded.
   ScrapingBee/Browserless/ZenRows; `sources.use_headless` toggle per
   source; auto-set by validation probe when SPA detected; scraper
   routes through it first when configured. Default-off via env so
-  zero risk to existing deploys.
+  zero risk to existing deploys. **Reddit ingestion built** —
+  `services/redditFetcher.js` detects reddit.com URLs, fetches the open
+  `.json` listing, applies event-relevance keyword filter, renders as
+  text for the extractor. New prompt rule 0f recognizes Reddit posts
+  as user-generated (skip unless post has both specific date and
+  place). Six subreddits seeded (r/washingtondc, r/nova, r/Arlington,
+  r/AlexandriaVA, r/dcfood, weekend-megathread search).
 - **2026-04-30:** BLOCKED_SITES expanded 22 → 65; per-venue web-search
   queries tuned; admin sweep + coverage endpoints; Smithsonian arts-
   default removed; venue-agnostic categorization; pattern-based heal.
