@@ -16,6 +16,7 @@
 // shell (header, tab strip, auth gate, hash routing).
 
 import { useEffect, useState } from 'react';
+import { getAdminToken, promptForToken, clearAdminToken } from './adminApi';
 import OverviewTab     from './OverviewTab';
 import HealthTab       from './HealthTab';
 import CronTab         from './CronTab';
@@ -73,6 +74,53 @@ function writeHashTab(id) {
 
 export default function AdminConsole({ user, authLoading, signInWithGoogle }) {
   const [activeTab, setActiveTab] = useState(readHashTab);
+  const [hasToken, setHasToken] = useState(() => !!getAdminToken());
+
+  // Force a prompt for the X-Admin-Token on first admin entry per session.
+  // Backend's adminAuth middleware requires this on every /admin/* route;
+  // without it every fetch in every tab returns 401. The token lives on
+  // Render → Environment → ADMIN_SECRET.
+  useEffect(() => {
+    if (user && !hasToken) {
+      const t = promptForToken();
+      if (t) setHasToken(true);
+    }
+  }, [user, hasToken]);
+
+  // Auto-inject X-Admin-Token on every /admin/* fetch from any tab.
+  // Avoids refactoring 12 tab files to thread the header manually —
+  // every existing fetch() call still works, just with auth.
+  // Restored to the original implementation on unmount so non-admin
+  // pages aren't affected.
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = function patchedFetch(input, init = {}) {
+      const url = typeof input === 'string' ? input : (input?.url || '');
+      // Match /admin/ paths regardless of host (relative or absolute).
+      // Also match /cron/ paths so manual triggers go through too (though
+      // cron endpoints don't strictly require the token, sending it is
+      // harmless and future-proofs if we ever lock them down).
+      if (/\/(?:admin|cron)\//.test(url)) {
+        const token = getAdminToken();
+        if (token) {
+          const next = { ...init };
+          next.headers = new Headers(init.headers || {});
+          if (!next.headers.has('X-Admin-Token')) {
+            next.headers.set('X-Admin-Token', token);
+          }
+          return originalFetch.call(this, input, next);
+        }
+      }
+      return originalFetch.call(this, input, init);
+    };
+    return () => { window.fetch = originalFetch; };
+  }, [hasToken]); // re-apply when token changes so new value flows in
+
+  const reprompt = () => {
+    clearAdminToken();
+    const t = promptForToken();
+    setHasToken(!!t);
+  };
 
   // Sync state with hash changes (back button, manual URL edit)
   useEffect(() => {
@@ -166,6 +214,15 @@ export default function AdminConsole({ user, authLoading, signInWithGoogle }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{user.email}</span>
+          <button onClick={reprompt} title="Re-enter the X-Admin-Token (Render env: ADMIN_SECRET)"
+            style={{
+              background: hasToken ? 'rgba(34,197,94,.12)' : 'rgba(245,158,11,.15)',
+              border: `0.5px solid ${hasToken ? 'rgba(34,197,94,.4)' : 'rgba(245,158,11,.45)'}`,
+              borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer',
+              color: hasToken ? '#22c55e' : '#F59E0B', fontFamily: 'inherit',
+            }}>
+            {hasToken ? '🔑 token set' : '🔑 set token'}
+          </button>
           <a href="/" style={{
             background: 'rgba(255,255,255,.06)', border: '0.5px solid rgba(255,255,255,.1)',
             borderRadius: 8, padding: '5px 12px', fontSize: 12, cursor: 'pointer',
