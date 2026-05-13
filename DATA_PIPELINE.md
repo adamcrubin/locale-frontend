@@ -1327,3 +1327,116 @@ Initial triage on the production DB (validation run) caught:
 
 Pipeline 2 doesn't auto-pause anything. It surfaces the list for operator review. Auto-pause is intentionally deferred — false positives during the source-discovery phase would silently kill good sources.
 
+---
+
+## Changes 2026-05-11
+
+### Admin auth — X-Admin-Token wiring for the new /admin console
+
+The legacy `/api/admin-ui` HTML dashboard already used a manual
+`X-Admin-Token` header prompted via `prompt()` and stored in
+sessionStorage. The new SPA admin console at `/admin` initially didn't
+send it, so every admin tab returned 401.
+
+Fix: `AdminConsole` monkey-patches `window.fetch` for the duration of
+its mount. Any request to a URL containing `/admin/` or `/cron/` gets
+the cached token injected as `X-Admin-Token` automatically. Token is
+prompted via native `window.prompt()` on first admin entry per session;
+stored in `sessionStorage['locale-admin-token']`; surfaced in the
+header as `🔑 token set` (green) or `🔑 set token` (amber, click to
+re-paste). The 401 response clears the cached token via `clearAdminToken()`
+so the next call re-prompts.
+
+Tabs themselves use plain `fetch()` calls — no per-tab refactor needed.
+
+### `/admin/overview` consolidated stats endpoint
+
+Powers the Overview tab. Bundles 7 daily-driver SELECTs into one
+parallel call via `Promise.all`:
+
+1. Event totals (active / recurring / inactive / backfill_pending)
+2. This-weekend events grouped by category (matches `/api/events` filter)
+3. Source health summary
+4. Recent extractions (last 24h, per-source new event counts)
+5. Duplicate hunt — venues with 3+ active events
+6. Pipeline activity (last scrape / last event update / pending suggestions)
+7. Active sponsored row
+
+Weekend window uses the same Fri/Sat/Sun anchor logic as the feed
+(steps backward on Sat/Sun).
+
+### `/admin/cleanup/stale-undated` one-shot
+
+Deactivates events with `start_date < CURRENT_DATE` AND `end_date IS NULL`
+— catches series-wrapper rows (e.g. Sunset Cinema at The Wharf where
+the extractor pulled one start_date and no end) that escape the
+stale-expiry heal. Manual operator action; not added to the boot heal
+sequence to keep the heal idempotent and low-risk.
+
+### Reddit ingestion
+
+`services/redditFetcher.js` plugs into the scraper BEFORE direct HTTP
+or headless routing. URL-host detection (any `reddit.com` host),
+converts to the `.json?limit=50` listing variant, fetches with a custom
+User-Agent, applies an event-relevance keyword filter, and renders
+surviving posts as plain text for the extractor. New prompt rule 0f
+treats Reddit content as user-generated — only emits events when the
+post has BOTH a specific date AND a venue.
+
+Yield: ~10-15 event-relevant posts per subreddit per fetch survive the
+filter, ~3-8 become events after Haiku's date+place check. Six
+subreddits seeded.
+
+### Headless browser fallback
+
+`services/headlessBrowser.js` wraps ScrapingBee / Browserless / ZenRows
+behind `HEADLESS_PROVIDER` + `HEADLESS_API_KEY` env vars. Default off
+(`HEADLESS_PROVIDER=none`). Opt-in by setting the provider; the
+scraper then routes sources with `use_headless=true` or in
+`BLOCKED_SITES` through the headless service for JS-rendered HTML
+before falling back to web search.
+
+Per-source toggle in `/admin#sources` (purple `🌐 on` / ghost `off`
+badge). Auto-flipped to true by the validation probe when
+recommendation == `needs-headless`.
+
+`GET /api/admin/headless/status` returns `{ configured, provider }`.
+The Sources tab surfaces a warning banner when any source has
+`use_headless=true` but no provider is configured server-side.
+
+### Validation gate enforced
+
+`POST /admin/sources/add` runs `validateUrl()` inline before INSERT.
+If probe returns `blocked` or `no-events`, source lands with
+`active=false` + `validation_status='failed'`. Operator can manually
+flip active via the row's toggle. `skipValidation: true` in the
+request body bypasses (recovery scripts). UI surfaces the verdict
+in a new "Result" step of the AddSourceModal.
+
+### Endpoints recap (added 2026-05-10 / 2026-05-11)
+
+```
+GET  /api/admin/overview                    bundled stats for Overview tab
+GET  /api/admin/headless/status             { configured, provider }
+GET  /api/admin/db/tables                   whitelisted table list + counts
+GET  /api/admin/db/table/:name              paginated rows with search/sort
+POST /api/admin/db/query                    read-only SQL playground
+GET  /api/admin/sources/coverage            source state breakdown
+POST /api/admin/sources/sweep               targeted scrape with filter
+POST /api/admin/sources/:id/validate        run validation probe
+GET  /api/admin/sources/:id/fixtures        list fixtures for a source
+POST /api/admin/sources/:id/fixtures/capture  capture from live URL
+POST /api/admin/fixtures/:id/replay         replay one fixture
+DELETE /api/admin/fixtures/:id              remove a fixture
+POST /api/admin/sources/:id/author-extractor  Sonnet → extractor_config
+POST /api/admin/extractor/author            same, sandbox mode (no source row)
+POST /api/admin/sources/:id/test-extractor  dry-run a config against live HTML
+POST /api/admin/cleanup/stale-undated       deactivate ghost rows
+PATCH /api/admin/sources/:id                whitelisted source-row updates
+GET  /api/cron/source-health                Pipeline 2 yield monitoring
+GET  /api/cron/parser-drift                 Pipeline 2 fixture replay
+```
+
+All `/admin/*` routes require `X-Admin-Token`. All `/cron/*` routes are
+unauthenticated (called by cron-job.org).
+

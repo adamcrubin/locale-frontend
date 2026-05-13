@@ -687,4 +687,94 @@ Plus the synthetic columns from earlier:
 
 `GET /api/admin/sources/coverage` and `POST /api/admin/sources/sweep` let the admin see at a glance which sources are producing and trigger targeted scrapes against the 101 never-produced sources without re-running the full pipeline. See DATA_PIPELINE.md for full detail.
 
+---
+
+## Changes 2026-05-11
+
+### iPad UX overhaul
+
+Reported from real iPad use: "everything needs to be much bigger." Two
+coordinated changes apply when `768px ≤ window.innerWidth ≤ 1366px`
+(covers iPad portrait/landscape and iPad Pro landscape; doesn't affect
+wider desktop monitors). New hook `useIsTablet()` in `useIsMobile.js`.
+
+**Ambient mode rewrite.** The old layout (small clock + 7-day weather
+strip + hourly precip SVG + fun-fact ticker + featured-activity
+rotation) was beautiful but too small for ambient distance viewing.
+New layout:
+
+- **Home view (60s)** — split left/right. LEFT half is a massive clock
+  (font-size `min(28vw, 280px)`, DM Sans 200-weight, tabular-nums).
+  RIGHT half is the weather icon + temp at similar size, plus desc +
+  H/L + rain%.
+- **Calendar view (20s)** — full-page Fri/Sat/Sun grid. Each day is a
+  glassy card with up to 6 events showing time + title + venue. Pulled
+  from `calQueue` (the user's saved calendar feed).
+- Auto-rotates between the two via setTimeout chain: 60s home → 20s
+  calendar → loop. Photo carousel still runs behind as ambient texture.
+- New `ambientFadeIn` keyframe in `index.css`.
+
+**Active mode 3-column cap.** `COLS_PER_PAGE = mobile ? 1 : tablet ? 3 :
+desktop ? 4`. The 8 categories don't fit in 3 columns, so the existing
+swipe-paging logic activates: swipe left/right to rotate through pages
+of 3 columns. Curated stays pinned as column 1 page 1.
+
+**Bigger card sizing on tablet.** ActCard gains an `sz` object scaled
+~25%: title font 14 → 17, meta 12 → 14, padding 7×10 → 11×14, minHeight
+44 → 56. CatColumn bumps header padding, icon font, label font, list
+gap. Threaded via `isTablet` prop through `colProps` (passes via spread
+to both `CatColumn` and `StackedColumn` with no changes there).
+
+Desktop renders unchanged. Mobile renders unchanged.
+
+### `/admin` console — single-URL operator surface
+
+A standalone admin app at `locale-frontend.netlify.app/admin`, gated to
+adamcrubin@gmail.com (permissive substring match handles capitalization
++ plus-addressing). All admin functionality moved here — the legacy
+full-screen `SourcesScreen.jsx` overlay was deleted and its features
+(add-source, test, active toggle) are now part of the `/admin#sources`
+tab.
+
+**Seven tabs**, hash-routed for bookmarkability:
+
+| Tab | URL | What |
+|---|---|---|
+| 📊 Overview | `/admin#overview` | Default landing. 6 preset data cards (this weekend by category, source health, pipeline activity, recent extractions, possible duplicates, sponsored rotation status). **+ 5 Quick Fix buttons** for one-tap ops from the iPad. |
+| 🏥 Health | `/admin#health` | Pipeline 2 yield monitoring + triage. Broken / drifted / unknown / healthy sections. |
+| 🔌 Sources | `/admin#sources` | List + add + test + active toggle + headless toggle + extractor edit + validation probe. |
+| 💡 Suggestions | `/admin#suggestions` | `source_suggestions` queue. Approve / reject. |
+| ⚙ Cron | `/admin#cron` | Manual triggers for heal / backfill / source-health / parser-drift / sweep / refresh / warm. |
+| 🗃 Tables | `/admin#tables` | Generic DB viewer over 8 whitelisted tables. ILIKE search + sort + pagination. |
+| 🔍 SQL | `/admin#sql` | Read-only SELECT/WITH playground. ⌘↵ to run. 5000 row cap. |
+
+**Auth flow** (Pipeline-3-era required two): a Google-authed user with
+an email containing `adamcrubin` gets past the frontend gate. **Plus**
+they must paste the backend's `ADMIN_SECRET` into a prompt on first
+load — this populates `X-Admin-Token` on every `/admin/*` and `/cron/*`
+fetch via a `window.fetch` monkey-patch in `AdminConsole`. Token lives
+in sessionStorage. Header shows `🔑 token set` (green) or `🔑 set token`
+(amber, click to re-paste).
+
+**Quick fixes** are 5 buttons on the Overview tab that POST to existing
+admin endpoints with the auth header automatically applied:
+- 🔥 Run full pipeline (force) — `/admin/refresh/scrape`
+- 🏥 Source health probe — `/cron/source-health`
+- 🩹 Run all heals — `/cron/heal`
+- 🪣 Sweep never-produced sources — `/admin/sources/sweep`
+- 🧹 Kill stale undated events — `/admin/cleanup/stale-undated`
+
+Each surfaces its result inline (timestamp + elapsed + collapsible
+JSON). Replaces the previous workflow of having to drop to curl.
+
+### Onboarding "Back to welcome"
+
+Step 0 of the onboarding flow now has a `← Back to welcome` button at
+the top-left (mirror of the existing Demo button at top-right). Lets
+users who clicked Sign-in or Demo and changed their minds get back to
+the welcome screen without abandoning the tab. Clearing demo flag +
+signing out — both needed so the welcome render condition
+(`!user && !demoMode`) becomes true. Steps 1 and 2 keep their existing
+in-flow Back button.
+
 

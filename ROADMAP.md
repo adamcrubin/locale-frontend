@@ -882,3 +882,110 @@ Audit of the 81-event feed found two systemic issues:
   button / mode, NOT a replacement for category columns. Not yet built.
   See conversation notes; needs duration backfill + neighborhood bins
   before Phase 2 (LLM-driven generation).
+
+## Late-May 2026 — fourth push (pipeline architecture build-out)
+
+A multi-day session that finished the architecture sketched in
+SCRAPING_PIPELINE.md. Every priority-1 item from Appendix A shipped,
+plus operator-facing tooling that lets the whole thing run from an
+iPad without dropping to curl.
+
+### ✅ Shipped — Pipeline 1 (Onboarding)
+
+- **Validation gate** — `services/validationProbe.js` runs HTTP +
+  render-detect + structured-data + yield probes against any URL,
+  returns a recommendation from a 10-entry table. Wired into
+  `POST /admin/sources/add` so new admin-added sources are auto-gated
+  to `active=false` when the probe says `blocked` / `no-events`;
+  `needs-headless` auto-flips `use_headless=true`. UI surfaces the
+  verdict in `AddSourceModal` post-save.
+- **Declarative DSL (1D2)** — `sources.extractor_config JSONB` +
+  `services/declarativeParser.js` engine. Cheerio-based CSS selector
+  match against repeating containers with a transform library
+  (parseDate / parseTime / parseCost / trim / slice). `ExtractorEditor`
+  modal in `/admin#sources` provides live preview against the source's
+  HTML; ~80% of single-venue sources fit this pattern.
+- **LLM-authored extractor (1D3)** — `services/extractorAuthor.js`
+  uses Sonnet to read live page HTML and propose a valid
+  `extractor_config` JSON. Optional `examples` + `hints` inputs.
+  Sandbox endpoint at `POST /admin/extractor/author` for pre-add
+  evaluation. ~$0.04-0.08/call; one-off per source.
+
+### ✅ Shipped — Pipeline 2 (Health & Maintenance)
+
+- **Yield monitoring + triage** — `services/sourceHealth.js`
+  classifies every active source as healthy / drifted / broken /
+  unknown via a 10-rule classifier. Writes back to
+  `sources.parser_health` columns. `GET /api/cron/source-health` is
+  the daily cron entry; `GET /api/admin/sources/health` is the cached
+  read for the UI.
+- **Fixture-based drift detection (2B)** — `source_fixtures` table
+  + `services/fixtureRunner.js`. Capture/replay/diff. Daily
+  `/cron/parser-drift` replays each source's most-recent fixture
+  against the current parser. Drift verdicts feed back into the
+  Pipeline 2 health classifier as the highest-priority signal.
+- **Operator drift fix loop** — when a parser drifts, operator opens
+  the source in `/admin#sources` → clicks 🤖 Generate with Claude →
+  patch mode (useCurrent: true) — Sonnet receives the broken config
+  + new HTML and corrects selectors.
+
+### ✅ Shipped — Pipeline 3 (Runtime)
+
+- **Headless browser fallback** — `services/headlessBrowser.js`
+  wraps ScrapingBee / Browserless / ZenRows behind a single env var
+  (`HEADLESS_PROVIDER`). Default off; opt-in by setting the env. When
+  configured, sources with `use_headless=true` or in `BLOCKED_SITES`
+  route through the service for JS-rendered HTML before falling back
+  to web search. Unlocks ~30 SPA venues (Wolf Trap, 9:30 Club, Anthem,
+  Kennedy Center, theatres, library calendars, brewery event pages).
+- **Reddit ingestion** — `services/redditFetcher.js` detects
+  reddit.com URLs, fetches the open `.json` listing (no auth, 60
+  req/min rate limit), applies event-relevance keyword filter,
+  renders as text for the extractor. New prompt rule 0f treats Reddit
+  posts as user-generated (skip unless post has both specific date and
+  place). Six subreddits seeded (r/washingtondc, r/nova, r/Arlington,
+  r/AlexandriaVA, r/dcfood, weekend-megathread search).
+
+### ✅ Shipped — Admin console (/admin)
+
+- **Single-URL operator surface** at `locale-frontend/admin` with 7
+  tabs: Overview / Health / Sources / Suggestions / Cron / Tables /
+  SQL. Default landing is Overview with 6 preset data cards + 5
+  Quick Fix buttons.
+- **Auth** — frontend email gate (substring 'adamcrubin') + backend
+  `X-Admin-Token` auto-injected on every `/admin/*` fetch via
+  window.fetch monkey-patch. Token prompted once per session, stored
+  in sessionStorage.
+- **Tables tab** — generic DB viewer over 8 whitelisted tables with
+  ILIKE search across text columns, sortable columns, paginated.
+- **SQL tab** — read-only SELECT/WITH playground, 5000 row cap,
+  forbidden keyword regex, sample query chips.
+- **Legacy SourcesScreen.jsx deleted** (475 lines removed), its
+  features merged into `/admin#sources`.
+
+### ✅ Shipped — UX
+
+- **iPad layout** — ambient mode rewritten (massive clock left,
+  massive weather right, 60s/20s auto-rotate to full-page Fri-Sat-Sun
+  calendar). Active mode caps to 3 columns + bigger card sizing
+  under 1366px viewport. Onboarding step 0 gets a "← Back to welcome"
+  button.
+- **Visual indicator simplification** — `🔄` recommendation glyph
+  removed from event cards; `∞` evergreen marker stays as the single
+  badge.
+
+### Still open after this push
+
+- **Itinerary mode** — separate button/view, Adam approved concept,
+  not yet built.
+- **`MAJOR_VENUE_KEYWORDS` scoring replacement** — 40 hardcoded
+  venues that get +0.06 score boost is venue bias in ranking;
+  replace with derived signals.
+- **Meetup ingestion** — Meetup API paywalled; either scrape event
+  pages (each is a JS-rendered page) or skip.
+- **Auto-derive `field_contract`** — currently hand-curated for
+  known roundup sources; could be inferred from extraction history.
+- **Operational testing on real iPad** — pipeline architecture is
+  complete; a real session would surface what still breaks. Adam's
+  ADMIN_SECRET wiring exists but the X-Admin-Token UX has only been
+  tested in code, not on-device.
